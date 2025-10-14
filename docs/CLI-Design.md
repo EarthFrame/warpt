@@ -16,7 +16,15 @@ pip install warpt
 conda install -c conda-forge warpt
 ```
 
+### poetry
+```bash
+poetry add warpt
+```
 
+### uv
+```bash
+uv pip install warpt
+```
 
 ### From Source
 ```bash
@@ -25,33 +33,7 @@ cd warpt
 pip install -e .
 ```
 
-### poetry
-```bash
-# Add to existing project
-poetry add warpt
-
-# Install from source
-git clone https://github.com/your-org/warpt.git
-cd warpt
-poetry install
-```
-
-### uv
-```bash
-# Install package
-uv pip install warpt
-
-# Install from source
-git clone https://github.com/your-org/warpt.git
-cd warpt
-uv pip install -e .
-```
-
-### Verify Installation
-```bash
-warpt --version
-warpt check --quick
-```
+---
 
 ## Core Command Structure
 
@@ -59,881 +41,817 @@ warpt check --quick
 warpt <command> [options] [targets...]
 ```
 
-## Main Commands
+## Core Commands
 
-### 1. `check` - System Health Checks
+### 1. `check` - Quick Health Checks
+
+Fast, non-destructive health checks for system components.
+
 ```bash
-# Quick health check
-warpt check
+# Basic usage
+warpt check                    # Check all components
+warpt check cpu gpu memory     # Check specific components
+warpt check --all              # Comprehensive check
 
-# Check specific components
-warpt check cpu gpu memory
-warpt check pytorch cuda
-warpt check --all
+# Options
+warpt check --quick            # Fast check only
+warpt check --verbose          # Detailed output
+warpt check --format json      # Machine-readable output
+```
 
-# Quick system overview
-warpt check --summary
+**Output (text format):**
+```
+✓ CPU: 16 cores, all functional
+✓ GPU: NVIDIA RTX 4090 (24GB), CUDA 12.1
+✓ Memory: 64GB, no errors detected
+✗ CUDA: Driver version mismatch (found 11.8, expected 12.1)
+
+Summary: 3 passed, 1 failed
+```
+
+**Output (JSON format):**
+```json
+{
+  "timestamp": "2025-10-14T10:30:00Z",
+  "results": {
+    "cpu": {"status": "pass", "cores": 16, "threads": 32},
+    "gpu": {"status": "pass", "model": "NVIDIA RTX 4090", "memory": "24GB"},
+    "memory": {"status": "pass", "total": "64GB", "available": "48GB"},
+    "cuda": {"status": "fail", "error": "Driver version mismatch"}
+  },
+  "summary": {"total": 4, "passed": 3, "failed": 1}
+}
 ```
 
 ### 2. `stress` - Stress Testing
+
+Intensive testing for reliability and stability.
+
 ```bash
-# Run stress tests
-warpt stress
+# Basic usage
+warpt stress cpu               # Stress CPU
+warpt stress gpu               # Stress GPU
+warpt stress memory            # Stress memory
 
-# Test specific components
-warpt stress cpu --duration 60s
-warpt stress gpu --intensity high
-warpt stress memory --size 8GB
+# Options
+warpt stress cpu --duration 5m --threads 16
+warpt stress gpu --intensity high --duration 60s
+warpt stress memory --size 32GB --pattern random
+warpt stress --all --duration 10m
+```
 
-# Test suites
-warpt stress --suite ml-training
-warpt stress --suite networking
+**Output:**
+```
+[████████░░] 80% CPU Stress Test (1m 12s remaining)
+Current: 16 threads at 100% utilization
+Peak Temperature: 78°C
+Power Draw: 125W
+```
+
+**JSON Output:**
+```json
+{
+  "test": "cpu_stress",
+  "duration": 300,
+  "results": {
+    "max_utilization": 100.0,
+    "avg_utilization": 98.5,
+    "peak_temperature": 78,
+    "power_draw_avg": 125,
+    "errors": 0,
+    "throttling_events": 0
+  },
+  "status": "pass"
+}
 ```
 
 ### 3. `benchmark` - Performance Benchmarking
-```bash
-# Run benchmarks
-warpt benchmark
-warpt benchmark gpu --mlperf
-warpt benchmark cpu --threads 8
 
-# Compare against theoretical performance
-warpt benchmark gpu --theoretical --api-key $WARPT_API_KEY
-warpt benchmark --all --theoretical --output benchmark-report.html
+Measure and compare performance.
+
+```bash
+# Basic usage
+warpt benchmark cpu            # CPU benchmark
+warpt benchmark gpu            # GPU benchmark
+warpt benchmark --all          # Full system benchmark
+
+# Options
+warpt benchmark gpu --mlperf             # MLPerf benchmark
+warpt benchmark cpu --threads 8          # Specify thread count
+warpt benchmark --compare baseline.json  # Compare to baseline
+warpt benchmark --output results.json    # Save results
+```
+
+**Output:**
+```
+GPU Benchmark Results:
+  FP32 Performance: 82.3 TFLOPS
+  FP16 Performance: 165.2 TFLOPS
+  Memory Bandwidth: 1008 GB/s
+  MLPerf Score: 1250
+
+Comparison to baseline:
+  FP32: +15.3% (baseline: 71.4 TFLOPS)
+  Memory: +2.1% (baseline: 988 GB/s)
+```
+
+**JSON Output:**
+```json
+{
+  "benchmark": "gpu",
+  "timestamp": "2025-10-14T10:30:00Z",
+  "hardware": {
+    "model": "NVIDIA RTX 4090",
+    "memory": "24GB",
+    "driver": "530.30.02"
+  },
+  "results": {
+    "fp32_tflops": 82.3,
+    "fp16_tflops": 165.2,
+    "memory_bandwidth_gbps": 1008,
+    "mlperf_score": 1250
+  },
+  "comparison": {
+    "baseline_file": "baseline.json",
+    "fp32_delta_percent": 15.3,
+    "memory_delta_percent": 2.1
+  }
+}
 ```
 
 ### 4. `run` - Profile Command Execution
+
+Profile resource usage of any command.
+
 ```bash
-# Profile any command
+# Basic usage
 warpt run python train.py
-warpt run ./my_application --config app.yaml
+warpt run ./my_application
 warpt run "npm test"
 
-# Detailed profiling
-warpt run --profile-gpu python train.py
-warpt run --profile-memory --profile-io ./data_processor
-warpt run --interval 100ms python long_running_task.py
+# Options
+warpt run --gpu python train.py              # Include GPU profiling
+warpt run --memory python script.py          # Memory profiling
+warpt run --interval 100ms python train.py   # Sampling interval
+warpt run --output profile.json python train.py
+```
 
-# Save profile results
-warpt run --output profile.json python script.py
-warpt run --format html python script.py
+**Output:**
+```
+Command: python train.py
+Duration: 5m 32s
+Exit Code: 0
+
+Resource Usage:
+  CPU Peak: 89.3% (avg: 67.2%)
+  Memory Peak: 12.3GB (avg: 8.7GB)
+  GPU Utilization: 95.2% (avg: 87.4%)
+  GPU Memory: 18.2GB peak
+
+Timeline:
+  [0-1m]   CPU: 45%, GPU: 78%, Mem: 4.2GB
+  [1-3m]   CPU: 82%, GPU: 95%, Mem: 12.1GB  (training)
+  [3-5m]   CPU: 52%, GPU: 89%, Mem: 9.8GB
+```
+
+**JSON Output:**
+```json
+{
+  "command": "python train.py",
+  "start_time": "2025-10-14T10:30:00Z",
+  "end_time": "2025-10-14T10:35:32Z",
+  "duration": 332.5,
+  "exit_code": 0,
+  "resources": {
+    "cpu": {
+      "peak_percent": 89.3,
+      "avg_percent": 67.2,
+      "timeline": [...]
+    },
+    "memory": {
+      "peak_gb": 12.3,
+      "avg_gb": 8.7,
+      "timeline": [...]
+    },
+    "gpu": {
+      "utilization_peak": 95.2,
+      "utilization_avg": 87.4,
+      "memory_peak_gb": 18.2,
+      "timeline": [...]
+    }
+  }
+}
 ```
 
 ### 5. `monitor` - Real-time Monitoring
+
+Real-time system monitoring.
+
 ```bash
-# Monitor system in real-time
-warpt monitor
-warpt monitor gpu --live
-warpt monitor --dashboard
+# Basic usage
+warpt monitor                  # Monitor all resources
+warpt monitor gpu              # Monitor GPU only
+warpt monitor --live           # Live dashboard
+
+# Options
+warpt monitor --interval 1s    # Update interval
+warpt monitor --dashboard      # TUI dashboard
+warpt monitor --duration 5m    # Monitor for duration
+warpt monitor --alert cpu:80   # Alert when CPU > 80%
+```
+
+**Output (Live Dashboard):**
+```
+╔══════════════════════════════════════════════════════════╗
+║  WARPT Monitor - ml-workstation-01  [10:30:45]          ║
+╠══════════════════════════════════════════════════════════╣
+║  CPU     [████████░░] 78%   16 cores @ 2.8 GHz          ║
+║  Memory  [██████░░░░] 62%   39.7GB / 64GB                ║
+║  GPU 0   [█████████░] 89%   RTX 4090 @ 1920 MHz         ║
+║    Mem   [███████░░░] 72%   17.3GB / 24GB                ║
+║    Temp  [██████░░░░] 68°C  Power: 320W / 450W           ║
+║  GPU 1   [████████░░] 82%   RTX 4090 @ 1890 MHz         ║
+║    Mem   [██████░░░░] 65%   15.6GB / 24GB                ║
+║    Temp  [██████░░░░] 65°C  Power: 305W / 450W           ║
+╚══════════════════════════════════════════════════════════╝
 ```
 
 ### 6. `report` - Generate Reports
+
+Generate comprehensive reports from logs or live data.
+
 ```bash
-# Generate comprehensive report
-warpt report --output report.html
-warpt report --format json
+# Basic usage
+warpt report                          # Generate current system report
+warpt report --output report.html     # HTML report
+warpt report --format json            # JSON report
 
-# Generate reports from logs
-warpt report --from-logs ~/.warpt/logs/
-warpt report --from-logs ~/.warpt/logs/20250716-*
-warpt report --combine-logs --since 7d
-warpt report --trend --logs ~/.warpt/logs/benchmark-*
+# From logs
+warpt report --log benchmark.json     # Report from specific log
+warpt report --logs ~/.warpt/logs/    # Aggregate all logs
+warpt report --since 7d               # Logs from last 7 days
 
-# Theoretical performance analysis
-warpt report --theoretical --api-key $WARPT_API_KEY
-warpt report --log benchmark.json --theoretical --output analysis.html
-
-# Specific log analysis
-warpt report --log-file ~/.warpt/logs/20250716-143022-test-gpu.json
+# Comparisons
+warpt report --compare log1.json log2.json
+warpt report --trend --since 30d      # Trend analysis
 ```
 
-### 7. `list` - Discover Available Hardware & Software
-```bash
-# List all available hardware
-warpt list hardware
-warpt list hw              # Short alias
+**Output (Text):**
+```
+System Report - ml-workstation-01
+Generated: 2025-10-14 10:30:00
 
-# List specific hardware types
-warpt list hw --cpu
-warpt list hw --gpu
-warpt list hw --memory
-warpt list hw --storage
-warpt list hw --network
+Hardware Summary:
+  CPU: Intel Xeon E5-2686 v4 (16 cores)
+  GPU: 2x NVIDIA RTX 4090 (24GB each)
+  Memory: 64GB DDR4
+  Storage: 2TB NVMe SSD
 
-# List all available software/frameworks
-warpt list software
-warpt list sw              # Short alias
+Recent Activity (7 days):
+  Total Runs: 145
+  Stress Tests: 23 (100% passed)
+  Benchmarks: 12 (avg GPU: 82.1 TFLOPS)
+  Failed Tests: 2 (CUDA version issues)
 
-# List specific software categories
-warpt list sw --frameworks      # ML frameworks (PyTorch, TensorFlow, etc.)
-warpt list sw --cuda            # CUDA toolkit and drivers
-warpt list sw --python          # Python and installed packages
-warpt list sw --compilers       # Available compilers
-warpt list sw --libraries       # System libraries
-
-# List everything
-warpt list all
-warpt list --detailed           # Include versions, paths, capabilities
-
-# Container-aware listing
-warpt list --container-info     # Show container runtime details
-warpt list --host-passthrough   # Show host devices available in container
-
-# Output formats
-warpt list hw --format json
-warpt list sw --format yaml
-warpt list all --format table
+Performance Trends:
+  GPU Performance: Stable (82.1 ± 1.2 TFLOPS)
+  CPU Performance: Stable (95% of theoretical)
+  No degradation detected
 ```
 
-### 8. `inspect` - Comprehensive Environment Inspection
+### 7. `list` - Discover Available Resources
+
+List available hardware and software.
+
 ```bash
-# Full environment inspection
-warpt inspect
+# Basic usage
+warpt list                     # List all resources
+warpt list hardware            # Hardware only
+warpt list software            # Software only
 
-# Inspect specific components
-warpt inspect hardware
-warpt inspect software
-warpt inspect network
-
-# Detailed inspection with capabilities
-warpt inspect --capabilities    # Include what each component can do
-warpt inspect --versions        # Show all version information
-warpt inspect --paths           # Show installation paths
-
-# Container-specific inspection
-warpt inspect --container       # Detect and show container environment
-warpt inspect --runtime         # Show runtime environment (Docker, containerd, etc.)
-warpt inspect --mounts          # Show mounted volumes and devices
-warpt inspect --devices         # Show available devices (/dev/nvidia*, etc.)
+# Specific queries
+warpt list --gpu               # GPUs only
+warpt list --frameworks        # ML frameworks
+warpt list --detailed          # Verbose output
 ```
 
-### 9. `export` - Export Environment Specification
-```bash
-# Export complete environment
-warpt export env.yaml
-warpt export env.json
-warpt export env.toml
+**Output:**
+```
+Hardware:
+  CPU: Intel Xeon E5-2686 v4
+    Cores: 16, Threads: 32
+    Features: AVX, AVX2, SSE4.2, FMA
+  
+  GPU:
+    [0] NVIDIA RTX 4090 (24GB, CUDA 8.9)
+    [1] NVIDIA RTX 4090 (24GB, CUDA 8.9)
+  
+  Memory: 64GB DDR4
+  
+  Storage:
+    /dev/nvme0n1: 2TB NVMe SSD
 
-# Export specific components
-warpt export --hardware-only hw.yaml
-warpt export --software-only sw.yaml
-warpt export --minimal minimal-env.yaml    # Only essential components
-
-# Include installation instructions
-warpt export env.yaml --with-install       # Add installation commands
-warpt export env.yaml --dockerfile         # Generate Dockerfile
-warpt export env.yaml --requirements       # Generate requirements.txt
-
-# Container-optimized export
-warpt export --container-optimized container-env.yaml
-warpt export --docker-compose docker-compose.yml
-warpt export --dockerfile Dockerfile.warpt
+Software:
+  Python: 3.11.4 (/usr/bin/python3.11)
+  CUDA: 12.1.1 (driver 530.30.02)
+  
+  Frameworks:
+    PyTorch: 2.0.1 (CUDA 12.1)
+    TensorFlow: 2.13.0 (CUDA 12.1)
+  
+  Compilers:
+    GCC: 11.4.0
+    NVCC: 12.1.105
 ```
 
-### 10. `recreate` - Recreate Environment from Specification
-```bash
-# Recreate from exported file
-warpt recreate env.yaml
-warpt recreate env.json
-
-# Dry-run to see what would be installed
-warpt recreate env.yaml --dry-run
-
-# Selective recreation
-warpt recreate env.yaml --hardware-only
-warpt recreate env.yaml --software-only
-warpt recreate env.yaml --only pytorch,cuda
-
-# Container recreation
-warpt recreate env.yaml --build-dockerfile
-warpt recreate env.yaml --build-docker --tag my-env:latest
+**JSON Output:**
+```json
+{
+  "hardware": {
+    "cpu": {
+      "model": "Intel Xeon E5-2686 v4",
+      "cores": 16,
+      "threads": 32,
+      "features": ["AVX", "AVX2", "SSE4.2", "FMA"]
+    },
+    "gpu": [
+      {
+        "index": 0,
+        "model": "NVIDIA RTX 4090",
+        "memory_gb": 24,
+        "compute_capability": "8.9",
+        "pcie_gen": 4
+      }
+    ],
+    "memory": {
+      "total_gb": 64,
+      "type": "DDR4"
+    }
+  },
+  "software": {
+    "python": {
+      "version": "3.11.4",
+      "path": "/usr/bin/python3.11"
+    },
+    "cuda": {
+      "version": "12.1.1",
+      "driver": "530.30.02"
+    },
+    "frameworks": {
+      "pytorch": {
+        "version": "2.0.1",
+        "cuda_support": true
+      }
+    }
+  }
+}
 ```
 
-## Target Components (Extensible)
+---
+
+## Target Components
 
 ### Hardware Targets
-- `cpu` - CPU diagnostics and stress testing
+- `cpu` - CPU diagnostics and testing
 - `gpu` - GPU diagnostics and compute tests
-- `ram` - Memory testing and stress
-- `storage` - Disk I/O and health
+- `memory` / `ram` - Memory testing
+- `storage` / `disk` - Disk I/O and health
 - `network` - Network interface testing
-- `interconnect` - High-speed interconnects
-- `nvlink` - NVIDIA NVLink testing
 
-### Software/Framework Targets
+### Software Targets
 - `pytorch` - PyTorch installation and functionality
+- `tensorflow` - TensorFlow checks
 - `cuda` - CUDA toolkit and drivers
-- `framework` - ML framework testing
-- `mlperf` - MLPerf benchmarking
 - `drivers` - Driver health checks
-- `libraries` - Essential library checks
+
+---
 
 ## Global Options
 
 ```bash
 --verbose, -v          Verbose output
---quiet, -q            Suppress non-error output
---output, -o FILE      Output results to file
---format FORMAT        Output format (json, yaml, html, text)
---config CONFIG        Use custom configuration file
---parallel, -p N       Run N tests in parallel
---timeout DURATION     Set operation timeout
+--quiet, -q            Suppress output (errors only)
+--output, -o FILE      Save results to file
+--format FORMAT        Output format: text, json, yaml, html
+--config FILE          Use config file
+--timeout DURATION     Timeout (e.g., 5m, 300s)
 --no-color             Disable colored output
---dry-run             Show what would be done
---log-dir DIR          Override default log directory
---no-log              Disable automatic logging
---log-id ID           Use custom log identifier
---overwrite-log       Allow overwriting existing log files
---help, -h            Show help
---version             Show version
+--help, -h             Show help
+--version              Show version
 ```
 
-## Usage Examples
+---
 
-### Beginner Examples
-```bash
-# "Is my system healthy?"
-warpt check
+## Logging System
 
-# "Test my GPU for ML workloads"
-warpt test gpu --suite ml
+### Automatic Logging
 
-# "Generate a system report"
-warpt report
+All commands automatically log to `~/.warpt/logs/` unless `--no-log` is specified.
+
+**Log filename format:**
+```
+{timestamp}-{command}-{target}-{id}.json
+Example: 20251014-103045-benchmark-gpu-a1b2c3.json
 ```
 
-### Intermediate Examples
-```bash
-# Test specific components with custom settings
-warpt test cpu --duration 5m --threads 16
-warpt test ram --size 50% --pattern random
-
-# Check ML stack is working
-warpt check pytorch cuda --verbose
-
-# Monitor GPU during stress test
-warpt test gpu --monitor
-```
-
-### Advanced Examples
-```bash
-# Custom test configuration
-warpt test --config custom-tests.yaml
-
-# Comprehensive system validation
-warpt check --all --output system-health.json
-warpt test --suite enterprise --parallel 4
-warpt benchmark --mlperf --compare baseline.json
-
-# Pipeline integration
-warpt check --format json --quiet | jq '.failed | length'
-
-# Log-based workflows
-warpt test gpu --log-id baseline-gpu
-warpt test gpu --log-id updated-gpu
-warpt report --compare-logs baseline-gpu updated-gpu
-
-# Automated reporting
-warpt report --comprehensive --since 7d --output weekly-report.html
-```
-
-## Help System Design
-
-### Main Help
-```bash
-warpt --help
-```
-Shows overview, common commands, and getting started guide.
-
-### Command-Specific Help
-```bash
-warpt check --help
-warpt test --help
-warpt benchmark --help
-```
-
-### Target-Specific Help
-```bash
-warpt check gpu --help
-warpt test pytorch --help
-```
-
-### Discovery Commands
-```bash
-# List all available targets
-warpt list targets
-
-# Show what's installed/available
-warpt list available
-
-# Show test suites
-warpt list suites
-
-# Show recent logs
-warpt list logs
-warpt list logs --since 7d
-```
-
-## Logging System Design
-
-### Default Logging Behavior
-All commands automatically log to `~/.warpt/logs/` by default:
-- **Always enabled**: Logging happens automatically unless `--no-log` is specified
-- **Unique filenames**: Each run gets a unique log file to prevent overwrites
-- **Structured format**: Logs are in JSON format for easy parsing and reporting
-
-### Log File Naming Convention
-```
-~/.warpt/logs/{timestamp}-{command}-{targets}-{run_id}.json
-```
-
-Examples:
-```
-20250716-143022-check-all-a1b2c3d4.json
-20250716-143157-test-gpu-cuda-f5e6d7c8.json
-20250716-144301-benchmark-mlperf-9a8b7c6d.json
-20250716-145445-monitor-system-2e3f4g5h.json
-```
-
-### Log File Structure
+**Log contents:**
 ```json
 {
-  "meta": {
-    "version": "1.2.3",
-    "timestamp": "2025-07-16T14:30:22Z",
-    "run_id": "a1b2c3d4",
-    "command": "test",
-    "targets": ["gpu", "cuda"],
-    "user": "username",
-    "hostname": "workstation-01",
-    "working_dir": "/home/user/project",
-    "cli_args": ["test", "gpu", "cuda", "--duration", "60s"],
-    "config_file": "~/.config/warpt/config.yaml",
-    "environment": {
-      "CUDA_VISIBLE_DEVICES": "0,1",
-      "PATH": "/usr/local/cuda/bin:...",
-      "python_version": "3.11.4",
-      "warpt_version": "1.2.3"
-    },
-    "system_info": {
-      "os": "Ubuntu 22.04.3 LTS",
-      "kernel": "5.15.0-78-generic",
-      "cpu": "Intel Xeon E5-2686 v4",
-      "memory": "64GB",
-      "gpu": ["NVIDIA RTX 4090", "NVIDIA RTX 4090"]
-    }
+  "metadata": {
+    "timestamp": "2025-10-14T10:30:45Z",
+    "command": "benchmark",
+    "target": "gpu",
+    "hostname": "ml-workstation-01",
+    "warpt_version": "1.0.0"
+  },
+  "system": {
+    "os": "Ubuntu 22.04",
+    "cpu": "Intel Xeon E5-2686 v4",
+    "gpu": ["NVIDIA RTX 4090"],
+    "memory_gb": 64
   },
   "execution": {
-    "start_time": "2025-07-16T14:30:22Z",
-    "end_time": "2025-07-16T14:31:22Z",
-    "duration": 60.234,
-    "status": "completed",
-    "exit_code": 0,
-    "interrupted": false
+    "start": "2025-10-14T10:30:45Z",
+    "end": "2025-10-14T10:32:15Z",
+    "duration_seconds": 90,
+    "exit_code": 0
   },
   "results": {
-    "summary": {
-      "total_tests": 8,
-      "passed": 7,
-      "failed": 1,
-      "warnings": 0,
-      "skipped": 0
-    },
-    "targets": {
-      "gpu": {
-        "status": "pass",
-        "duration": 45.123,
-        "tests": [
-          {
-            "name": "gpu_memory_test",
-            "status": "pass",
-            "duration": 15.456,
-            "result": {"allocated": "8GB", "tested": "8GB", "errors": 0}
-          },
-          {
-            "name": "gpu_compute_test",
-            "status": "pass",
-            "duration": 29.667,
-            "result": {"ops_per_sec": 1250000, "utilization": 98.5}
-          }
-        ]
-      },
-      "cuda": {
-        "status": "fail",
-        "duration": 5.234,
-        "error": "CUDA driver version mismatch",
-        "tests": [
-          {
-            "name": "cuda_version_check",
-            "status": "fail",
-            "duration": 0.123,
-            "error": "Expected 12.1, found 11.8"
-          }
-        ]
-      }
-    }
-  },
-  "metrics": {
-    "resource_usage": {
-      "peak_memory": "2.3GB",
-      "peak_cpu": 45.6,
-      "peak_gpu": 87.3,
-      "disk_io": {"read": "1.2GB", "write": "0.8GB"}
-    }
-  },
-  "warnings": [],
-  "errors": [
-    {
-      "timestamp": "2025-07-16T14:30:45Z",
-      "target": "cuda",
-      "message": "CUDA driver version mismatch",
-      "details": "Expected 12.1, found 11.8"
-    }
-  ]
-}
-```
-
-### Log Management Commands
-```bash
-# List recent logs
-warpt logs list
-warpt logs list --since 7d
-warpt logs list --command test
-warpt logs list --target gpu
-
-# Show log details
-warpt logs show 20250716-143022-test-gpu-a1b2c3d4
-warpt logs show --latest
-warpt logs show --latest --command benchmark
-
-# Clean up old logs
-warpt logs clean --older-than 30d
-warpt logs clean --keep 100
-warpt logs clean --failed-only
-
-# Export logs
-warpt logs export --since 7d --output logs-export.tar.gz
-```
-
-### Report Generation from Logs
-```bash
-# Single log report
-warpt report --log 20250716-143022-test-gpu-a1b2c3d4.json
-
-# Multiple log reports
-warpt report --logs "20250716-*-test-gpu-*"
-warpt report --logs ~/.warpt/logs/ --since 7d
-
-# Trend analysis
-warpt report --trend --target gpu --since 30d
-warpt report --trend --command benchmark --output gpu-trends.html
-
-# Comparison reports
-warpt report --compare before.json after.json
-warpt report --compare-logs --baseline "20250701-*" --current "20250716-*"
-
-# Comprehensive reports
-warpt report --comprehensive --since 7d --output system-health-report.html
-```
-
-## Configuration System
-
-### Default Config Locations
-- `~/.config/warpt/config.yaml`
-- `./warpt.yaml`
-- Environment variables: `SYSDIAG_*`
-
-### Sample Configuration
-```yaml
-# warpt.yaml
-defaults:
-  timeout: 300s
-  parallel: 2
-  output_format: text
-
-# Logging configuration
-logging:
-  enabled: true
-  directory: ~/.warpt/logs
-  format: json
-  retention_days: 30
-  max_files: 1000
-  compress_old: true
-  include_system_info: true
-  include_environment: true
-
-targets:
-  gpu:
-    cuda_checks: true
-    memory_test: true
-    compute_test: true
-  
-  pytorch:
-    version_check: true
-    gpu_support: true
-    basic_ops: true
-
-suites:
-  ml-training:
-    - pytorch
-    - cuda
-    - gpu
-    - ram
-  
-  networking:
-    - network
-    - interconnect
-    - nvlink
-```
-
-## Output Formats
-
-### Text Output (Default)
-```
-✓ CPU: 16 cores, all functional
-✓ GPU: NVIDIA RTX 4090, CUDA 12.1
-✗ RAM: 2GB failed sector detected
-⚠ PyTorch: Installed but no GPU support
-```
-
-### JSON Output
-```json
-{
-  "timestamp": "2025-07-16T10:30:00Z",
-  "summary": {
-    "total": 8,
-    "passed": 6,
-    "failed": 1,
-    "warnings": 1
-  },
-  "results": {
-    "cpu": {"status": "pass", "details": {...}},
-    "gpu": {"status": "pass", "details": {...}},
-    "ram": {"status": "fail", "error": "Memory sector failure"}
+    "fp32_tflops": 82.3,
+    "fp16_tflops": 165.2,
+    "memory_bandwidth_gbps": 1008
   }
 }
 ```
 
-## Error Handling & User Experience
-
-### Clear Error Messages
-```bash
-# Bad command
-$ warpt invalid-command
-Error: Unknown command 'invalid-command'
-Did you mean: check, test, benchmark?
-
-Run 'warpt --help' for usage information.
-
-# Missing dependency
-$ warpt check cuda
-Error: CUDA not found
-Suggestion: Install CUDA toolkit or use --skip-missing
-```
-
-### Progress Indication
-```bash
-$ warpt test --all
-Running system diagnostics...
-[●●●●●●●●●○] 90% CPU stress test (45s remaining)
-```
-
-### Extensible Architecture
-
-The CLI should be designed with a plugin system:
+### Log Management
 
 ```bash
-# Plugin discovery
-warpt plugins list
-warpt plugins install networking-extended
-warpt plugins enable custom-gpu-tests
+# List logs
+warpt logs list
+warpt logs list --since 7d
+warpt logs list --command benchmark
+
+# View log
+warpt logs show <log-id>
+warpt logs show --latest
+
+# Clean old logs
+warpt logs clean --older-than 30d
 ```
-
-## Implementation Notes
-
-### Argument Parsing
-- Use `argparse` or `click` for robust argument handling
-- Support both short and long options
-- Validate arguments early with clear error messages
-
-### Extensibility
-- Plugin architecture for adding new targets
-- Configuration-driven test definitions
-- Modular result reporting
-
-### Performance
-- Parallel execution where safe
-- Progress reporting for long operations
-- Graceful handling of timeouts and interrupts
-
-### Integration
-- Exit codes for CI/CD (0=success, 1=failure, 2=warnings)
-- Machine-readable output formats
-- Logging integration
-
-This design provides a clean, intuitive interface that grows with user expertise while maintaining consistency and discoverability.
 
 ---
 
-## CLI Design Critique & Improvement Suggestions
+## Configuration
 
-### Strengths of Current Design
+### Config File Locations
 
-1. **Clear Command Structure**: The verb-based command structure (`check`, `stress`, `benchmark`, `run`, `monitor`, `report`) is intuitive and follows Unix conventions.
+1. `~/.config/warpt/config.yaml` (user config)
+2. `./warpt.yaml` (project config)
+3. Environment variables: `WARPT_*`
 
-2. **Progressive Disclosure**: The design accommodates beginners through advanced users with increasing complexity of options.
+### Sample Configuration
 
-3. **Comprehensive Logging**: Automatic logging with unique filenames prevents data loss and enables historical analysis.
+```yaml
+# ~/.config/warpt/config.yaml
 
-4. **Machine-Readable Output**: Multiple output formats (JSON, YAML, HTML) support automation and integration.
+# Default settings
+defaults:
+  output_format: text
+  timeout: 300
+  log_enabled: true
 
-### Critical Issues & Improvements
+# Logging
+logging:
+  directory: ~/.warpt/logs
+  retention_days: 30
+  max_files: 1000
 
-#### 1. **Command Overlap & Confusion**
+# Target-specific settings
+targets:
+  gpu:
+    cuda_checks: true
+    memory_test: true
+  
+  pytorch:
+    version_check: true
+    gpu_support: true
 
-**Issue**: `stress` and `benchmark` commands have significant overlap. Users may not understand when to use which.
-
-**Suggestion**:
-```bash
-# Consider consolidating or clarifying:
-warpt test <target> --mode [stress|benchmark|quick]
-# OR maintain separation but make it clearer:
-warpt stress <target>  # For reliability/stability testing
-warpt perf <target>    # For performance measurement (shorter than benchmark)
+# Benchmark baselines
+baselines:
+  gpu_fp32_tflops: 82.0
+  cpu_gflops: 450
 ```
 
-#### 2. **Inconsistent Command Naming**
+---
 
-**Issue**: Mix of `check`, `test`, and `stress` creates ambiguity. What's the difference between checking and testing?
+## Usage Examples
 
-**Suggestion**: Standardize terminology:
+### Quick Start
 ```bash
-warpt check <target>     # Health/status check (fast, non-destructive)
-warpt test <target>      # Functional testing (moderate, validates capabilities)
-warpt stress <target>    # Stress/endurance testing (intensive, long-running)
-warpt bench <target>     # Performance benchmarking (measurement-focused)
+# Check if system is healthy
+warpt check
+
+# Run a quick benchmark
+warpt benchmark --all
+
+# Monitor GPU during training
+warpt monitor gpu --live
 ```
 
-#### 3. **The `run` Command Ambiguity**
-
-**Issue**: `warpt run` is potentially confusing - it doesn't "run tests" but profiles external commands.
-
-**Suggestion**: Rename to be more explicit:
+### Benchmarking Workflow
 ```bash
-warpt profile <command>  # More descriptive
-warpt trace <command>    # Alternative
-warpt exec <command> --profile  # Makes relationship clearer
+# 1. Create baseline
+warpt benchmark --all --output baseline.json
+
+# 2. Make changes (update drivers, etc.)
+
+# 3. Re-benchmark and compare
+warpt benchmark --all --compare baseline.json
+
+# 4. Generate report
+warpt report --compare baseline.json current.json --output report.html
 ```
 
-#### 4. **Over-Complex Logging System**
-
-**Issue**: The logging filename format `{timestamp}-{command}-{targets}-{run_id}.json` could become unwieldy.
-
-**Suggestions**:
-- Add `warpt logs` as a top-level command for better discoverability
-- Simplify to: `{timestamp}-{run_id}.json` with searchable metadata inside
-- Add tags/labels for filtering: `warpt test gpu --tags baseline,nightly`
+### Profiling Workflow
 ```bash
-warpt logs               # Interactive log browser
-warpt logs list --tag baseline
-warpt logs show <id>     # Auto-complete from run_id prefix
-warpt logs diff <id1> <id2>  # Compare two runs
+# Profile a training script
+warpt run --gpu --memory python train.py --output training-profile.json
+
+# View resource usage
+cat training-profile.json | jq '.resources.gpu.utilization_avg'
+
+# Monitor live during execution
+warpt monitor gpu &
+python train.py
 ```
 
-#### 5. **Missing Quick Feedback Mechanisms**
-
-**Issue**: No obvious way to get instant, minimal output for quick checks.
-
-**Suggestion**: Add express modes:
+### CI/CD Integration
 ```bash
-warpt status             # One-line system status
-warpt quick              # Alias for common quick check
-warpt check --minimal    # Minimal output mode
-warpt check --summary    # Summary only (already exists but promote it)
+# In CI pipeline
+warpt check --all --format json > system-check.json
+
+# Parse results
+FAILED=$(jq '.summary.failed' system-check.json)
+if [ "$FAILED" -gt 0 ]; then
+  echo "System check failed"
+  exit 1
+fi
+
+# Run benchmarks
+warpt benchmark --quick --output ci-benchmark.json
 ```
 
-#### 6. **Target Specification Inconsistency**
+---
 
-**Issue**: Mixing hardware (`cpu`, `gpu`, `ram`) and software (`pytorch`, `cuda`) targets without clear categorization.
+## Environment Management (Extended Features)
 
-**Suggestion**: Use namespacing or clearer grouping:
-```bash
-warpt check hw:gpu           # Hardware
-warpt check sw:pytorch       # Software
-warpt check stack:ml         # Pre-defined stacks
-warpt check all:hw           # All hardware
-warpt check all:sw           # All software
+This section covers advanced environment discovery, export, and reproducibility features.
 
-# Or use subcommands:
-warpt hw check gpu
-warpt sw check pytorch
-```
+### Commands
 
-#### 7. **Duration/Size Format Inconsistency**
-
-**Issue**: Multiple formats (`5m`, `60s`, `50%`, `8GB`) without clear documentation.
-
-**Suggestion**: Document supported formats prominently and be flexible:
-```bash
-# Support common formats with clear documentation:
---duration 5m|5min|300s|300
---size 8GB|8G|8192M|8192
---timeout 1h|60m|3600s|3600
-```
-
-#### 8. **Missing Comparison Features**
-
-**Issue**: Comparison features are buried in reports. Should be more prominent.
-
-**Suggestion**: Add dedicated comparison command:
-```bash
-warpt compare <run1> <run2>
-warpt compare --baseline <id> --current <id>
-warpt diff <id1> <id2>  # Alias for comparison
-warpt regression check --since 7d  # Check for performance regressions
-```
-
-#### 9. **Theoretical Performance API Integration**
-
-**Issue**: `--theoretical --api-key` pattern is clunky and exposes keys in command history.
-
-**Suggestion**: Better API key management:
-```bash
-# Use environment variable or config file:
-export WARPT_API_KEY=<key>
-# Or:
-warpt config set api_key <key>  # Stores securely
-
-# Then simply:
-warpt bench gpu --theoretical
-```
-
-#### 10. **No Dry-Run Feedback**
-
-**Issue**: `--dry-run` exists but unclear what output it provides.
-
-**Suggestion**: Make dry-run informative:
-```bash
-warpt test gpu --dry-run
-# Output:
-# Would run the following tests:
-#   - gpu_memory_test (estimated 15s)
-#   - gpu_compute_test (estimated 30s)
-#   - cuda_version_check (estimated 1s)
-# Estimated total duration: 46s
-# Log file: ~/.warpt/logs/20250716-143022-test-gpu-a1b2c3d4.json
-```
-
-#### 11. **Missing Watch/Continuous Mode**
-
-**Issue**: No way to continuously monitor or re-run checks.
-
-**Suggestion**: Add watch functionality:
-```bash
-warpt monitor --watch <target>  # Already exists as 'monitor'
-warpt check gpu --watch --interval 30s  # Continuous checking
-warpt test --watch --on-failure alert   # Re-run on change
-```
-
-#### 12. **Unclear Suite Management**
-
-**Issue**: Suites are defined in config but no clear way to manage them via CLI.
-
-**Suggestion**: Add suite management:
-```bash
-warpt suite list
-warpt suite show ml-training
-warpt suite create my-suite --targets cpu,gpu,pytorch
-warpt suite run ml-training
-```
-
-### Additional Enhancement Suggestions
-
-#### 13. **Add Context-Aware Suggestions**
-
-When commands fail or targets are unavailable:
-```bash
-$ warpt check cuda
-✗ CUDA not found
-
-Suggestions:
-  • Install CUDA toolkit: https://developer.nvidia.com/cuda-downloads
-  • Skip CUDA checks: warpt check --skip cuda
-  • Check GPU without CUDA: warpt check gpu --no-cuda
-```
-
-#### 14. **Interactive Mode**
-
-For exploratory workflows:
-```bash
-warpt interactive
-# or
-warpt
-# Launches interactive prompt:
-warpt> check gpu
-warpt> stress cpu --duration 1m
-warpt> report --last
-```
-
-#### 15. **Better Progress Indicators**
-
-Enhance progress indication with context:
-```bash
-[●●●●●●●●●○] 90% GPU Memory Test (45s remaining)
-Current: Testing 8GB allocation
-Last: Verified 7.2GB successfully
-```
-
-#### 16. **Integrate with System Alerts**
+#### `warpt inspect` - Detailed Environment Inspection
 
 ```bash
-warpt test gpu --notify-on-failure
-warpt monitor --alert-threshold 90% --alert-email user@example.com
+# Full inspection
+warpt inspect
+
+# Container-specific
+warpt inspect --container      # Detect container runtime
+warpt inspect --devices        # Show GPU passthrough
+warpt inspect --mounts         # Show mounted volumes
 ```
 
-#### 17. **Add Explain Mode**
+**Output:**
+```json
+{
+  "environment": {
+    "runtime": "docker",
+    "container_id": "abc123",
+    "base_image": "nvidia/cuda:12.1-runtime-ubuntu22.04"
+  },
+  "devices": {
+    "nvidia": ["/dev/nvidia0", "/dev/nvidia1", "/dev/nvidiactl"],
+    "passthrough": true
+  },
+  "mounts": [
+    {"source": "/data", "target": "/workspace/data", "type": "bind"}
+  ],
+  "environment_vars": {
+    "CUDA_VISIBLE_DEVICES": "0,1",
+    "NVIDIA_VISIBLE_DEVICES": "all"
+  }
+}
+```
 
-For understanding what's happening:
+#### `warpt export` - Export Environment Specification
+
 ```bash
-warpt check gpu --explain
-# Output:
-# Running GPU health check...
-# 
-# This check will:
-# 1. Detect installed GPUs via PCIe enumeration
-# 2. Verify driver installation and version
-# 3. Check GPU memory accessibility
-# 4. Run basic compute validation
-# 
-# This is non-destructive and typically takes 5-10 seconds.
+# Export current environment
+warpt export env.yaml
+
+# Export with installation instructions
+warpt export --with-install env.yaml
+
+# Generate Dockerfile
+warpt export --dockerfile Dockerfile.warpt
+
+# Minimal export (essentials only)
+warpt export --minimal minimal-env.yaml
 ```
 
-### Recommended Implementation Priority
+**Environment Spec Format (env.yaml):**
+```yaml
+metadata:
+  exported: "2025-10-14T10:30:00Z"
+  hostname: "ml-workstation-01"
+  warpt_version: "1.0.0"
 
-1. **High Priority** (Core usability):
-   - Fix command naming inconsistencies (#2)
-   - Improve `run` command clarity (#3)
-   - Better API key management (#9)
-   - Add suite management (#12)
+hardware:
+  cpu:
+    model: "Intel Xeon E5-2686 v4"
+    cores: 16
+  gpu:
+    - model: "NVIDIA RTX 4090"
+      memory_gb: 24
+      compute_capability: "8.9"
+  memory_gb: 64
 
-2. **Medium Priority** (Enhanced UX):
-   - Simplify logging interface (#4)
-   - Add quick feedback mechanisms (#5)
-   - Improve comparison features (#8)
-   - Better dry-run output (#10)
+software:
+  python:
+    version: "3.11.4"
+  cuda:
+    version: "12.1.1"
+    driver: "530.30.02"
+  frameworks:
+    - name: pytorch
+      version: "2.0.1"
+    - name: tensorflow
+      version: "2.13.0"
 
-3. **Low Priority** (Nice to have):
-   - Interactive mode (#14)
-   - Explain mode (#17)
-   - System alerts (#16)
-   - Target namespacing (#6)
+# Installation commands (with --with-install)
+install:
+  system:
+    - apt-get install build-essential cmake
+  python:
+    - pip install torch==2.0.1
+    - pip install tensorflow==2.13.0
+```
 
-### Summary
+**Generated Dockerfile:**
+```dockerfile
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
-The CLI design is solid and comprehensive, but suffers from:
-- **Too many overlapping commands** without clear differentiation
-- **Inconsistent terminology** that could confuse users
-- **Hidden power features** that should be more discoverable
-- **Complex patterns** that could be simplified
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-The core philosophy is right: progressive disclosure, machine-readable output, comprehensive logging. The improvements suggested focus on **consistency**, **clarity**, and **discoverability** while maintaining the tool's power and flexibility.
+RUN pip install --no-cache-dir \
+    torch==2.0.1 \
+    tensorflow==2.13.0
+
+ENV CUDA_VISIBLE_DEVICES=0,1
+WORKDIR /workspace
+```
+
+#### `warpt recreate` - Recreate Environment
+
+```bash
+# Recreate from spec
+warpt recreate env.yaml
+
+# Dry run (show what would be installed)
+warpt recreate env.yaml --dry-run
+
+# Build Docker container
+warpt recreate env.yaml --build-docker --tag ml-env:v1
+```
+
+#### `warpt diff` - Compare Environments
+
+```bash
+# Compare two specs
+warpt diff env1.yaml env2.yaml
+
+# Compare current with spec
+warpt diff --current env.yaml
+
+# Show summary only
+warpt diff env1.yaml env2.yaml --summary
+```
+
+**Output:**
+```
+Environment Comparison: baseline.yaml vs current.yaml
+
+Hardware:
+  GPU: NVIDIA RTX 3090 → RTX 4090 (upgraded)
+
+Software:
+  PyTorch: 2.0.1 → 2.1.0 (upgraded)
+  CUDA: 12.1 → 12.2 (upgraded)
+  + Added: JAX 0.4.13
+  - Removed: TensorFlow 2.13.0
+
+Summary: 5 changes (2 hardware, 3 software)
+Breaking changes: 1 (CUDA upgrade may require rebuilds)
+```
+
+### Container Workflows
+
+#### Verify GPU in Container
+```bash
+docker run --gpus all my-image warpt check gpu
+docker run --gpus all my-image warpt list --gpu --detailed
+```
+
+#### Export and Recreate
+```bash
+# On dev machine
+warpt export dev-env.yaml --with-install
+
+# Build container
+warpt export --dockerfile Dockerfile.dev
+docker build -f Dockerfile.dev -t ml-dev:v1 .
+
+# Verify
+docker run ml-dev:v1 warpt check --all
+```
+
+#### Environment Versioning
+```bash
+# Save baseline
+warpt export baseline.yaml
+
+# After changes
+warpt export current.yaml
+
+# Compare
+warpt diff baseline.yaml current.yaml --output changes.txt
+```
+
+---
+
+## Exit Codes
+
+```
+0  - Success
+1  - Failure (tests failed, errors encountered)
+2  - Warnings (tests passed with warnings)
+3  - Invalid arguments
+```
+
+---
+
+## Implementation Notes
+
+### Technology Stack
+- **CLI Framework**: Click or Typer (Python)
+- **Hardware Detection**: psutil, GPUtil, pynvml
+- **Container Detection**: Check `/proc/1/cgroup`, `/.dockerenv`
+- **Output Formats**: rich (terminal), JSON, YAML, HTML templates
+
+### Key Features
+1. **Progressive Disclosure**: Simple commands for beginners, advanced options for power users
+2. **Machine-Readable Output**: All commands support JSON/YAML for automation
+3. **Automatic Logging**: Every run logged for historical analysis
+4. **Container-Aware**: Detects and adapts to containerized environments
+5. **Extensible**: Plugin system for custom targets and tests
+
+### Container Detection
+```python
+def is_container():
+    """Detect if running in a container"""
+    if os.path.exists('/.dockerenv'):
+        return True
+    try:
+        with open('/proc/1/cgroup') as f:
+            return 'docker' in f.read() or 'lxc' in f.read()
+    except:
+        return False
+```
+
+### GPU Detection
+```python
+def detect_gpus():
+    """Detect available GPUs"""
+    gpus = []
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        count = pynvml.nvmlDeviceGetCount()
+        for i in range(count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            name = pynvml.nvmlDeviceGetName(handle)
+            mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            gpus.append({
+                'index': i,
+                'name': name,
+                'memory_gb': mem.total / 1024**3
+            })
+    except:
+        pass
+    return gpus
+```
