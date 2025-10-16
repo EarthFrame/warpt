@@ -1,2 +1,0 @@
-[console_scripts]
-warpt = warpt.cli:warpt
