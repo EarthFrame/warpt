@@ -11,7 +11,9 @@ def warpt():
 
 @warpt.command()
 def list():
-    print("Hello, Warpt!")
+    """List CPU information"""
+    from warpt.commands.list_cmd import run_list
+    run_list()
     
 @warpt.command()
 def monitor():
