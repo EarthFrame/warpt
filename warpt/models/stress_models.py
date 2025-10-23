@@ -31,12 +31,12 @@ class StressResults(BaseModel):
     errors: int = Field(
         default=0,
         ge=0,
-        description="Number of errors encountered during the test",
+        description="Number of errors encountered during the test", # need to create categorization of errors
     )
     throttling_events: int = Field(
         default=0,
         ge=0,
-        description="Number of thermal or power throttling events",
+        description="Number of thermal or power throttling events", # use pynvml.nvmlDeviceGetCurrentClocksThrottleReasons 
     )
 
 
