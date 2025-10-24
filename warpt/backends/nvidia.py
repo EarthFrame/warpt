@@ -1,20 +1,45 @@
+"""
+NVIDIA GPU backend using pynvml (NVIDIA Management Library).
+
+This backend collects GPU information for the list command.
+"""
+
 import pynvml
+
 
 class NvidiaBackend:
     def __init__(self):
+        """Initialize NVML library."""
         pynvml.nvmlInit()
-        
-    def list_devices(self):
-        device_count = pynvml.nvmlDeviceGetCount()
-        device_info = []
-        for i in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            device_info.append({
-                'name': pynvml.nvmlDeviceGetName(handle),
-                'memory': pynvml.nvmlDeviceGetMemoryInfo(handle).total, # we can also break into free vs used memory
-                'temperature': pynvml.nvmlDeviceGetTemperature(handle, 0)
-            })
-        return device_info
-    
 
-    
+    def _get_compute_capability(self, handle):
+        """
+        Get CUDA compute capability for a GPU; the GPU architecture generation
+        and what is the GPU's feature level
+
+        Args:
+            handle: NVML device handle
+
+        Returns:
+            str: Compute capability (e.g., "8.9")
+        """
+        major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(handle)
+        return f"{major}.{minor}"
+
+    def _get_pcie_generation(self, handle):
+        """
+        Get PCIe generation for a GPU. Debugging slow data transfers
+
+        PCIe generation affects bandwidth between CPU and GPU.
+             Gen 3 = 32 GB/s, Gen 4 = 64 GB/s, Gen 5 = 128 GB/s
+
+        Args:
+            handle: NVML device handle
+
+        Returns:
+            int or None: PCIe generation (3, 4, 5) or None if unavailable
+        """
+        try:
+            return pynvml.nvmlDeviceGetMaxPcielinkGeneration(handle)
+        except pynvml.NVMLError:
+            return None # TODO - want to look into standardized logging for errors
