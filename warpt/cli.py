@@ -14,6 +14,13 @@ def list():
     """List CPU information"""
     from warpt.commands.list_cmd import run_list
     run_list()
+
+@warpt.command()
+@click.option('--verbose', '-v', is_flag=True, help='Show detailed version information')
+def version(verbose):
+    """Display warpt version information"""
+    from warpt.commands.version_cmd import run_version
+    run_version(verbose=verbose)
     
 @warpt.command()
 def monitor():

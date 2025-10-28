@@ -9,9 +9,9 @@ description = "Performance monitoring and system utilities"
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "click>=8.0.0",
-    "psutil>=5.9.0",
-    "pydantic>=2.0.0",
+    "click==8.3.0",
+    "psutil==7.1.2",
+    "pydantic==2.12.3",
 ]
 
 [project.optional-dependencies]
@@ -24,4 +24,4 @@ dev = [
 warpt = "warpt.cli:warpt"
 
 [tool.setuptools]
-packages = ["warpt", "warpt.backends", "warpt.commands", "warpt.models", "warpt.utils"]
+packages = ["warpt", "warpt.backends", "warpt.commands", "warpt.models", "warpt.utils", "warpt.version"]
