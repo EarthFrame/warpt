@@ -43,3 +43,57 @@ class NvidiaBackend:
             return pynvml.nvmlDeviceGetMaxPcielinkGeneration(handle)
         except pynvml.NVMLError:
             return None # TODO - want to look into standardized logging for errors
+            
+
+    def _bytes_to_gb(self, bytes_value):
+        """
+        Convert bytes to gigabytes (GB).
+
+        Args:
+            bytes_value: Memory in bytes
+
+        Returns:
+            int: Memory in gigabytes
+        """
+        return int(bytes_value / (1024**3))
+
+    def list_devices(self):
+        """
+        List all NVIDIA GPUs with information for the list command.
+
+        Returns:
+            list[dict]: List of GPU information dictionaries matching GPUInfo model
+        """
+        device_count = pynvml.nvmlDeviceGetCount()
+        device_info = []
+
+        for i in range(device_count):
+            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+            device_info.append({
+                'index': i,
+                'model': pynvml.nvmlDeviceGetName(handle),
+                'memory_gb': self._bytes_to_gb(pynvml.nvmlDeviceGetMemoryInfo(handle).total),
+                'compute_capability': self._get_compute_capability(handle),
+                'pcie_gen': self._get_pcie_generation(handle)
+            })
+
+        return device_info
+    
+    def get_temperature(self, handle) -> float:
+        """
+        # TODO - currently unused and will be used for stress testing, monitoring
+        Get GPU temperature in degrees Celsius
+
+        Args:
+            handle: NVML device handle
+
+        Returns:
+            float: GPU temperature in degrees Celsius
+        """
+        try:
+            return pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+        except pynvml.NVMLError:
+            return -1
+    
+
+    

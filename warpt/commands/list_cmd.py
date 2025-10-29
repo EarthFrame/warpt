@@ -1,19 +1,33 @@
 """
-List command - displays CPU information
+List command - displays hardware and software information.
+
 """
 
+from warpt.models.list_models import GPUInfo, HardwareInfo, ListOutput
 from warpt.backends.system import System
+from warpt.backends.nvidia import NvidiaBackend
 
 
 def run_list():
-    """Lists CPU information"""
+    """
+    Lists CPU and GPU information, formatted with ListOutput model
 
-    backend = System()
-    cpu_info = backend.list_devices()
+    """
+    try:
+        nvidia_backend = NvidiaBackend()
+        gpu_data = nvidia_backend.list_devices()
 
-    print(f"Physical Cores: {cpu_info['physical_cores']}")
-    print(f"Logical Cores: {cpu_info['logical_cores']}")
-    print(f"CPU Usage: {cpu_info['cpu_percent']}%")
+        gpu_models = []
+        for gpu in gpu_data:
+            gpu_models.append(GPUInfo(**gpu))
+    except Exception:
+        gpu_models = None
+
+    hardware = HardwareInfo(gpu=gpu_models)
+    output = ListOutput(hardware=hardware)
+
+    # output as JSON
+    print(output.model_dump_json(indent=2))
 
 
 '''
