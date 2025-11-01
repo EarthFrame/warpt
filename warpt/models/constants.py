@@ -1,43 +1,53 @@
-"""Constants for warpt models and commands.
+"""Constants for warpt models and commands."""
 
-Going to include constants here in single file for now but will move to separate files later
+try:
+    from enum import StrEnum
+except ImportError:
+    from backports.strenum import StrEnum
 
-"""
-#for list command
-class Target:
-    
-    #hardware
-    CPU = "cpu"
-    GPU = "gpu"
-    MEMORY = "memory"
-    STORAGE = "storage"
-    NETWORK = "network"
-    
-    #software
-    PYTORCH = "pytorch"
-    TENSORFLOW = "tensorflow"
-    JAX = "jax"
-    CUDA = "cuda"
-    DRIVERS = "drivers"
-    
-class Status:
-    PASS = "pass"
-    FAIL = "fail"
-    WARNING = "warning"
-    STOPPED = "stopped"
-    RUNNING = "running"
-    
-class Limits:
-    PERCENT_MIN = 0
-    PERCENT_MAX = 100
-    
-    TEMPERATURE_MIN = 0
-    TEMPERATURE_MAX = 100
+from enum import auto
 
-class StorageType:
-    # TODO
-    pass
 
-class MemoryType:
-    # TODO
-    pass
+class Target(StrEnum):
+    """Hardware and software targets for monitoring and stress testing."""
+
+    # Hardware targets
+    CPU = auto()
+    GPU = auto()
+    MEMORY = auto()
+    STORAGE = auto()
+    NETWORK = auto()
+
+    # Software targets
+    PYTORCH = auto()
+    TENSORFLOW = auto()
+    JAX = auto()
+    CUDA = auto()
+    DRIVERS = auto()
+
+
+class Status(StrEnum):
+    """Status values for tests and operations."""
+
+    PASS = auto()
+    FAIL = auto()
+    WARNING = auto()
+    STOPPED = auto()
+    RUNNING = auto()
+
+
+class StorageType(StrEnum):
+    """Storage device types."""
+
+    NVME_SSD = "nvme_ssd"
+    SATA_SSD = "sata_ssd"
+    SATA_HDD = "sata_hdd"
+
+
+class MemoryType(StrEnum):
+    """Memory types."""
+
+    DDR3 = "ddr3"
+    DDR4 = "ddr4"
+    DDR5 = "ddr5"
+    HBM2 = "hbm2"

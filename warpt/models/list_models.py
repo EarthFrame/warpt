@@ -1,6 +1,6 @@
 """Pydantic models for the list command JSON output."""
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,6 +30,10 @@ class GPUInfo(BaseModel):
     )
     pcie_gen: Optional[int] = Field(
         None, description="PCIe generation", ge=1, le=5
+    )
+    extra_metrics: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="vendor specific metrics without validation"
     )
 
 

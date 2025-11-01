@@ -1,8 +1,7 @@
 """Pydantic models for stress test command output."""
 
-from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
-from warpt.models.constants import Limits
+from warpt.models.constants import Status
 
 
 class StressResults(BaseModel):
@@ -10,20 +9,20 @@ class StressResults(BaseModel):
 
     max_utilization: float = Field(
         ...,
-        ge=Limits.PERCENT_MIN,
-        le=Limits.PERCENT_MAX,
+        ge=0.0,
+        le=100.0,
         description="Maximum utilization percentage during the test",
     )
     avg_utilization: float = Field(
         ...,
-        ge=Limits.PERCENT_MIN,
-        le=Limits.PERCENT_MAX,
+        ge=0.0,
+        le=100.0,
         description="Average utilization percentage during the test",
     )
     peak_temperature: int | None = Field(
         default=None,
-        ge=Limits.TEMPERATURE_MIN,
-        le=Limits.TEMPERATURE_MAX,
+        ge=0,
+        le=100,
         description="Peak temperature in Celsius during the test",
     )
     power_draw_avg: int | None = Field(
@@ -63,7 +62,7 @@ class StressOutput(BaseModel):
         ...,
         description="Detailed results from the stress test",
     )
-    status: Literal["pass", "fail", "warning", "running", "stopped"] = Field(
+    status: Status = Field(
         ...,
         description="Test status",
-    ) # Literal type requires actual value
+    )
