@@ -1,8 +1,8 @@
 """Pydantic models for structured output."""
 
 from warpt.models.list_models import (
-    CPUInfo,
     CompilerInfo,
+    CPUInfo,
     CUDAInfo,
     FrameworkInfo,
     GPUInfo,
@@ -16,8 +16,8 @@ from warpt.models.list_models import (
 
 __all__ = [
     "CPUInfo",
-    "CompilerInfo",
     "CUDAInfo",
+    "CompilerInfo",
     "FrameworkInfo",
     "GPUInfo",
     "HardwareInfo",

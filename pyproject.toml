@@ -18,6 +18,8 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "black>=22.0.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
 ]
 
 [project.scripts]
@@ -25,3 +27,41 @@ warpt = "warpt.cli:warpt"
 
 [tool.setuptools]
 packages = ["warpt", "warpt.backends", "warpt.commands", "warpt.models", "warpt.utils", "warpt.version"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "dist",
+    "build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort - import sorting
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "ARG",    # flake8-unused-arguments
+    "RUF",    # ruff-specific rules
+    "D",      # pydocstyle - docstring conventions
+]
+ignore = [
+    "D100",   # Missing module docstring (sometimes not needed)
+    "D104",   # Missing docstring in public package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"  # Use Google-style docstrings
+
+[tool.ruff.lint.isort]
+known-first-party = ["warpt"]

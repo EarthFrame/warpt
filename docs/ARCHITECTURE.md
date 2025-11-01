@@ -84,7 +84,7 @@ Commands need to be created for:
 - `stress` - Stress testing
 - `run` - Profile execution (might not need this?)
 - `report` - Generate reports (rename to export?)
-- `health` - do we need seperate health report command? we can include health check as part of every 
+- `health` - do we need seperate health report command? we can include health check as part of every
   stress test and benchmark run
 
 Each will follow same pattern: `cli.py` → `commands/{name}_cmd.py` → `backends/*`
