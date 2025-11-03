@@ -12,7 +12,7 @@ interfaces that all vendor-specific backends must implement
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from warpt.models.list_models import GPUInfo
 
@@ -94,7 +94,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_temperature(self, handle) -> Optional[float]:
+    def get_temperature(self, device_handle: Any) -> Optional[float]:
         """
         Get GPU temperature in degrees C
 
@@ -102,7 +102,7 @@ class GPUBackend(ABC):
         thermal throttling and ensuring system health
 
         Args:
-            handle: vendor specific device handle from get_device_handle()
+            device_handle: vendor specific device handle from get_device_handle()
 
         Returns:
             float: temperature in C, or None if unavailable
@@ -110,17 +110,17 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_memory_usage(self, handle) -> Optional[Dict]:
+    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
         """
         Get current GPU memory usage
 
         Used for monitoring memory pressure during stress tests and
         benchmarks
-        
+
         detecting memory leaks or over-allocation
 
         Args:
-            handle: Vendor specific device handle from get_device_handle()
+            device_handle: Vendor specific device handle from get_device_handle()
 
         Returns:
             dict with keys:
@@ -132,15 +132,15 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_utilization(self, handle) -> Optional[Dict]:
+    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
         """
         Get GPU util %
 
-        Used for real time monitoring and stress testing 
+        Used for real time monitoring and stress testing
         identify if GPU is being fully utilized or if there are bottlenecks
 
         Args:
-            handle: Vendor specific device handle from get_device_handle()
+            device_handle: Vendor specific device handle from get_device_handle()
 
         Returns:
             dict with keys:
