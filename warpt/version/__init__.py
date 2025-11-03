@@ -1,5 +1,5 @@
 """Version information for warpt."""
 
-from warpt.version.warpt_version import Version, WARPT_VERSION
+from warpt.version.warpt_version import WARPT_VERSION, Version
 
-__all__ = ["Version", "WARPT_VERSION"]
+__all__ = ["WARPT_VERSION", "Version"]

@@ -8,6 +8,8 @@ import pynvml
 
 
 class NvidiaBackend:
+    """Backend for NVIDIA GPU information using pynvml."""
+
     def __init__(self):
         """Initialize NVML library."""
         pynvml.nvmlInit()

@@ -1,3 +1,1 @@
-"""
-Warpt utilities - shared helper functions and utilities
-"""
+"""Warpt utilities - shared helper functions and utilities."""

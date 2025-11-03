@@ -1,3 +1,1 @@
-"""
-Warpt backends - hardware abstraction layer for different vendors
-"""
+"""Warpt backends - hardware abstraction layer for different vendors."""
