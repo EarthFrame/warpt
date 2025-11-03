@@ -1,19 +1,31 @@
 """
-List command - displays CPU information
+List command - displays hardware and software information.
+
 """
 
+from warpt.models.list_models import GPUInfo, HardwareInfo, ListOutput
 from warpt.backends.system import System
+
+# TODO: Implement GPU backend factory once vendor-specific backends are created
+# GPU detection is disabled to avoid deprecated pynvml dependency
 
 
 def run_list():
-    """Lists CPU information"""
+    """
+    Lists CPU and GPU information, formatted with ListOutput model
 
-    backend = System()
-    cpu_info = backend.list_devices()
+    Currently returns hardware info with GPU set to None until GPU backends
+    are implemented using the new GPUBackend interface.
+    """
+    # GPU backend temporarily disabled - will be re-enabled with proper
+    # vendor backends (NVIDIA using nvidia-ml-py, AMD using amdsmi, etc.)
+    gpu_models = None
 
-    print(f"Physical Cores: {cpu_info['physical_cores']}")
-    print(f"Logical Cores: {cpu_info['logical_cores']}")
-    print(f"CPU Usage: {cpu_info['cpu_percent']}%")
+    hardware = HardwareInfo(gpu=gpu_models)
+    output = ListOutput(hardware=hardware)
+
+    # output as JSON
+    print(output.model_dump_json(indent=2))
 
 
 '''
