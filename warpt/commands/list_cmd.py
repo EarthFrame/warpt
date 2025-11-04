@@ -64,33 +64,3 @@ def run_list() -> None:
             if socket.boost_frequency_multi_core is not None:
                 boost_multi = socket.boost_frequency_multi_core
                 print(f"    Multi-Core Boost: {boost_multi:.0f} MHz")
-
-'''
-from CLI-Design.md
-
-Hardware:
-    CPU: Intel Xeon E5-2686 v4
-        Cores: 16, Threads: 32
-        Features: AVX, AVX2, SSE4.2, FMA
-
-    GPU:
-        [0] NVIDIA RTX 4090 (24GB, CUDA 8.9)
-        [1] NVIDIA RTX 4090 (24GB, CUDA 8.9)
-
-    Memory: 64GB DDR4
-
-    Storage:
-        /dev/nvme0n1: 2TB NVMe SSD
-
-Software:
-    Python: 3.11.4 (/usr/bin/python3.11)
-    CUDA: 12.1.1 (driver 530.30.02)
-
-    Frameworks:
-        PyTorch: 2.0.1 (CUDA 12.1)
-        TensorFlow: 2.13.0 (CUDA 12.1)
-
-    Compilers:
-        GCC: 11.4.0
-        NVCC: 12.1.105
-'''
