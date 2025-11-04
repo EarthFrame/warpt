@@ -65,24 +65,6 @@ def run_list() -> None:
                 boost_multi = socket.boost_frequency_multi_core
                 print(f"    Multi-Core Boost: {boost_multi:.0f} MHz")
 
-def run_list():
-    """
-    Lists CPU and GPU information, formatted with ListOutput model
-
-    Currently returns hardware info with GPU set to None until GPU backends
-    are implemented using the new GPUBackend interface.
-    """
-    # GPU backend temporarily disabled - will be re-enabled with proper
-    # vendor backends (NVIDIA using nvidia-ml-py, AMD using amdsmi, etc.)
-    gpu_models = None
-
-    hardware = HardwareInfo(gpu=gpu_models)
-    output = ListOutput(hardware=hardware)
-
-    # output as JSON
-    print(output.model_dump_json(indent=2))
-
-
 '''
 from CLI-Design.md
 
