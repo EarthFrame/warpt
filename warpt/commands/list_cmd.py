@@ -1,16 +1,17 @@
-"""List command - displays CPU information."""
+"""List command - displays CPU and GPU information."""
 
-from warpt.backends.system import CPU
+import subprocess
+from datetime import datetime
+from pathlib import Path
+import pynvml
 
-from warpt.models.list_models import GPUInfo, HardwareInfo, ListOutput
-from warpt.backends.system import System
-
-# TODO: Implement GPU backend factory once vendor-specific backends are created
-# GPU detection is disabled to avoid deprecated pynvml dependency
+from warpt.backends.nvidia import NvidiaBackend
+from warpt.backends.system import CPU, System
+from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
 
 
-def run_list() -> None:
-    """Display comprehensive CPU information."""
+def run_list(export_format=None, export_filename=None) -> None:
+    """Display comprehensive CPU and GPU information."""
     cpu = CPU()
     info = cpu.get_cpu_info()
 
@@ -64,3 +65,83 @@ def run_list() -> None:
             if socket.boost_frequency_multi_core is not None:
                 boost_multi = socket.boost_frequency_multi_core
                 print(f"    Multi-Core Boost: {boost_multi:.0f} MHz")
+
+    # GPU Detection
+    print("\nGPU Information:")
+    try:
+        backend = NvidiaBackend()
+        gpus = backend.list_devices()
+
+        if not gpus:
+            print("  No GPUs detected")
+        else:
+            for gpu in gpus:
+                print(f"  [{gpu['index']}] {gpu['model']}")
+                print(f"      Memory:         {gpu['memory_gb']} GB")
+                print(f"      CUDA Compute:   {gpu['compute_capability']}")
+                if gpu.get('pcie_gen'):
+                    print(f"      PCIe Gen:       {gpu['pcie_gen']}")
+                if gpu.get('driver_version'):
+                    print(f"      Driver Version: {gpu['driver_version']}")
+
+        gpu_list = gpus  # Save for JSON export
+
+    except ImportError:
+        print("  GPU detection unavailable (nvidia-ml-py not installed)")
+        gpu_list = None
+    except Exception as e:
+        print(f"  GPU detection failed: {e}")
+        gpu_list = None
+
+    # CUDA Detection
+    # TODO: Add CUDA toolkit version detection (nvcc) - for now just using driver version
+    print("\nCUDA Information:")
+    cuda_driver_version = None
+
+    # Get CUDA driver version from pynvml (if GPUs available)
+    if gpu_list:
+        try:
+            # returns version like 12010 for CUDA 12.1
+            driver_version_int = pynvml.nvmlSystemGetCudaDriverVersion()
+            major = driver_version_int // 1000
+            minor = (driver_version_int % 1000) // 10
+            cuda_driver_version = f"{major}.{minor}"
+            print(f"  Driver Version: {cuda_driver_version}")
+        except Exception as e:
+            print(f"  CUDA detection failed: {e}")
+    else:
+        print("  No CUDA information (no GPUs detected)")
+
+    # Export to JSON if requested
+    if export_format == 'json':
+        # Build GPUInfo models
+        gpu_models = None
+        gpu_count = None
+        if gpu_list:
+            gpu_models = [GPUInfo(**gpu) for gpu in gpu_list]
+            gpu_count = len(gpu_list)
+
+        # Build CUDA info if available
+        cuda_info = None
+        if cuda_driver_version:
+            cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
+
+        # Build software info
+        software = None
+        if cuda_info:
+            software = SoftwareInfo(cuda=cuda_info)
+
+        # Build output (CPU is None for now, will add in future task)
+        hardware = HardwareInfo(cpu=None, gpu_count=gpu_count, gpu=gpu_models)
+        output = ListOutput(hardware=hardware, software=software)
+
+        # Generate filename if not provided
+        if not export_filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            export_filename = f"warpt_list_{timestamp}.json"
+
+        # Write JSON file using Pydantic's built-in serialization
+        output_path = Path(export_filename)
+        output_path.write_text(output.model_dump_json(indent=2))
+
+        print(f"\n✓ JSON exported to: {export_filename}")
