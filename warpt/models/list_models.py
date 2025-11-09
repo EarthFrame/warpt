@@ -1,6 +1,6 @@
 """Pydantic models for the list command JSON output."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,12 +27,9 @@ class GPUInfo(BaseModel):
     compute_capability: str | None = Field(
         None, description="CUDA compute capability (e.g., '8.9')"
     )
-    pcie_gen: Optional[int] = Field(
-        None, description="PCIe generation", ge=1, le=5
-    )
-    extra_metrics: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="vendor specific metrics without validation"
+    pcie_gen: int | None = Field(None, description="PCIe generation", ge=1, le=5)
+    extra_metrics: dict[str, Any] | None = Field(
+        default=None, description="vendor specific metrics without validation"
     )
 
 
