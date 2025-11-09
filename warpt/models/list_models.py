@@ -1,5 +1,7 @@
 """Pydantic models for the list command JSON output."""
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 # Hardware Models
@@ -26,6 +28,9 @@ class GPUInfo(BaseModel):
         None, description="CUDA compute capability (e.g., '8.9')"
     )
     pcie_gen: int | None = Field(None, description="PCIe generation", ge=1, le=5)
+    extra_metrics: dict[str, Any] | None = Field(
+        default=None, description="vendor specific metrics without validation"
+    )
 
 
 class MemoryInfo(BaseModel):

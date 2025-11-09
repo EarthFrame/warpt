@@ -14,6 +14,11 @@ from warpt.models.list_models import (
     StorageDevice,
 )
 
+from warpt.models.stress_models import (
+    StressOutput,
+    StressResults,
+)
+
 __all__ = [
     "CPUInfo",
     "CUDAInfo",
@@ -26,4 +31,6 @@ __all__ = [
     "PythonInfo",
     "SoftwareInfo",
     "StorageDevice",
+    "StressOutput",
+    "StressResults",
 ]
