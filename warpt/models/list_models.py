@@ -1,6 +1,5 @@
 """Pydantic models for the list command JSON output."""
 
-
 from pydantic import BaseModel, ConfigDict, Field
 
 # Hardware Models
