@@ -4,6 +4,8 @@ NVIDIA GPU backend using pynvml (NVIDIA Management Library).
 This backend collects GPU information for the list command.
 """
 
+from typing import Any
+
 import pynvml
 
 
@@ -14,7 +16,7 @@ class NvidiaBackend:
         """Initialize NVML library."""
         pynvml.nvmlInit()
 
-    def _get_compute_capability(self, device_handle: pynvml.nvmlDevice_t):
+    def _get_compute_capability(self, device_handle: "pynvml.nvmlDevice_t"):
         """
         Get CUDA compute capability for a GPU; the GPU architecture generation
         and what is the GPU's feature level
@@ -28,7 +30,7 @@ class NvidiaBackend:
         major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(device_handle)
         return f"{major}.{minor}"
 
-    def _get_pcie_generation(self, device_handle: pynvml.nvmlDevice_t):
+    def _get_pcie_generation(self, device_handle: "pynvml.nvmlDevice_t"):
         """
         Get PCIe generation for a GPU. Debugging slow data transfers
 
@@ -67,6 +69,10 @@ class NvidiaBackend:
             list[dict]: List of GPU information dictionaries matching GPUInfo model
         """
         device_count = pynvml.nvmlDeviceGetCount()
+
+        # Get driver version (system-wide, same for all NVIDIA GPUs)
+        driver_version = pynvml.nvmlSystemGetDriverVersion()
+
         device_info = []
 
         for i in range(device_count):
@@ -76,16 +82,14 @@ class NvidiaBackend:
                 'model': pynvml.nvmlDeviceGetName(device_handle),
                 'memory_gb': self._bytes_to_gb(pynvml.nvmlDeviceGetMemoryInfo(device_handle).total),
                 'compute_capability': self._get_compute_capability(device_handle),
-                'pcie_gen': self._get_pcie_generation(device_handle)
+                'pcie_gen': self._get_pcie_generation(device_handle),
+                'driver_version': driver_version
             })
 
         return device_info
     
-    def get_temperature(self, device_handle: pynvml.nvmlDevice_t) -> float:
+    def get_temperature(self, device_handle: "pynvml.nvmlDevice_t") -> float:
         """
-        # TODO - currently unused and will be used for stress testing, monitoring
-        Get GPU temperature in degrees Celsius
-
         Args:
             device_handle: NVML device handle
 
