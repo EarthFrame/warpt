@@ -2,6 +2,7 @@
 """Warpt CLI - Command-line interface for Warpt."""
 
 import click
+from warpt.commands.list_cmd import run_list
 
 
 @click.group()
@@ -11,11 +12,35 @@ def warpt():
 
 
 @warpt.command()
-def list():
-    """List CPU information."""
-    from warpt.commands.list_cmd import run_list
+@click.option(
+    "--export",
+    is_flag=True,
+    default=False,
+    help="Export results to JSON file with default filename (warpt_list_TIMESTAMP.json)"
+)
+@click.option(
+    "--export-file",
+    default=None,
+    help="Export results to JSON file with custom filename"
+)
+def list(export, export_file):
+    """List CPU and GPU information."""
 
-    run_list()
+    # Determine export format and filename
+    if export_file:
+        # --export-file provided (takes precedence)
+        export_format = 'json'
+        export_filename = export_file
+    elif export:
+        # --export flag used
+        export_format = 'json'
+        export_filename = None  # Will use default timestamp
+    else:
+        # No export
+        export_format = None
+        export_filename = None
+
+    run_list(export_format=export_format, export_filename=export_filename)
 
 
 @warpt.command()

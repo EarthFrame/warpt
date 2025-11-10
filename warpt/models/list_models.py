@@ -27,9 +27,15 @@ class GPUInfo(BaseModel):
     compute_capability: str | None = Field(
         None, description="CUDA compute capability (e.g., '8.9')"
     )
-    pcie_gen: int | None = Field(None, description="PCIe generation", ge=1, le=5)
-    extra_metrics: dict[str, Any] | None = Field(
-        default=None, description="vendor specific metrics without validation"
+    pcie_gen: Optional[int] = Field(
+        None, description="PCIe generation", ge=1, le=5
+    )
+    driver_version: str | None = Field(
+        None, description="GPU driver version (e.g., '535.104.05')"
+    )
+    extra_metrics: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="vendor specific metrics without validation"
     )
 
 
@@ -52,6 +58,7 @@ class HardwareInfo(BaseModel):
     """Container for all hardware information."""
 
     cpu: CPUInfo | None = Field(None, description="CPU information")
+    gpu_count: int | None = Field(None, description="Number of GPUs detected", ge=0)
     gpu: list[GPUInfo] | None = Field(
         None, description="List of GPUs (empty list if no GPUs)"
     )
