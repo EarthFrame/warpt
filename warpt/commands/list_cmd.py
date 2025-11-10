@@ -11,6 +11,10 @@ from warpt.backends.nvidia import NvidiaBackend
 from warpt.backends.system import CPU, System
 from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
 
+def random_string(length: int) -> str:
+    """Generate random uppercase string for unique filenames."""
+    chars = string.ascii_uppercase
+    return "".join(random.choice(chars) for _ in range(length))
 
 def random_string(length: int) -> str:
     """Generate random uppercase string for unique filenames."""
@@ -93,7 +97,7 @@ def run_list(export_format=None, export_filename=None) -> None:
                 if gpu.get('driver_version'):
                     print(f"      Driver Version: {gpu['driver_version']}")
 
-        gpu_list = gpus  # Save for JSON export (empty list of no gpus)
+        gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
 
     except ImportError:
         print("  GPU detection unavailable (nvidia-ml-py not installed)")
