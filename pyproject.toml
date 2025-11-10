@@ -30,7 +30,16 @@ dev = [
 warpt = "warpt.cli:warpt"
 
 [tool.setuptools]
-packages = ["warpt", "warpt.backends", "warpt.commands", "warpt.models", "warpt.utils", "warpt.version"]
+packages = [
+    "warpt",
+    "warpt.backends",
+    "warpt.backends.software",
+    "warpt.backends.software.frameworks",
+    "warpt.commands",
+    "warpt.models",
+    "warpt.utils",
+    "warpt.version",
+]
 
 [tool.ruff]
 line-length = 88
@@ -70,6 +79,16 @@ convention = "google"  # Use Google-style docstrings
 [tool.ruff.lint.isort]
 known-first-party = ["warpt"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
 [tool.black]
 line-length = 88
 target-version = ["py311"]
