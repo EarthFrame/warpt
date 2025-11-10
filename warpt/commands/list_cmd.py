@@ -1,5 +1,7 @@
 """List command - displays CPU and GPU information."""
 
+import random
+import string
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +10,12 @@ import pynvml
 from warpt.backends.nvidia import NvidiaBackend
 from warpt.backends.system import CPU, System
 from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
+
+
+def random_string(length: int) -> str:
+    """Generate random uppercase string for unique filenames."""
+    chars = string.ascii_uppercase
+    return "".join(random.choice(chars) for _ in range(length))
 
 
 def run_list(export_format=None, export_filename=None) -> None:
@@ -72,6 +80,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         backend = NvidiaBackend()
         gpus = backend.list_devices()
 
+        # backend.list_devices() returns empty list when no GPUs are present
         if not gpus:
             print("  No GPUs detected")
         else:
@@ -84,7 +93,7 @@ def run_list(export_format=None, export_filename=None) -> None:
                 if gpu.get('driver_version'):
                     print(f"      Driver Version: {gpu['driver_version']}")
 
-        gpu_list = gpus  # Save for JSON export
+        gpu_list = gpus  # Save for JSON export (empty list of no gpus)
 
     except ImportError:
         print("  GPU detection unavailable (nvidia-ml-py not installed)")
@@ -151,7 +160,8 @@ def run_list(export_format=None, export_filename=None) -> None:
         # Generate filename if not provided
         if not export_filename:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_filename = f"warpt_list_{timestamp}.json"
+            random_tag = random_string(6)
+            export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
 
         # Write JSON file using Pydantic's built-in serialization
         output_path = Path(export_filename)

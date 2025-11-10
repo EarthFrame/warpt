@@ -90,9 +90,6 @@ class NvidiaBackend:
     
     def get_temperature(self, device_handle: "pynvml.nvmlDevice_t") -> float:
         """
-        # TODO - currently unused and will be used for stress testing, monitoring
-        Get GPU temperature in degrees Celsius
-
         Args:
             device_handle: NVML device handle
 
