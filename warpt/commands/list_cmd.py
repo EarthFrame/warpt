@@ -16,6 +16,12 @@ def random_string(length: int) -> str:
     chars = string.ascii_uppercase
     return "".join(random.choice(chars) for _ in range(length))
 
+def random_string(length: int) -> str:
+    """Generate random uppercase string for unique filenames."""
+    chars = string.ascii_uppercase
+    return "".join(random.choice(chars) for _ in range(length))
+
+
 def run_list(export_format=None, export_filename=None) -> None:
     """Display comprehensive CPU and GPU information."""
     cpu = CPU()
@@ -121,6 +127,21 @@ def run_list(export_format=None, export_filename=None) -> None:
 
     # Export to JSON if requested
     if export_format == 'json':
+        # Build CPUInfo model from backend data
+        from warpt.models.list_models import CPUInfo as ExportCPUInfo
+        cpu_model = ExportCPUInfo(
+            manufacturer=info.make,
+            model=info.model,
+            architecture=info.architecture,
+            cores=info.total_physical_cores,
+            threads=info.total_logical_cores,
+            base_frequency_mhz=info.base_frequency,
+            boost_frequency_single_core_mhz=info.boost_frequency_single_core,
+            boost_frequency_multi_core_mhz=info.boost_frequency_multi_core,
+            current_frequency_mhz=info.current_frequency,
+            instruction_sets=None,  # TODO: Populate from backend when available
+        )
+
         # Build GPUInfo models
         gpu_models = None
         gpu_count = None
@@ -138,8 +159,8 @@ def run_list(export_format=None, export_filename=None) -> None:
         if cuda_info:
             software = SoftwareInfo(cuda=cuda_info)
 
-        # Build output (CPU is None for now, will add in future task)
-        hardware = HardwareInfo(cpu=None, gpu_count=gpu_count, gpu=gpu_models)
+        # Build output with CPU data
+        hardware = HardwareInfo(cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models)
         output = ListOutput(hardware=hardware, software=software)
 
         # Generate filename if not provided
