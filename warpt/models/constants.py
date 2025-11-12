@@ -1,11 +1,6 @@
 """Constants for warpt models and commands."""
 
-try:
-    from enum import StrEnum
-except ImportError:
-    from backports.strenum import StrEnum
-
-from enum import auto
+from enum import StrEnum, auto
 
 
 class Target(StrEnum):

@@ -1,6 +1,6 @@
 """Pydantic models for the list command JSON output."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,14 +10,18 @@ from pydantic import BaseModel, ConfigDict, Field
 class CPUInfo(BaseModel):
     """CPU information."""
 
-    make: str = Field(..., description="CPU manufacturer (e.g., 'Apple', 'Intel', 'AMD')")
+    manufacturer: str = Field(..., description="CPU manufacturer (e.g., 'Apple', 'Intel', 'AMD')")
     model: str = Field(..., description="CPU model name")
+    architecture: str | None = Field(None, description="CPU architecture (e.g., 'amd64', 'arm64')")
     cores: int = Field(..., description="Number of physical cores", ge=1)
     threads: int = Field(..., description="Number of logical threads", ge=1)
     base_frequency_mhz: float | None = Field(None, description="Base/minimum frequency in MHz")
     boost_frequency_single_core_mhz: float | None = Field(None, description="Maximum single-core boost frequency in MHz")
     boost_frequency_multi_core_mhz: float | None = Field(None, description="Multi-core boost frequency in MHz")
     current_frequency_mhz: float | None = Field(None, description="Current frequency in MHz")
+    instruction_sets: list[str] | None = Field(
+        None, description="CPU instruction sets (e.g., AVX, AVX2, SSE4.2)"
+    )
     features: list[str] = Field(
         default_factory=list, description="CPU features (AVX, SSE, etc.)"
     )

@@ -11,6 +11,10 @@ from warpt.backends.nvidia import NvidiaBackend
 from warpt.backends.system import CPU, System
 from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
 
+def random_string(length: int) -> str:
+    """Generate random uppercase string for unique filenames."""
+    chars = string.ascii_uppercase
+    return "".join(random.choice(chars) for _ in range(length))
 
 def random_string(length: int) -> str:
     """Generate random uppercase string for unique filenames."""
@@ -93,7 +97,7 @@ def run_list(export_format=None, export_filename=None) -> None:
                 if gpu.get('driver_version'):
                     print(f"      Driver Version: {gpu['driver_version']}")
 
-        gpu_list = gpus  # Save for JSON export (empty list of no gpus)
+        gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
 
     except ImportError:
         print("  GPU detection unavailable (nvidia-ml-py not installed)")
@@ -126,14 +130,16 @@ def run_list(export_format=None, export_filename=None) -> None:
         # Build CPUInfo model from backend data
         from warpt.models.list_models import CPUInfo as ExportCPUInfo
         cpu_model = ExportCPUInfo(
-            make=info.make,
+            manufacturer=info.make,
             model=info.model,
+            architecture=info.architecture,
             cores=info.total_physical_cores,
             threads=info.total_logical_cores,
             base_frequency_mhz=info.base_frequency,
             boost_frequency_single_core_mhz=info.boost_frequency_single_core,
             boost_frequency_multi_core_mhz=info.boost_frequency_multi_core,
             current_frequency_mhz=info.current_frequency,
+            instruction_sets=None,  # TODO: Populate from backend when available
         )
 
         # Build GPUInfo models
