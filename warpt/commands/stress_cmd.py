@@ -8,7 +8,6 @@ from warpt.models.constants import (
     DEFAULT_BURNIN_DURATION,
 )
 
-
 def parse_targets(targets: tuple) -> List[str]:
     """
     Parse and deduplicate target specifications.
@@ -35,7 +34,6 @@ def parse_targets(targets: tuple) -> List[str]:
 
     return parsed_targets
 
-
 def validate_targets(targets: List[str]) -> None:
     """
     Validate that all targets are recognized.
@@ -52,7 +50,6 @@ def validate_targets(targets: List[str]) -> None:
         if target not in valid_targets:
             print(f"Error: Invalid target '{target}'. Valid targets: {', '.join(sorted(valid_targets))}")
             sys.exit(1)
-
 
 def parse_device_ids(device_id_str: Optional[str]) -> Optional[List[int]]:
     """
@@ -71,13 +68,20 @@ def parse_device_ids(device_id_str: Optional[str]) -> Optional[List[int]]:
         return None
 
     try:
-        device_ids = [int(id_str.strip()) for id_str in device_id_str.split(',')]
+        # Split and filter out empty strings (handles cases like "0,," or "0,,2")
+        id_strings = [s.strip() for s in device_id_str.split(',') if s.strip()]
+
+        if not id_strings:
+            print("Error: No valid device IDs provided.")
+            print("Run 'warpt list' to see available devices.")
+            sys.exit(1)
+
+        device_ids = [int(id_str) for id_str in id_strings]
         return device_ids
     except ValueError:
         print(f"Error: Invalid device ID format '{device_id_str}'. Must be comma-separated integers (e.g., '0' or '0,1').")
         print("Run 'warpt list' to see available devices.")
         sys.exit(1)
-
 
 def get_available_gpus() -> List[int]:
     """
@@ -94,6 +98,23 @@ def get_available_gpus() -> List[int]:
     except Exception:
         return []
 
+
+def get_available_cpus() -> List[int]:
+    """
+    Get list of available CPU IDs (socket IDs).
+
+    Returns:
+        List of CPU socket IDs
+    """
+    try:
+        from warpt.backends.system import CPU
+        cpu = CPU()
+        info = cpu.get_cpu_info()
+        # Return list of socket IDs (0 to total_sockets-1)
+        return list(range(info.total_sockets))
+    except Exception:
+        # Fallback: assume at least 1 CPU socket
+        return [0]
 
 def validate_device_availability(
     parsed_targets: List[str],
@@ -127,6 +148,16 @@ def validate_device_availability(
                     print("Run 'warpt list' for detailed GPU information.")
                     sys.exit(1)
 
+    # Validate CPU IDs if CPU is a target
+    if 'cpu' in parsed_targets:
+        available_cpus = get_available_cpus()
+
+        if cpu_ids:
+            for cpu_id in cpu_ids:
+                if cpu_id not in available_cpus:
+                    print(f"Error: CPU ID {cpu_id} not found. Available CPUs: {', '.join(map(str, available_cpus))}")
+                    print("Run 'warpt list' for detailed CPU information.")
+                    sys.exit(1)
 
 def run_stress(
     targets: tuple,
@@ -186,8 +217,8 @@ def run_stress(
 
     if 'cpu' in parsed_targets and not cpu_ids:
         default_to_all_cpus = True
-        # TODO: Get actual CPU count when CPU backend is ready
-        cpu_ids = [0]  # Placeholder
+        available_cpus = get_available_cpus()
+        cpu_ids = available_cpus
 
     # Display configuration
     print("Stress Test Configuration:")
@@ -221,8 +252,7 @@ def run_stress(
     print("Running Stress Tests...")
     print("="*60 + "\n")
 
-    # TODO: Implement actual stress tests
-    # For now, placeholder output
+    # TODO: implement actual stress tests
     for target in parsed_targets:
         print(f"[PLACEHOLDER] Running {target.upper()} stress tests...")
         if target == 'gpu' and gpu_ids:
