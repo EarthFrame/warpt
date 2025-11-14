@@ -50,4 +50,4 @@ class MemoryType(StrEnum):
 
 # Stress test timing defaults (in seconds)
 DEFAULT_STRESS_DURATION = 30  # Duration when --duration not specified
-DEFAULT_BURNIN_DURATION = 5   # Warmup period before measurements
+DEFAULT_BURNIN_DURATION = 3   # Warmup period before measurements
