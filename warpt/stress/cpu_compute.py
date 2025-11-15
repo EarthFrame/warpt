@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 
+from warpt.backends.system import CPU
 from warpt.models.constants import DEFAULT_BURNIN_DURATION
 from warpt.stress.base import StressTest
 
@@ -32,6 +33,14 @@ class CPUMatMulTest(StressTest):
         Returns:
             Dictionary containing test results (TFLOPS, etc.)
         """
+        # TODO: Monitor CPU utilization during test to verify all cores are being used
+        #       Use psutil.cpu_percent(percpu=True) to check per-core utilization
+        #       NumPy's BLAS (Accelerate on macOS) should auto-parallelize, but we should verify
+
+        # Get CPU info for core count
+        cpu = CPU()
+        cpu_info = cpu.get_cpu_info()
+
         # Burnin/warmup phase - let CPU/cache warm up
         print(f"  Warming up for {self.burnin_seconds}s...")
         burnin_start = time.time()
@@ -69,6 +78,8 @@ class CPUMatMulTest(StressTest):
             'matrix_size': self.matrix_size,
             'total_operations': total_ops,
             'burnin_seconds': self.burnin_seconds,
+            'cpu_physical_cores': cpu_info.total_physical_cores,
+            'cpu_logical_cores': cpu_info.total_logical_cores,
         }
 
     def get_name(self) -> str:

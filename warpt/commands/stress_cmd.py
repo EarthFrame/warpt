@@ -303,6 +303,7 @@ def run_stress(
             print(f"  Iterations:         {results['iterations']}")
             print(f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}")
             print(f"  Total Operations:   {results['total_operations']:,}")
+            print(f"  CPU Cores:          {results['cpu_physical_cores']} physical, {results['cpu_logical_cores']} logical")
             print()
 
         elif target == 'gpu':
