@@ -99,7 +99,7 @@ def check():
     help="Duration in seconds for each stress test (default: 30s)"
 )
 @click.option(
-    "--burnin-seconds", # TODO - reconsider name; maybe --warmup?
+    "--burnin-seconds",
     type=int,
     default=5,
     help="Warmup period in seconds before measurements (default: 5s)"
@@ -108,7 +108,7 @@ def check():
     "--export",
     is_flag=True,
     default=False,
-    help="Export results to JSON file with default filename (warpt_stress_TIMESTAMP_RANDOM.json)"
+    help="Export results to JSON file with default filename (warpt_stress_<TIMESTAMP>_<RANDOM>.json)"
 )
 @click.option(
     "--export-file",
@@ -140,7 +140,7 @@ def stress(target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file
         targets=target,
         gpu_id=gpu_id,
         cpu_id=cpu_id,
-        duration=duration,
+        duration_seconds=duration,
         burnin_seconds=burnin_seconds,
         export_format=export_format,
         export_filename=export_filename,

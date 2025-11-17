@@ -4,13 +4,14 @@ import sys
 from typing import List, Optional
 
 from warpt.models.constants import (
-    DEFAULT_STRESS_DURATION,
-    DEFAULT_BURNIN_DURATION,
+    DEFAULT_STRESS_SECONDS,
+    DEFAULT_BURNIN_SECONDS,
+    VALID_STRESS_TARGETS,
 )
 
-def parse_targets(targets: tuple) -> List[str]:
+def parse_targets(targets: tuple, valid_targets: tuple = VALID_STRESS_TARGETS) -> List[str]:
     """
-    Parse and deduplicate target specifications.
+    Parse, validate, and deduplicate target specifications.
 
     Supports both comma-separated and repeated flags:
     - ('cpu', 'gpu') -> ['cpu', 'gpu']
@@ -19,9 +20,13 @@ def parse_targets(targets: tuple) -> List[str]:
 
     Args:
         targets: Tuple of target strings from Click
+        valid_targets: Tuple of valid target strings
 
     Returns:
-        List of deduplicated target strings
+        List of deduplicated and validated target strings
+
+    Raises:
+        ValueError: If any target is invalid
     """
     parsed_targets = []
 
@@ -29,27 +34,15 @@ def parse_targets(targets: tuple) -> List[str]:
         # Split by comma and strip whitespace
         for target in target_spec.split(','):
             target = target.strip().lower()
-            if target and target not in parsed_targets:
-                parsed_targets.append(target)
+            if target:
+                # Validate target
+                if target not in valid_targets:
+                    raise ValueError(f"Invalid target '{target}'. Valid targets: {', '.join(sorted(valid_targets))}")
+                # Add to list if not duplicate
+                if target not in parsed_targets:
+                    parsed_targets.append(target)
 
     return parsed_targets
-
-def validate_targets(targets: List[str]) -> None:
-    """
-    Validate that all targets are recognized.
-
-    Args:
-        targets: List of target strings
-
-    Raises:
-        SystemExit: If any target is invalid
-    """
-    valid_targets = {'cpu', 'gpu', 'ram', 'all'}
-
-    for target in targets:
-        if target not in valid_targets:
-            print(f"Error: Invalid target '{target}'. Valid targets: {', '.join(sorted(valid_targets))}")
-            sys.exit(1)
 
 def parse_device_ids(device_id_str: Optional[str]) -> Optional[List[int]]:
     """
@@ -163,7 +156,7 @@ def run_stress(
     targets: tuple,
     gpu_id: Optional[str],
     cpu_id: Optional[str],
-    duration: Optional[int],
+    duration_seconds: Optional[int],
     burnin_seconds: int,
     export_format: Optional[str],
     export_filename: Optional[str],
@@ -176,28 +169,29 @@ def run_stress(
         targets: Tuple of target specifications from CLI
         gpu_id: Comma-separated GPU IDs or None
         cpu_id: Comma-separated CPU IDs or None
-        duration: Test duration in seconds or None (use defaults)
+        duration_seconds: Test duration in seconds or None (use defaults)
         burnin_seconds: Warmup period in seconds
         export_format: Export format ('json' or None)
         export_filename: Custom export filename or None
         log_file: Log file path or None
     """
     # Parse and validate targets
-    parsed_targets = parse_targets(targets)
+    try:
+        parsed_targets = parse_targets(targets)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
     # Default to all targets if none specified
     if not parsed_targets:
         parsed_targets = ['all']
-
-    # Validate targets
-    validate_targets(parsed_targets)
 
     # Expand 'all' target to individual targets
     if 'all' in parsed_targets:
         parsed_targets = ['cpu', 'gpu', 'ram']
 
     # Determine test duration - user-specified always takes priority
-    test_duration = duration if duration is not None else DEFAULT_STRESS_DURATION
+    test_duration = duration_seconds if duration_seconds is not None else DEFAULT_STRESS_SECONDS
 
     # Parse device IDs
     gpu_ids = parse_device_ids(gpu_id)
@@ -212,13 +206,11 @@ def run_stress(
 
     if 'gpu' in parsed_targets and not gpu_ids:
         default_to_all_gpus = True
-        available_gpus = get_available_gpus()
-        gpu_ids = available_gpus
+        gpu_ids = get_available_gpus()
 
     if 'cpu' in parsed_targets and not cpu_ids:
         default_to_all_cpus = True
-        available_cpus = get_available_cpus()
-        cpu_ids = available_cpus
+        cpu_ids = get_available_cpus()
 
     # Display configuration
     print("Stress Test Configuration:")
