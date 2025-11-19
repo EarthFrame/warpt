@@ -5,14 +5,18 @@ import time
 import numpy as np
 
 from warpt.backends.system import CPU
-from warpt.models.constants import DEFAULT_BURNIN_DURATION
+from warpt.models.constants import (
+    DEFAULT_BURNIN_SECONDS,
+    CPU_STRESS_TEST,
+)
 from warpt.stress.base import StressTest
+from warpt.stress.utils import calculate_tflops
 
 
 class CPUMatMulTest(StressTest):
     """Matrix multiplication stress test for CPU."""
 
-    def __init__(self, matrix_size: int = 4096, burnin_seconds: int = DEFAULT_BURNIN_DURATION):
+    def __init__(self, matrix_size: int = 4096, burnin_seconds: int = DEFAULT_BURNIN_SECONDS):
         """
         Initialize CPU matmul test.
 
@@ -68,7 +72,7 @@ class CPUMatMulTest(StressTest):
         # Matrix multiplication: 2*N^3 - N^2 operations
         ops_per_matmul = 2 * (self.matrix_size ** 3) - (self.matrix_size ** 2)
         total_ops = iterations * ops_per_matmul
-        tflops = (total_ops / elapsed) / 1e12
+        tflops = calculate_tflops(total_ops, elapsed)
 
         return {
             'test_name': self.get_name(),
@@ -84,4 +88,4 @@ class CPUMatMulTest(StressTest):
 
     def get_name(self) -> str:
         """Get test name."""
-        return "CPU Matrix Multiplication"
+        return CPU_STRESS_TEST

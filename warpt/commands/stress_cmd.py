@@ -217,8 +217,6 @@ def run_stress(
         parsed_targets = ['cpu', 'gpu', 'ram']
 
     # Validate device IDs match specified targets
-    # TODO: Consider Option 3 - auto-add targets when device IDs provided
-    #       (e.g., --target ram --cpu-id 0 → automatically add 'cpu' to targets)
     if cpu_ids and 'cpu' not in parsed_targets:
         print("Error: --cpu-id can only be used with --target cpu")
         print(f"You specified --target {','.join(parsed_targets)} but provided --cpu-id")
