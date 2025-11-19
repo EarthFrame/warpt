@@ -77,9 +77,75 @@ def check():
 
 
 @warpt.command()
-def stress():
-    """Run system stress tests."""
-    print("Stress test!")
+@click.option(
+    "--target",
+    multiple=True,
+    help="Targets to stress test (cpu, gpu, ram, all). Can be comma-separated or repeated multiple times."
+)
+@click.option(
+    "--gpu-id",
+    default=None,
+    help="Specific GPU ID(s) to test (comma-separated, e.g., '0' or '0,1'). Use with --target gpu."
+)
+@click.option(
+    "--cpu-id",
+    default=None,
+    help="Specific CPU socket/core ID(s) to test (comma-separated). Use with --target cpu."
+)
+@click.option(
+    "--duration",
+    type=int,
+    default=None,
+    help="Duration in seconds for each stress test (default: 30s)"
+)
+@click.option(
+    "--burnin-seconds",
+    type=int,
+    default=5,
+    help="Warmup period in seconds before measurements (default: 5s)"
+)
+@click.option(
+    "--export",
+    is_flag=True,
+    default=False,
+    help="Export results to JSON file with default filename (warpt_stress_<TIMESTAMP>_<RANDOM>.json)"
+)
+@click.option(
+    "--export-file",
+    default=None,
+    help="Export results to JSON file with custom filename"
+)
+@click.option(
+    "--log-file",
+    default=None,
+    help="Write detailed execution logs to specified file"
+)
+#TODO - add --nic-id
+def stress(target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file):
+    """Run system stress tests"""
+    from warpt.commands.stress_cmd import run_stress
+
+    # Determine export format and filename (matches list command pattern)
+    if export_file:
+        export_format = 'json'
+        export_filename = export_file
+    elif export:
+        export_format = 'json'
+        export_filename = None  # Will use default timestamp
+    else:
+        export_format = None
+        export_filename = None
+
+    run_stress(
+        targets=target,
+        gpu_id=gpu_id,
+        cpu_id=cpu_id,
+        duration_seconds=duration,
+        burnin_seconds=burnin_seconds,
+        export_format=export_format,
+        export_filename=export_filename,
+        log_file=log_file
+    )
 
 
 if __name__ == "__main__":

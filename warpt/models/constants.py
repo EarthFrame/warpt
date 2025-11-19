@@ -46,3 +46,11 @@ class MemoryType(StrEnum):
     DDR4 = "ddr4"
     DDR5 = "ddr5"
     HBM2 = "hbm2"
+
+
+# Stress test timing defaults (in seconds)
+DEFAULT_STRESS_SECONDS = 30  # Duration when --duration not specified
+DEFAULT_BURNIN_SECONDS = 5   # Warmup period before measurements
+
+# Valid stress test targets
+VALID_STRESS_TARGETS = ('cpu', 'gpu', 'ram', 'all')
