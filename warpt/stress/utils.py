@@ -11,9 +11,14 @@ def calculate_tflops(operations: int, time_seconds: float) -> float:
 
     Returns:
         Performance in TFLOPS
+
+    Raises:
+        ValueError: If time_seconds is zero or negative
     """
-    # TODO: Implement TFLOPS calculation
-    pass
+    if time_seconds <= 0:
+        raise ValueError(f"time_seconds must be positive, got {time_seconds}")
+
+    return (operations / time_seconds) / 1e12
 
 
 def format_results(results: dict) -> str:

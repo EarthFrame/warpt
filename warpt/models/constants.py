@@ -54,3 +54,6 @@ DEFAULT_BURNIN_SECONDS = 5   # Warmup period before measurements
 
 # Valid stress test targets
 VALID_STRESS_TARGETS = ('cpu', 'gpu', 'ram', 'all')
+
+# Names for stress tests
+CPU_STRESS_TEST = "CPU Matrix Multiplication"

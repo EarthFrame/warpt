@@ -1,7 +1,24 @@
 """Pydantic models for stress test JSON export."""
 
-from typing import Dict, List, Literal
+from typing import Any, Dict, List, Literal
 from pydantic import BaseModel, Field
+
+
+# ============================================================================
+# Supporting Types
+# ============================================================================
+
+class ThrottleEvent(BaseModel):
+    """Represents a single throttling event."""
+
+    timestamp: float = Field(..., description="Unix timestamp when throttling occurred")
+    device_id: str = Field(..., description="Fully qualified device ID (e.g., 'cpu_0', 'gpu_0', 'gpu_1')")
+    reasons: List[str] = Field(..., description="List of throttle reasons (e.g., 'thermal', 'power_limit', 'SW Power Cap')")
+
+    # TODO: add duration tracking
+    # - start_timestamp
+    # - end_timestamp
+    # - duration_ms
 
 
 # ============================================================================
@@ -18,10 +35,15 @@ class CPUSystemResult(BaseModel):
     # Performance metrics
     tflops: float = Field(..., ge=0, description="Computational throughput in TFLOPS")
     duration: float = Field(..., ge=0, description="Actual test duration in seconds")
-    iterations: int = Field(..., ge=0, description="Number of iterations completed")
-    matrix_size: int = Field(..., ge=0, description="Matrix size used (NxN)")
+    iterations: int | None = Field(None, ge=0, description="Number of iterations completed (if applicable)")
     total_operations: int = Field(..., ge=0, description="Total floating point operations")
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+
+    # Test-specific metrics (flexible for different test types)
+    metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Test-specific metrics (e.g., matrix_size, vector_length, etc.)"
+    )
 
     # CPU topology
     sockets_used: int = Field(..., ge=1, description="Number of CPU sockets used")
@@ -31,7 +53,7 @@ class CPUSystemResult(BaseModel):
     # Optional monitoring fields (for future implementation)
     max_temp: float | None = Field(None, description="Maximum temperature in Celsius")
     avg_power: float | None = Field(None, description="Average power draw in Watts")
-    throttle_events: int = Field(0, ge=0, description="Number of throttling events")
+    throttle_events: List[ThrottleEvent] = Field(default_factory=list, description="List of throttling events during test")
 
 
 class GPUDeviceResult(BaseModel):
@@ -45,16 +67,21 @@ class GPUDeviceResult(BaseModel):
     # Performance metrics
     tflops: float = Field(..., ge=0, description="GPU computational throughput in TFLOPS")
     duration: float = Field(..., ge=0, description="Test duration in seconds")
-    iterations: int = Field(..., ge=0, description="Iterations completed")
-    matrix_size: int = Field(..., ge=0, description="Matrix size used")
+    iterations: int | None = Field(None, ge=0, description="Iterations completed (if applicable)")
     total_operations: int = Field(..., ge=0, description="Total floating point operations")
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+
+    # Test-specific metrics (flexible for different test types)
+    metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Test-specific metrics (e.g., matrix_size, memory_bandwidth_gbps, etc.)"
+    )
 
     # GPU-specific monitoring
     memory_used_gb: float = Field(..., ge=0, description="GPU memory used in GB")
     max_temp: float | None = Field(None, description="Peak temperature in Celsius")
     avg_power: float | None = Field(None, description="Average power in Watts")
-    throttle_events: int = Field(0, ge=0, description="Number of throttling events")
+    throttle_events: List[ThrottleEvent] = Field(default_factory=list, description="List of throttling events during test")
 
 
 class GPUSystemResult(BaseModel):
@@ -68,16 +95,21 @@ class GPUSystemResult(BaseModel):
     # Performance metrics
     aggregate_tflops: float = Field(..., ge=0, description="Combined TFLOPS across all GPUs")
     duration: float = Field(..., ge=0, description="Test duration in seconds")
-    iterations: int = Field(..., ge=0, description="Iterations completed")
-    matrix_size: int = Field(..., ge=0, description="Matrix size used")
+    iterations: int | None = Field(None, ge=0, description="Iterations completed (if applicable)")
     scaling_efficiency: float = Field(..., ge=0, le=1, description="Multi-GPU scaling efficiency (0-1)")
     orchestration_overhead_ms: float = Field(..., ge=0, description="Overhead from multi-GPU coordination")
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
 
+    # Test-specific metrics (flexible for different test types)
+    metrics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Test-specific metrics (e.g., matrix_size, workload_type, etc.)"
+    )
+
     # Optional monitoring
     max_temp_across_gpus: float | None = Field(None, description="Highest temp across all GPUs")
     total_power: float | None = Field(None, description="Combined power draw in Watts")
-    throttle_events: int = Field(0, ge=0, description="Total throttling events across all GPUs")
+    throttle_events: List[ThrottleEvent] = Field(default_factory=list, description="List of throttling events across all GPUs during test")
 
 
 # ============================================================================
@@ -168,5 +200,6 @@ class StressTestExport(BaseModel):
     )
 
     # Optional metadata
-    timestamp: str | None = Field(None, description="Test execution timestamp (ISO format)")
+    timestamp_start: str | None = Field(None, description="Test start timestamp (ISO format)")
+    timestamp_end: str | None = Field(None, description="Test end timestamp (ISO format)")
     warpt_version: str | None = Field(None, description="Warpt version used")

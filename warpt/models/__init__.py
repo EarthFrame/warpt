@@ -25,6 +25,7 @@ from warpt.models.stress_models import (
     RAMTestResults,
     RAMSummary,
     StressTestExport,
+    ThrottleEvent,
 )
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     "RAMTestResults",
     "RAMSummary",
     "StressTestExport",
+    "ThrottleEvent",
 ]
