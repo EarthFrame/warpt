@@ -113,28 +113,35 @@ def validate_device_availability(
     parsed_targets: List[str],
     gpu_ids: Optional[List[int]],
     cpu_ids: Optional[List[int]]
-) -> None:
+) -> List[str]:
     """
     Validate that requested devices are available.
+    Unavailable targets are removed with warnings.
 
     Args:
         parsed_targets: List of target strings
         gpu_ids: List of requested GPU IDs or None
         cpu_ids: List of requested CPU IDs or None
 
+    Returns:
+        List of valid targets (unavailable targets removed)
+
     Raises:
-        SystemExit: If requested devices are not available
+        SystemExit: If specific device IDs not found or no valid targets remain
     """
+    valid_targets = parsed_targets.copy()
+
     # Validate GPU IDs if GPU is a target
     if 'gpu' in parsed_targets:
         available_gpus = get_available_gpus()
 
         if not available_gpus:
-            print("Error: No GPUs detected on this system.")
-            print("Run 'warpt list' to see available hardware.")
-            sys.exit(1)
-
-        if gpu_ids:
+            # No GPUs available - skip GPU tests
+            print("⚠️  Warning: No GPUs detected. Skipping GPU tests.")
+            print("    Run 'warpt list' to see available hardware.")
+            valid_targets.remove('gpu')
+        elif gpu_ids:
+            # User specified GPU IDs - validate they exist
             for gpu_id in gpu_ids:
                 if gpu_id not in available_gpus:
                     print(f"Error: GPU ID {gpu_id} not found. Available GPUs: {', '.join(map(str, available_gpus))}")
@@ -151,6 +158,14 @@ def validate_device_availability(
                     print(f"Error: CPU ID {cpu_id} not found. Available CPUs: {', '.join(map(str, available_cpus))}")
                     print("Run 'warpt list' for detailed CPU information.")
                     sys.exit(1)
+
+    # Check if any valid targets remain
+    if not valid_targets:
+        print("Error: No valid targets available to test.")
+        print("Run 'warpt list' to see available hardware.")
+        sys.exit(1)
+
+    return valid_targets
 
 def run_stress(
     targets: tuple,
@@ -182,23 +197,41 @@ def run_stress(
         print(f"Error: {e}")
         sys.exit(1)
 
-    # Default to all targets if none specified
+    # Parse device IDs early to infer targets if needed
+    gpu_ids = parse_device_ids(gpu_id)
+    cpu_ids = parse_device_ids(cpu_id)
+
+    # Infer targets from device IDs if no targets specified
     if not parsed_targets:
-        parsed_targets = ['all']
+        if gpu_ids and cpu_ids:
+            parsed_targets = ['cpu', 'gpu']
+        elif gpu_ids:
+            parsed_targets = ['gpu']
+        elif cpu_ids:
+            parsed_targets = ['cpu']
+        else:
+            parsed_targets = ['all']
 
     # Expand 'all' target to individual targets
     if 'all' in parsed_targets:
         parsed_targets = ['cpu', 'gpu', 'ram']
 
+    # Validate device IDs match specified targets
+    if cpu_ids and 'cpu' not in parsed_targets:
+        print("Error: --cpu-id can only be used with --target cpu")
+        print(f"You specified --target {','.join(parsed_targets)} but provided --cpu-id")
+        sys.exit(1)
+
+    if gpu_ids and 'gpu' not in parsed_targets:
+        print("Error: --gpu-id can only be used with --target gpu")
+        print(f"You specified --target {','.join(parsed_targets)} but provided --gpu-id")
+        sys.exit(1)
+
     # Determine test duration - user-specified always takes priority
     test_duration = duration_seconds if duration_seconds is not None else DEFAULT_STRESS_SECONDS
 
-    # Parse device IDs
-    gpu_ids = parse_device_ids(gpu_id)
-    cpu_ids = parse_device_ids(cpu_id)
-
-    # Validate device availability
-    validate_device_availability(parsed_targets, gpu_ids, cpu_ids)
+    # Validate device availability (returns filtered list of valid targets)
+    parsed_targets = validate_device_availability(parsed_targets, gpu_ids, cpu_ids)
 
     # Handle defaulting to all devices when target specified but no device IDs
     default_to_all_gpus = False
@@ -244,14 +277,29 @@ def run_stress(
     print("Running Stress Tests...")
     print("="*60 + "\n")
 
-    # TODO: implement actual stress tests
+    # Run stress tests
     for target in parsed_targets:
-        print(f"[PLACEHOLDER] Running {target.upper()} stress tests...")
-        if target == 'gpu' and gpu_ids:
-            for gpu_id_val in gpu_ids:
-                print(f"  - Testing GPU {gpu_id_val}")
-        if target == 'cpu' and cpu_ids:
-            for cpu_id_val in cpu_ids:
-                print(f"  - Testing CPU {cpu_id_val}")
+        if target == 'cpu':
+            print("=== CPU Compute Stress Test ===\n")
+            from warpt.stress.cpu_compute import CPUMatMulTest
 
-    print("\n✓ Stress tests completed (placeholder)")
+            test = CPUMatMulTest(burnin_seconds=burnin_seconds)
+            results = test.run(duration=test_duration)
+
+            # Display results
+            print(f"\nResults:")
+            print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
+            print(f"  Duration:           {results['duration']:.2f}s")
+            print(f"  Iterations:         {results['iterations']}")
+            print(f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}")
+            print(f"  Total Operations:   {results['total_operations']:,}")
+            print(f"  CPU Cores:          {results['cpu_physical_cores']} physical, {results['cpu_logical_cores']} logical")
+            print()
+
+        elif target == 'gpu':
+            print("[TODO] GPU stress tests not yet implemented\n")
+
+        elif target == 'ram':
+            print("[TODO] RAM stress tests not yet implemented\n")
+
+    print("✓ Stress tests completed")

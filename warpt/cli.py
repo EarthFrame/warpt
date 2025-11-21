@@ -3,6 +3,7 @@
 
 import click
 from warpt.commands.list_cmd import run_list
+from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 
 
 @click.group()
@@ -101,8 +102,8 @@ def check():
 @click.option(
     "--burnin-seconds",
     type=int,
-    default=5,
-    help="Warmup period in seconds before measurements (default: 5s)"
+    default=DEFAULT_BURNIN_SECONDS,
+    help=f"Warmup period in seconds before measurements (default: {DEFAULT_BURNIN_SECONDS}s)"
 )
 @click.option(
     "--export",
