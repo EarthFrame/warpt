@@ -299,7 +299,25 @@ def run_stress(
             print()
 
         elif target == 'gpu':
-            print("[TODO] GPU stress tests not yet implemented\n")
+            from warpt.stress.gpu_compute import GPUMatMulTest
+
+            # Test each GPU individually
+            for gpu_id in gpu_ids:
+                print(f"=== GPU {gpu_id} Compute Stress Test ===\n")
+
+                test = GPUMatMulTest(device_id=gpu_id, burnin_seconds=burnin_seconds)
+                results = test.run(duration=test_duration)
+
+                # Display results
+                print(f"\nResults for GPU {gpu_id} ({results.get('gpu_name', 'Unknown')}):")
+                print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
+                print(f"  Duration:           {results['duration']:.2f}s")
+                print(f"  Iterations:         {results['iterations']}")
+                print(f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}")
+                print(f"  Total Operations:   {results['total_operations']:,}")
+                print(f"  Precision:          {results['precision'].upper()}")
+                print(f"  Memory Used:        {results['memory_used_gb']:.2f} GB / {results['memory_total_gb']:.2f} GB")
+                print()
 
         elif target == 'ram':
             print("[TODO] RAM stress tests not yet implemented\n")
