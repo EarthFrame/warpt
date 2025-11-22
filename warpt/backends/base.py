@@ -152,6 +152,63 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
+    def get_pytorch_device_string(self, device_id: int) -> str:
+        """
+        Get PyTorch device string for this vendor.
+
+        Used by stress tests to select the correct device in PyTorch.
+        Different vendors use different device strings:
+        - NVIDIA: 'cuda:0', 'cuda:1', etc.
+        - AMD (ROCm): 'cuda:0' (same as NVIDIA when using ROCm-enabled PyTorch)
+        - Intel: 'xpu:0', 'xpu:1', etc.
+        - Apple: 'mps:0'
+
+        Args:
+            device_id: GPU index (0-based)
+
+        Returns:
+            str: PyTorch device string (e.g., 'cuda:0')
+        """
+        pass
+
+    @abstractmethod
+    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+        """
+        Get current GPU power usage in Watts.
+
+        Used for monitoring power consumption during stress tests and
+        detecting power throttling.
+
+        Args:
+            device_handle: Vendor-specific device handle from get_device_handle()
+
+        Returns:
+            float: Power usage in Watts, or None if unavailable
+        """
+        pass
+
+    @abstractmethod
+    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+        """
+        Get current GPU throttling reasons.
+
+        Used for detecting performance degradation during stress tests.
+        Common throttle reasons:
+        - 'thermal' - Temperature limit reached
+        - 'power_limit' - Power limit reached
+        - 'sw_power_cap' - Software-imposed power cap
+        - 'hw_slowdown' - Hardware slowdown
+        - 'sync_boost' - Sync boost limit
+
+        Args:
+            device_handle: Vendor-specific device handle from get_device_handle()
+
+        Returns:
+            List[str]: List of active throttle reasons, empty list if not throttling
+        """
+        pass
+
+    @abstractmethod
     def shutdown(self):
         """
         Cleanup and shutdown the GPU backend

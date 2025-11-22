@@ -4,12 +4,15 @@ NVIDIA GPU backend using pynvml (NVIDIA Management Library).
 This backend collects GPU information for the list command.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 import pynvml
 
+from warpt.backends.base import GPUBackend
+from warpt.models.list_models import GPUInfo
 
-class NvidiaBackend:
+
+class NvidiaBackend(GPUBackend):
     """Backend for NVIDIA GPU information using pynvml."""
 
     def __init__(self):
@@ -88,18 +91,167 @@ class NvidiaBackend:
 
         return device_info
     
-    def get_temperature(self, device_handle: "pynvml.nvmlDevice_t") -> float:
+    def get_temperature(self, device_handle: "pynvml.nvmlDevice_t") -> Optional[float]:
         """
+        Get GPU temperature in degrees Celsius.
+
         Args:
             device_handle: NVML device handle
 
         Returns:
-            float: GPU temperature in degrees Celsius
+            float: GPU temperature in degrees Celsius, or None if unavailable
         """
         try:
             return pynvml.nvmlDeviceGetTemperature(device_handle, pynvml.NVML_TEMPERATURE_GPU)
         except pynvml.NVMLError:
-            return -1
-    
+            return None
 
-    
+    def is_available(self) -> bool:
+        """
+        Check if NVIDIA GPUs are available.
+
+        Returns:
+            bool: True if at least one NVIDIA GPU is detected
+        """
+        try:
+            return pynvml.nvmlDeviceGetCount() > 0
+        except pynvml.NVMLError:
+            return False
+
+    def get_device_count(self) -> int:
+        """
+        Get the number of NVIDIA GPUs.
+
+        Returns:
+            int: Number of NVIDIA GPUs detected
+        """
+        try:
+            return pynvml.nvmlDeviceGetCount()
+        except pynvml.NVMLError:
+            return 0
+
+    def get_device_handle(self, index: int):
+        """
+        Get NVML device handle for a GPU.
+
+        Args:
+            index: GPU index (0-based)
+
+        Returns:
+            pynvml.nvmlDevice_t: NVML device handle
+        """
+        return pynvml.nvmlDeviceGetHandleByIndex(index)
+
+    def get_pytorch_device_string(self, device_id: int) -> str:
+        """
+        Get PyTorch device string for NVIDIA GPUs.
+
+        Args:
+            device_id: GPU index (0-based)
+
+        Returns:
+            str: PyTorch device string (e.g., 'cuda:0')
+        """
+        return f"cuda:{device_id}"
+
+    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
+        """
+        Get current GPU memory usage.
+
+        Args:
+            device_handle: NVML device handle
+
+        Returns:
+            dict with keys: total, used, free (all in bytes), or None if unavailable
+        """
+        try:
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(device_handle)
+            return {
+                'total': mem_info.total,
+                'used': mem_info.used,
+                'free': mem_info.free,
+            }
+        except pynvml.NVMLError:
+            return None
+
+    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
+        """
+        Get GPU utilization percentage.
+
+        Args:
+            device_handle: NVML device handle
+
+        Returns:
+            dict with keys: gpu, memory (both 0-100), or None if unavailable
+        """
+        try:
+            util = pynvml.nvmlDeviceGetUtilizationRates(device_handle)
+            return {
+                'gpu': float(util.gpu),
+                'memory': float(util.memory),
+            }
+        except pynvml.NVMLError:
+            return None
+
+    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+        """
+        Get current GPU power usage in Watts.
+
+        Args:
+            device_handle: NVML device handle
+
+        Returns:
+            float: Power usage in Watts, or None if unavailable
+        """
+        try:
+            # pynvml returns power in milliwatts
+            power_mw = pynvml.nvmlDeviceGetPowerUsage(device_handle)
+            return power_mw / 1000.0  # Convert to Watts
+        except pynvml.NVMLError:
+            return None
+
+    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+        """
+        Get current GPU throttling reasons.
+
+        Args:
+            device_handle: NVML device handle
+
+        Returns:
+            List[str]: List of active throttle reasons, empty list if not throttling
+        """
+        try:
+            throttle_reasons = []
+            clocks_throttle_reasons = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(device_handle)
+
+            # Check each throttle reason bit flag
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonGpuIdle:
+                throttle_reasons.append('gpu_idle')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonApplicationsClocksSetting:
+                throttle_reasons.append('applications_clocks_setting')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSwPowerCap:
+                throttle_reasons.append('sw_power_cap')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwSlowdown:
+                throttle_reasons.append('hw_slowdown')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSyncBoost:
+                throttle_reasons.append('sync_boost')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSwThermalSlowdown:
+                throttle_reasons.append('sw_thermal_slowdown')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwThermalSlowdown:
+                throttle_reasons.append('hw_thermal_slowdown')
+            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwPowerBrakeSlowdown:
+                throttle_reasons.append('hw_power_brake_slowdown')
+
+            return throttle_reasons
+        except pynvml.NVMLError:
+            return []
+
+    def shutdown(self):
+        """
+        Cleanup and shutdown NVML.
+        """
+        try:
+            pynvml.nvmlShutdown()
+        except pynvml.NVMLError:
+            pass  # Ignore errors during shutdown
+
