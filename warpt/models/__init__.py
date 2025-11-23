@@ -15,8 +15,17 @@ from warpt.models.list_models import (
 )
 
 from warpt.models.stress_models import (
-    StressOutput,
-    StressResults,
+    CPUSystemResult,
+    CPUTestResults,
+    CPUSummary,
+    GPUDeviceResult,
+    GPUSystemResult,
+    GPUTestResults,
+    GPUSummary,
+    RAMTestResults,
+    RAMSummary,
+    StressTestExport,
+    ThrottleEvent,
 )
 
 __all__ = [
@@ -31,6 +40,16 @@ __all__ = [
     "PythonInfo",
     "SoftwareInfo",
     "StorageDevice",
-    "StressOutput",
-    "StressResults",
+    # Stress test models
+    "CPUSystemResult",
+    "CPUTestResults",
+    "CPUSummary",
+    "GPUDeviceResult",
+    "GPUSystemResult",
+    "GPUTestResults",
+    "GPUSummary",
+    "RAMTestResults",
+    "RAMSummary",
+    "StressTestExport",
+    "ThrottleEvent",
 ]

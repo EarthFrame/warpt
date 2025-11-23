@@ -1,6 +1,7 @@
 """Base class for stress tests."""
 
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 
 
 class StressTest(ABC):
@@ -28,3 +29,23 @@ class StressTest(ABC):
             Human-readable test name
         """
         pass
+
+    @staticmethod
+    def generate_timestamp_start() -> str:
+        """
+        Generate a start timestamp for the test.
+
+        Returns:
+            ISO format timestamp string (UTC)
+        """
+        return datetime.now(timezone.utc).isoformat()
+
+    @staticmethod
+    def generate_timestamp_end() -> str:
+        """
+        Generate an end timestamp for the test.
+
+        Returns:
+            ISO format timestamp string (UTC)
+        """
+        return datetime.now(timezone.utc).isoformat()
