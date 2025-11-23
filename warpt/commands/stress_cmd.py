@@ -3,6 +3,8 @@
 import sys
 from typing import List, Optional
 
+import click
+
 from warpt.models.constants import (
     DEFAULT_STRESS_SECONDS,
     DEFAULT_BURNIN_SECONDS,
@@ -112,7 +114,8 @@ def get_available_cpus() -> List[int]:
 def validate_device_availability(
     parsed_targets: List[str],
     gpu_ids: Optional[List[int]],
-    cpu_ids: Optional[List[int]]
+    cpu_ids: Optional[List[int]],
+    explicit_gpu_request: bool = False
 ) -> List[str]:
     """
     Validate that requested devices are available.
@@ -122,6 +125,7 @@ def validate_device_availability(
         parsed_targets: List of target strings
         gpu_ids: List of requested GPU IDs or None
         cpu_ids: List of requested CPU IDs or None
+        explicit_gpu_request: True if user explicitly specified --target gpu (not via 'all')
 
     Returns:
         List of valid targets (unavailable targets removed)
@@ -136,10 +140,16 @@ def validate_device_availability(
         available_gpus = get_available_gpus()
 
         if not available_gpus:
-            # No GPUs available - skip GPU tests
-            print("⚠️  Warning: No GPUs detected. Skipping GPU tests.")
-            print("    Run 'warpt list' to see available hardware.")
-            valid_targets.remove('gpu')
+            # No GPUs available - error if explicitly requested, warn otherwise
+            if explicit_gpu_request:
+                raise click.ClickException(
+                    "No GPUs detected but --target gpu was specified. "
+                    "Run 'warpt list' to see available hardware."
+                )
+            else:
+                print("⚠️  Warning: No GPUs detected. Skipping GPU tests.")
+                print("    Run 'warpt list' to see available hardware.")
+                valid_targets.remove('gpu')
         elif gpu_ids:
             # User specified GPU IDs - validate they exist
             for gpu_id in gpu_ids:
@@ -212,6 +222,9 @@ def run_stress(
         else:
             parsed_targets = ['all']
 
+    # Track if user explicitly requested GPU (vs. GPU being part of "all")
+    explicit_gpu_request = 'gpu' in parsed_targets and 'all' not in parsed_targets
+
     # Expand 'all' target to individual targets
     if 'all' in parsed_targets:
         parsed_targets = ['cpu', 'gpu', 'ram']
@@ -231,7 +244,9 @@ def run_stress(
     test_duration = duration_seconds if duration_seconds is not None else DEFAULT_STRESS_SECONDS
 
     # Validate device availability (returns filtered list of valid targets)
-    parsed_targets = validate_device_availability(parsed_targets, gpu_ids, cpu_ids)
+    parsed_targets = validate_device_availability(
+        parsed_targets, gpu_ids, cpu_ids, explicit_gpu_request
+    )
 
     # Handle defaulting to all devices when target specified but no device IDs
     default_to_all_gpus = False
