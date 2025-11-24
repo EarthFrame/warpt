@@ -30,11 +30,11 @@ jobs:
 
     - name: Run ruff linting
       run: |
-        ruff check .
+        ruff check warpt/ tests/ examples/
 
     - name: Run black formatting check
       run: |
-        black --check .
+        black --check warpt/ tests/ examples/
 
     - name: Run mypy type checking
       run: |
