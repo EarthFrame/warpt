@@ -35,19 +35,15 @@ class AMDBackend(GPUBackend):
         """List all AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_device_handle(self, index: int):
-        """Get AMD device handle."""
-        raise NotImplementedError("AMD backend not yet implemented")
-
-    def get_temperature(self, device_handle: Any) -> Optional[float]:
+    def get_temperature(self, index: int) -> Optional[float]:
         """Get GPU temperature."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> Optional[Dict]:
         """Get GPU memory usage."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> Optional[Dict]:
         """Get GPU utilization."""
         raise NotImplementedError("AMD backend not yet implemented")
 
@@ -55,11 +51,11 @@ class AMDBackend(GPUBackend):
         """Get PyTorch device string for AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+    def get_power_usage(self, index: int) -> Optional[float]:
         """Get GPU power usage."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> List[str]:
         """Get GPU throttling reasons."""
         raise NotImplementedError("AMD backend not yet implemented")
 

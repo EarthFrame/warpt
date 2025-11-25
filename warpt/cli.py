@@ -2,6 +2,7 @@
 """Warpt CLI - Command-line interface for Warpt."""
 
 import click
+
 from warpt.commands.list_cmd import run_list
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 
@@ -17,24 +18,26 @@ def warpt():
     "--export",
     is_flag=True,
     default=False,
-    help="Export results to JSON file with default filename (warpt_list_TIMESTAMP.json)"
+    help=(
+        "Export results to JSON file with default filename "
+        "(warpt_list_TIMESTAMP.json)"
+    ),
 )
 @click.option(
     "--export-file",
     default=None,
-    help="Export results to JSON file with custom filename"
+    help="Export results to JSON file with custom filename",
 )
 def list(export, export_file):
     """List CPU and GPU information."""
-
     # Determine export format and filename
     if export_file:
         # --export-file provided (takes precedence)
-        export_format = 'json'
+        export_format = "json"
         export_filename = export_file
     elif export:
         # --export flag used
-        export_format = 'json'
+        export_format = "json"
         export_filename = None  # Will use default timestamp
     else:
         # No export
@@ -81,57 +84,72 @@ def check():
 @click.option(
     "--target",
     multiple=True,
-    help="Targets to stress test (cpu, gpu, ram, all). Can be comma-separated or repeated multiple times."
+    help=(
+        "Targets to stress test (cpu, gpu, ram, all). Can be comma-separated "
+        "or repeated multiple times."
+    ),
 )
 @click.option(
     "--gpu-id",
     default=None,
-    help="Specific GPU ID(s) to test (comma-separated, e.g., '0' or '0,1'). Use with --target gpu."
+    help=(
+        "Specific GPU ID(s) to test (comma-separated, e.g., '0' or '0,1'). "
+        "Use with --target gpu."
+    ),
 )
 @click.option(
     "--cpu-id",
     default=None,
-    help="Specific CPU socket/core ID(s) to test (comma-separated). Use with --target cpu."
+    help=(
+        "Specific CPU socket/core ID(s) to test (comma-separated). "
+        "Use with --target cpu."
+    ),
 )
 @click.option(
     "--duration",
     type=int,
     default=None,
-    help="Duration in seconds for each stress test (default: 30s)"
+    help="Duration in seconds for each stress test (default: 30s)",
 )
 @click.option(
     "--burnin-seconds",
     type=int,
     default=DEFAULT_BURNIN_SECONDS,
-    help=f"Warmup period in seconds before measurements (default: {DEFAULT_BURNIN_SECONDS}s)"
+    help=(
+        f"Warmup period in seconds before measurements "
+        f"(default: {DEFAULT_BURNIN_SECONDS}s)"
+    ),
 )
 @click.option(
     "--export",
     is_flag=True,
     default=False,
-    help="Export results to JSON file with default filename (warpt_stress_<TIMESTAMP>_<RANDOM>.json)"
+    help=(
+        "Export results to JSON file with default filename "
+        "(warpt_stress_<TIMESTAMP>_<RANDOM>.json)"
+    ),
 )
 @click.option(
     "--export-file",
     default=None,
-    help="Export results to JSON file with custom filename"
+    help="Export results to JSON file with custom filename",
 )
 @click.option(
-    "--log-file",
-    default=None,
-    help="Write detailed execution logs to specified file"
+    "--log-file", default=None, help="Write detailed execution logs to specified file"
 )
-#TODO - add --nic-id
-def stress(target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file):
-    """Run system stress tests"""
+# TODO - add --nic-id
+def stress(
+    target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file
+):
+    """Run system stress tests."""
     from warpt.commands.stress_cmd import run_stress
 
     # Determine export format and filename (matches list command pattern)
     if export_file:
-        export_format = 'json'
+        export_format = "json"
         export_filename = export_file
     elif export:
-        export_format = 'json'
+        export_format = "json"
         export_filename = None  # Will use default timestamp
     else:
         export_format = None
@@ -145,7 +163,7 @@ def stress(target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file
         burnin_seconds=burnin_seconds,
         export_format=export_format,
         export_filename=export_filename,
-        log_file=log_file
+        log_file=log_file,
     )
 
 

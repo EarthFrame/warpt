@@ -8,90 +8,90 @@ class CPUMonitor(ABC):
 
     @abstractmethod
     def get_temperature(self) -> float | None:
-        """
-        Get CPU temperature in Celsius.
+        """Get CPU temperature in Celsius.
 
-        Returns:
+        Returns
+        -------
             Temperature in Celsius or None if unavailable
         """
         pass
 
     @abstractmethod
     def get_frequency(self) -> float | None:
-        """
-        Get current CPU frequency in MHz.
+        """Get current CPU frequency in MHz.
 
-        Returns:
+        Returns
+        -------
             Frequency in MHz or None if unavailable
         """
         pass
 
     @abstractmethod
     def get_utilization(self) -> float | None:
-        """
-        Get CPU utilization percentage.
+        """Get CPU utilization percentage.
 
-        Returns:
+        Returns
+        -------
             Utilization percentage (0-100) or None if unavailable
         """
         pass
 
     @abstractmethod
     def is_throttling(self) -> bool:
-        """
-        Check if CPU is currently throttling due to thermal or power limits.
+        """Check if CPU is currently throttling due to thermal or power limits.
 
-        Returns:
+        Returns
+        -------
             True if throttling detected, False otherwise
         """
         pass
 
     @abstractmethod
     def get_power(self) -> float | None:
-        """
-        Get CPU power consumption in Watts.
+        """Get CPU power consumption in Watts.
 
-        Returns:
+        Returns
+        -------
             Power consumption in Watts or None if unavailable
         """
         pass
 
     @abstractmethod
     def get_throttle_reason(self) -> str | None:
-        """
-        Get reason for CPU throttling.
+        """Get reason for CPU throttling.
 
-        Returns:
+        Returns
+        -------
             Throttle reason string (e.g., 'thermal', 'power', 'tdp_limit') or None
         """
         pass
 
     @abstractmethod
     def get_core_count(self) -> int:
-        """
-        Get number of active CPU cores.
+        """Get number of active CPU cores.
 
-        Returns:
+        Returns
+        -------
             Number of active cores
         """
         pass
 
     @abstractmethod
     def get_base_frequency(self) -> float | None:
-        """
-        Get CPU base frequency in MHz.
+        """Get CPU base frequency in MHz.
 
-        Returns:
+        Returns
+        -------
             Base frequency in MHz or None if unavailable
         """
         pass
 
     @abstractmethod
     def get_boost_frequency(self) -> float | None:
-        """
-        Get CPU boost (turbo) frequency in MHz.
+        """Get CPU boost (turbo) frequency in MHz.
 
-        Returns:
+        Returns
+        -------
             Boost frequency in MHz or None if unavailable
         """
         pass

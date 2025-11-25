@@ -34,19 +34,15 @@ class QuantumBackend(GPUBackend):
         """List all quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_device_handle(self, index: int):
-        """Get quantum processor handle."""
-        raise NotImplementedError("Quantum backend not yet implemented")
-
-    def get_temperature(self, device_handle: Any) -> Optional[float]:
+    def get_temperature(self, index: int) -> Optional[float]:
         """Get quantum processor temperature."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> Optional[Dict]:
         """Get quantum processor memory usage."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> Optional[Dict]:
         """Get quantum processor utilization."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
@@ -54,11 +50,11 @@ class QuantumBackend(GPUBackend):
         """Get PyTorch device string for quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+    def get_power_usage(self, index: int) -> Optional[float]:
         """Get quantum processor power usage."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> List[str]:
         """Get quantum processor throttling reasons."""
         raise NotImplementedError("Quantum backend not yet implemented")
 

@@ -2,19 +2,26 @@
 
 import random
 import string
-import subprocess
 from datetime import datetime
 from pathlib import Path
+
 import pynvml
 
 from warpt.backends.nvidia import NvidiaBackend
-from warpt.backends.system import CPU, System
-from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
+from warpt.backends.ram import RAM
+from warpt.backends.system import CPU
+from warpt.models.list_models import (
+    CPUInfo as CPUInfoModel,
+)
+from warpt.models.list_models import (
+    CUDAInfo,
+    GPUInfo,
+    HardwareInfo,
+    ListOutput,
+    MemoryInfo,
+    SoftwareInfo,
+)
 
-def random_string(length: int) -> str:
-    """Generate random uppercase string for unique filenames."""
-    chars = string.ascii_uppercase
-    return "".join(random.choice(chars) for _ in range(length))
 
 def random_string(length: int) -> str:
     """Generate random uppercase string for unique filenames."""
@@ -24,6 +31,9 @@ def random_string(length: int) -> str:
 
 def run_list(export_format=None, export_filename=None) -> None:
     """Display comprehensive CPU and GPU information."""
+    if export_format:
+        raise NotImplementedError("Export format not implemented")
+
     cpu = CPU()
     info = cpu.get_cpu_info()
 
@@ -92,9 +102,9 @@ def run_list(export_format=None, export_filename=None) -> None:
                 print(f"  [{gpu['index']}] {gpu['model']}")
                 print(f"      Memory:         {gpu['memory_gb']} GB")
                 print(f"      CUDA Compute:   {gpu['compute_capability']}")
-                if gpu.get('pcie_gen'):
+                if gpu.get("pcie_gen"):
                     print(f"      PCIe Gen:       {gpu['pcie_gen']}")
-                if gpu.get('driver_version'):
+                if gpu.get("driver_version"):
                     print(f"      Driver Version: {gpu['driver_version']}")
 
         gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
@@ -107,7 +117,8 @@ def run_list(export_format=None, export_filename=None) -> None:
         gpu_list = None
 
     # CUDA Detection
-    # TODO: Add CUDA toolkit version detection (nvcc) - for now just using driver version
+    # TODO: Add CUDA toolkit version detection (nvcc) - for now just using
+    # driver version
     print("\nCUDA Information:")
     cuda_driver_version = None
 
@@ -125,52 +136,81 @@ def run_list(export_format=None, export_filename=None) -> None:
     else:
         print("  No CUDA information (no GPUs detected)")
 
-    # Export to JSON if requested
-    if export_format == 'json':
-        # Build CPUInfo model from backend data
-        from warpt.models.list_models import CPUInfo as ExportCPUInfo
-        cpu_model = ExportCPUInfo(
-            manufacturer=info.make,
-            model=info.model,
-            architecture=info.architecture,
-            cores=info.total_physical_cores,
-            threads=info.total_logical_cores,
-            base_frequency_mhz=info.base_frequency,
-            boost_frequency_single_core_mhz=info.boost_frequency_single_core,
-            boost_frequency_multi_core_mhz=info.boost_frequency_multi_core,
-            current_frequency_mhz=info.current_frequency,
-            instruction_sets=None,  # TODO: Populate from backend when available
+    cpu_model = CPUInfoModel(
+        manufacturer=info.make,
+        model=info.model,
+        architecture=info.architecture,
+        cores=info.total_physical_cores,
+        threads=info.total_logical_cores,
+        base_frequency_mhz=info.base_frequency,
+        boost_frequency_single_core_mhz=info.boost_frequency_single_core,
+        boost_frequency_multi_core_mhz=info.boost_frequency_multi_core,
+        current_frequency_mhz=info.current_frequency,
+        instruction_sets=None,
+    )
+
+    gpu_models = None
+    gpu_count = None
+    if gpu_list:
+        gpu_models = [GPUInfo(**gpu) for gpu in gpu_list]
+        gpu_count = len(gpu_list)
+
+    cuda_info = None
+    if cuda_driver_version:
+        cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
+
+    # RAM Detection
+    print("\nMemory Information:")
+    ram_backend = RAM()
+    ram_info = ram_backend.get_ram_info()
+    ddr_type, speed_mhz = ram_backend._detect_ddr_info()
+    channels = ram_backend._detect_memory_channels()
+
+    total_gb = ram_info.total / (1024**3)
+    free_gb = ram_info.free / (1024**3)
+
+    print(f"  Total:              {total_gb:.1f} GB")
+    print(f"  Free:               {free_gb:.1f} GB")
+    if ddr_type:
+        print(f"  Type:               {ddr_type}")
+    if speed_mhz:
+        print(f"  Speed:              {speed_mhz} MHz")
+    if channels:
+        print(f"  Channels:           {channels}")
+
+    memory_info = MemoryInfo(
+        total_gb=int(total_gb),
+        free_gb=free_gb,
+        type=ddr_type,
+        speed_mhz=speed_mhz,
+        channels=channels,
+    )
+
+    # Build software info
+    software = None
+    if cuda_info:
+        software = SoftwareInfo(
+            python=None, cuda=cuda_info, frameworks=None, compilers=None
         )
 
-        # Build GPUInfo models
-        gpu_models = None
-        gpu_count = None
-        if gpu_list:
-            gpu_models = [GPUInfo(**gpu) for gpu in gpu_list]
-            gpu_count = len(gpu_list)
+    # Build output with CPU data
+    hardware = HardwareInfo(
+        cpu=cpu_model,
+        gpu_count=gpu_count,
+        gpu=gpu_models,
+        memory=memory_info,
+        storage=None,
+    )
+    output = ListOutput(hardware=hardware, software=software)
 
-        # Build CUDA info if available
-        cuda_info = None
-        if cuda_driver_version:
-            cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
+    # Generate filename if not provided
+    if not export_filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        random_tag = random_string(6)
+        export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
 
-        # Build software info
-        software = None
-        if cuda_info:
-            software = SoftwareInfo(cuda=cuda_info)
+    # Write JSON file using Pydantic's built-in serialization
+    output_path = Path(export_filename)
+    output_path.write_text(output.model_dump_json(indent=2))
 
-        # Build output with CPU data
-        hardware = HardwareInfo(cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models)
-        output = ListOutput(hardware=hardware, software=software)
-
-        # Generate filename if not provided
-        if not export_filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            random_tag = random_string(6)
-            export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
-
-        # Write JSON file using Pydantic's built-in serialization
-        output_path = Path(export_filename)
-        output_path.write_text(output.model_dump_json(indent=2))
-
-        print(f"\n✓ JSON exported to: {export_filename}")
+    print(f"\n✓ JSON exported to: {export_filename}")

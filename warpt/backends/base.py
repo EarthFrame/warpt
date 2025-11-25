@@ -1,5 +1,4 @@
-"""
-Abstract base classes for hardware backends.
+"""Abstract base classes for hardware backends.
 
 interfaces that all vendor-specific backends must implement
 
@@ -12,21 +11,17 @@ interfaces that all vendor-specific backends must implement
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Any
+from typing import Any
 
 from warpt.models.list_models import GPUInfo
 
 
 class GPUBackend(ABC):
-    """
-    Abstract base class for GPU vendor backends (NVIDIA, AMD, Intel, etc.)
-
-    """
+    """Abstract base class for GPU vendor backends (NVIDIA, AMD, Intel, etc.)."""
 
     @abstractmethod
     def __init__(self):
-        """
-        Initialize the GPU backend
+        """Initialize the GPU backend.
 
         Should handle vendor-specific library initialization (e.g., nvmlInit()).
         May raise exceptions if the vendor's libraries are not available or
@@ -37,29 +32,29 @@ class GPUBackend(ABC):
 
     @abstractmethod
     def is_available(self) -> bool:
-        """
-        Check if this GPU vendor's hardware is available on the system.
+        """Check if this GPU vendor's hardware is available on the system.
+
         Used by the factory pattern to determine which backends to use.
 
-        Returns:
+        Returns
+        -------
             bool: True if at least one GPU from this vendor is detected
         """
         pass
 
     @abstractmethod
     def get_device_count(self) -> int:
-        """
-        Get the number of GPUs from this vendor.
+        """Get the number of GPUs from this vendor.
 
-        Returns:
+        Returns
+        -------
             int: Number of GPUs detected
         """
         pass
 
     @abstractmethod
-    def list_devices(self) -> List[GPUInfo]:
-        """
-        List all GPUs from this vendor with their specifications
+    def list_devices(self) -> list[GPUInfo]:
+        """List all GPUs from this vendor with their specifications.
 
         Used by the 'list' command
 
@@ -70,49 +65,31 @@ class GPUBackend(ABC):
                 memory_gb=24,
                 compute_capability='8.9',
                 pcie_gen=4,
-                
+
                 extra_metrics={'cuda_cores': 16384, 'sm_count': 128}
             )]
         """
         pass
 
     @abstractmethod
-    def get_device_handle(self, index: int):
-        """
-        Get a vendor specific device handle for a GPU
-
-        This handle is used for monitoring
-        The type of handle is vendor specific
-
-        Args:
-            index: GPU index (0-based)
-
-        Returns:
-            Vendor-specific device handle object
-
-        """
-        pass
-
-    @abstractmethod
-    def get_temperature(self, device_handle: Any) -> Optional[float]:
-        """
-        Get GPU temperature in degrees C
+    def get_temperature(self, index: int) -> float | None:
+        """Get GPU temperature in degrees C.
 
         Used for monitoring and stress testing, and for detecting
         thermal throttling and ensuring system health
 
         Args:
-            device_handle: vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
-        Returns:
+        Returns
+        -------
             float: temperature in C, or None if unavailable
         """
         pass
 
     @abstractmethod
-    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
-        """
-        Get current GPU memory usage
+    def get_memory_usage(self, index: int) -> dict | None:
+        """Get current GPU memory usage.
 
         Used for monitoring memory pressure during stress tests and
         benchmarks
@@ -120,9 +97,10 @@ class GPUBackend(ABC):
         detecting memory leaks or over-allocation
 
         Args:
-            device_handle: Vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
-        Returns:
+        Returns
+        -------
             dict with keys:
                 - total (int): Total memory in bytes
                 - used (int): Used memory in bytes
@@ -132,17 +110,17 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
-        """
-        Get GPU util %
+    def get_utilization(self, index: int) -> dict | None:
+        """Get GPU util %.
 
         Used for real time monitoring and stress testing
         identify if GPU is being fully utilized or if there are bottlenecks
 
         Args:
-            device_handle: Vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
-        Returns:
+        Returns
+        -------
             dict with keys:
                 - gpu (float): GPU compute utilization percentage (0-100)
                 - memory (float): Memory bandwidth utilization percentage (0-100)
@@ -172,7 +150,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+    def get_power_usage(self, index: int) -> Optional[float]:
         """
         Get current GPU power usage in Watts.
 
@@ -180,7 +158,7 @@ class GPUBackend(ABC):
         detecting power throttling.
 
         Args:
-            device_handle: Vendor-specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
         Returns:
             float: Power usage in Watts, or None if unavailable
@@ -188,7 +166,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> List[str]:
         """
         Get current GPU throttling reasons.
 
@@ -201,7 +179,7 @@ class GPUBackend(ABC):
         - 'sync_boost' - Sync boost limit
 
         Args:
-            device_handle: Vendor-specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
         Returns:
             List[str]: List of active throttle reasons, empty list if not throttling
@@ -210,8 +188,7 @@ class GPUBackend(ABC):
 
     @abstractmethod
     def shutdown(self):
-        """
-        Cleanup and shutdown the GPU backend
+        """Cleanup and shutdown the GPU backend.
 
         Should handle vendor specific library cleanup (nvmlShutdown())
         """
@@ -219,18 +196,17 @@ class GPUBackend(ABC):
 
 
 class CPUBackend(ABC):
-    """
-    Abstract base class for CPU information backends.
+    """Abstract base class for CPU information backends.
 
     TODO: implement this interface when CPU stress testing is added
     """
 
     @abstractmethod
-    def list_devices(self) -> Dict:
-        """
-        Get CPU info
+    def list_devices(self) -> dict:
+        """Get CPU info.
 
-        Returns:
+        Returns
+        -------
             dict with keys:
                 - model (str): CPU model name
                 - cores (int): Physical core count

@@ -21,7 +21,8 @@ _FRAMEWORK_DETECTORS = [
 def detect_all_frameworks() -> dict[str, FrameworkInfo]:
     """Detect all available ML frameworks.
 
-    Returns:
+    Returns
+    -------
         Dictionary mapping framework names to their FrameworkInfo objects.
         Only includes frameworks that are actually installed.
     """
@@ -39,7 +40,8 @@ def detect_framework(framework_name: str) -> FrameworkInfo | None:
     Args:
         framework_name: Name of the framework to detect (e.g., 'pytorch')
 
-    Returns:
+    Returns
+    -------
         FrameworkInfo object if framework is installed, None otherwise.
     """
     for detector in _FRAMEWORK_DETECTORS:

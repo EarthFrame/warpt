@@ -15,7 +15,8 @@ class PyTorchDetector(FrameworkDetector):
     def detect(self) -> FrameworkInfo | None:
         """Detect PyTorch installation and gather version information.
 
-        Returns:
+        Returns
+        -------
             FrameworkInfo with version and CUDA support status if installed,
             None if PyTorch is not installed.
         """
@@ -25,14 +26,14 @@ class PyTorchDetector(FrameworkDetector):
 
         # Get version
         try:
-            version = torch.__version__
+            version = torch.__version__  # type: ignore[attr-defined]
         except AttributeError:
             version = "unknown"
 
         # Check for CUDA support
         cuda_support = False
         try:
-            cuda_support = torch.cuda.is_available()
+            cuda_support = torch.cuda.is_available()  # type: ignore[attr-defined]
         except AttributeError:
             # If cuda module doesn't exist, CUDA is not supported
             pass

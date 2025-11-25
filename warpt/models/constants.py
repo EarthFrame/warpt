@@ -50,10 +50,10 @@ class MemoryType(StrEnum):
 
 # Stress test timing defaults (in seconds)
 DEFAULT_STRESS_SECONDS = 30  # Duration when --duration not specified
-DEFAULT_BURNIN_SECONDS = 5   # Warmup period before measurements
+DEFAULT_BURNIN_SECONDS = 5  # Warmup period before measurements
 
 # Valid stress test targets
-VALID_STRESS_TARGETS = ('cpu', 'gpu', 'ram', 'all')
+VALID_STRESS_TARGETS = ("cpu", "gpu", "ram", "all")
 
 # Names for stress tests
 CPU_STRESS_TEST = "CPU Matrix Multiplication"

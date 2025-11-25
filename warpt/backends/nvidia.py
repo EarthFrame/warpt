@@ -1,11 +1,13 @@
-"""
-NVIDIA GPU backend using pynvml (NVIDIA Management Library).
+"""NVIDIA GPU backend using pynvml (NVIDIA Management Library).
 
 This backend collects GPU information for the list command.
 """
 
+<<<<<<< HEAD
 from typing import Any, Dict, List, Optional
 
+=======
+>>>>>>> 5161f24b63c0c145397c8de216d3ca74834b1287
 import pynvml
 
 from warpt.backends.base import GPUBackend
@@ -20,58 +22,58 @@ class NvidiaBackend(GPUBackend):
         pynvml.nvmlInit()
 
     def _get_compute_capability(self, device_handle: "pynvml.nvmlDevice_t"):
-        """
-        Get CUDA compute capability for a GPU; the GPU architecture generation
-        and what is the GPU's feature level
+        """Get CUDA compute capability for a GPU.
+
+        The GPU architecture generation and what is the GPU's feature level.
 
         Args:
             device_handle: NVML device handle
 
-        Returns:
+        Returns
+        -------
             str: Compute capability (e.g., "8.9")
         """
         major, minor = pynvml.nvmlDeviceGetCudaComputeCapability(device_handle)
         return f"{major}.{minor}"
 
     def _get_pcie_generation(self, device_handle: "pynvml.nvmlDevice_t"):
-        """
-        Get PCIe generation for a GPU. Debugging slow data transfers
+        """Get PCIe generation for a GPU.
 
-        PCIe generation affects bandwidth between CPU and GPU.
-             Gen 3 = 32 GB/s, Gen 4 = 64 GB/s, Gen 5 = 128 GB/s
+        Debugging slow data transfers. PCIe generation affects bandwidth
+        between CPU and GPU. Gen 3 = 32 GB/s, Gen 4 = 64 GB/s, Gen 5 = 128 GB/s
 
         Args:
             device_handle: NVML device handle
 
-        Returns:
+        Returns
+        -------
             int or None: PCIe generation (3, 4, 5) or None if unavailable
         """
         try:
             return pynvml.nvmlDeviceGetMaxPcielinkGeneration(device_handle)
         except pynvml.NVMLError:
-            return None # TODO - want to look into standardized logging for errors
-            
+            return None  # TODO - want to look into standardized logging for errors
 
     def _bytes_to_gb(self, bytes_value):
-        """
-        Convert bytes to gigabytes (GB).
+        """Convert bytes to gigabytes (GB).
 
         Args:
             bytes_value: Memory in bytes
 
-        Returns:
+        Returns
+        -------
             int: Memory in gigabytes
         """
         return int(bytes_value / (1024**3))
 
     def list_devices(self):
-        """
-        List all NVIDIA GPUs with information for the list command.
+        """List all NVIDIA GPUs with information for the list command.
 
-        Returns:
+        Returns
+        -------
             list[dict]: List of GPU information dictionaries matching GPUInfo model
         """
-        device_count = pynvml.nvmlDeviceGetCount()
+        device_count = self.get_device_count()
 
         # Get driver version (system-wide, same for all NVIDIA GPUs)
         driver_version = pynvml.nvmlSystemGetDriverVersion()
@@ -80,29 +82,36 @@ class NvidiaBackend(GPUBackend):
 
         for i in range(device_count):
             device_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            device_info.append({
-                'index': i,
-                'model': pynvml.nvmlDeviceGetName(device_handle),
-                'memory_gb': self._bytes_to_gb(pynvml.nvmlDeviceGetMemoryInfo(device_handle).total),
-                'compute_capability': self._get_compute_capability(device_handle),
-                'pcie_gen': self._get_pcie_generation(device_handle),
-                'driver_version': driver_version
-            })
+            device_info.append(
+                {
+                    "index": i,
+                    "model": pynvml.nvmlDeviceGetName(device_handle),
+                    "memory_gb": self._bytes_to_gb(
+                        pynvml.nvmlDeviceGetMemoryInfo(device_handle).total
+                    ),
+                    "compute_capability": self._get_compute_capability(device_handle),
+                    "pcie_gen": self._get_pcie_generation(device_handle),
+                    "driver_version": driver_version,
+                }
+            )
 
         return device_info
-    
-    def get_temperature(self, device_handle: "pynvml.nvmlDevice_t") -> Optional[float]:
-        """
-        Get GPU temperature in degrees Celsius.
+
+    def get_temperature(self, index: int) -> float | None:
+        """Get GPU temperature in degrees Celsius.
 
         Args:
-            device_handle: NVML device handle
+            index: GPU index (0-based)
 
-        Returns:
-            float: GPU temperature in degrees Celsius, or None if unavailable
+        Returns
+        -------
+            float: GPU temperature in degrees Celsius
         """
         try:
-            return pynvml.nvmlDeviceGetTemperature(device_handle, pynvml.NVML_TEMPERATURE_GPU)
+            device_handle = self._get_device_handle(index)
+            return pynvml.nvmlDeviceGetTemperature(  # type: ignore[no-any-return]
+                device_handle, pynvml.NVML_TEMPERATURE_GPU
+            )
         except pynvml.NVMLError:
             return None
 
@@ -114,7 +123,7 @@ class NvidiaBackend(GPUBackend):
             bool: True if at least one NVIDIA GPU is detected
         """
         try:
-            return pynvml.nvmlDeviceGetCount() > 0
+            return self.get_device_count() > 0
         except pynvml.NVMLError:
             return False
 
@@ -130,9 +139,9 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return 0
 
-    def get_device_handle(self, index: int):
+    def _get_device_handle(self, index: int):
         """
-        Get NVML device handle for a GPU.
+        Get NVML device handle for a GPU (internal use only).
 
         Args:
             index: GPU index (0-based)
@@ -154,17 +163,18 @@ class NvidiaBackend(GPUBackend):
         """
         return f"cuda:{device_id}"
 
-    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> Optional[Dict]:
         """
         Get current GPU memory usage.
 
         Args:
-            device_handle: NVML device handle
+            index: GPU index (0-based)
 
         Returns:
             dict with keys: total, used, free (all in bytes), or None if unavailable
         """
         try:
+            device_handle = self._get_device_handle(index)
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(device_handle)
             return {
                 'total': mem_info.total,
@@ -174,17 +184,18 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return None
 
-    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> Optional[Dict]:
         """
         Get GPU utilization percentage.
 
         Args:
-            device_handle: NVML device handle
+            index: GPU index (0-based)
 
         Returns:
             dict with keys: gpu, memory (both 0-100), or None if unavailable
         """
         try:
+            device_handle = self._get_device_handle(index)
             util = pynvml.nvmlDeviceGetUtilizationRates(device_handle)
             return {
                 'gpu': float(util.gpu),
@@ -193,34 +204,36 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return None
 
-    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+    def get_power_usage(self, index: int) -> Optional[float]:
         """
         Get current GPU power usage in Watts.
 
         Args:
-            device_handle: NVML device handle
+            index: GPU index (0-based)
 
         Returns:
             float: Power usage in Watts, or None if unavailable
         """
         try:
+            device_handle = self._get_device_handle(index)
             # pynvml returns power in milliwatts
             power_mw = pynvml.nvmlDeviceGetPowerUsage(device_handle)
             return power_mw / 1000.0  # Convert to Watts
         except pynvml.NVMLError:
             return None
 
-    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> List[str]:
         """
         Get current GPU throttling reasons.
 
         Args:
-            device_handle: NVML device handle
+            index: GPU index (0-based)
 
         Returns:
             List[str]: List of active throttle reasons, empty list if not throttling
         """
         try:
+            device_handle = self._get_device_handle(index)
             throttle_reasons = []
             clocks_throttle_reasons = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(device_handle)
 
@@ -254,4 +267,3 @@ class NvidiaBackend(GPUBackend):
             pynvml.nvmlShutdown()
         except pynvml.NVMLError:
             pass  # Ignore errors during shutdown
-

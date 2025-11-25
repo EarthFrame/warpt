@@ -11,18 +11,22 @@ The framework detection system provides a structured, extensible way to detect M
 ### Components
 
 1. **Pydantic Models** (`warpt/models/list_models.py`)
+
    - `FrameworkInfo`: Stores framework metadata (version, CUDA support)
    - `SoftwareInfo`: Container for all software information including frameworks
 
-2. **Base Detector** (`warpt/backends/software/frameworks/base.py`)
+1. **Base Detector** (`warpt/backends/software/frameworks/base.py`)
+
    - `FrameworkDetector`: Abstract base class for all framework detectors
    - Provides safe import functionality and enforces interface
 
-3. **Framework-Specific Detectors** (`warpt/backends/software/frameworks/`)
+1. **Framework-Specific Detectors** (`warpt/backends/software/frameworks/`)
+
    - `PyTorchDetector`: Detects PyTorch installation
    - Future: TensorFlowDetector, JAXDetector, etc.
 
-4. **Detection Functions** (`warpt/backends/software/frameworks/__init__.py`)
+1. **Detection Functions** (`warpt/backends/software/frameworks/__init__.py`)
+
    - `detect_all_frameworks()`: Detect all available frameworks
    - `detect_framework(name)`: Detect specific framework by name
 
@@ -232,6 +236,7 @@ python examples/framework_detection_demo.py
 ```
 
 This will:
+
 - Detect all installed frameworks
 - Display version and CUDA support information
 - Show JSON output for integration with other tools
@@ -261,19 +266,22 @@ This will:
 ## Future Enhancements
 
 1. **Extended Metadata**: Add more fields to `FrameworkInfo`
+
    - Installation path
    - Build configuration
    - Supported backends (CPU, CUDA, ROCm, etc.)
    - Available extensions/plugins
 
-2. **More Frameworks**:
+1. **More Frameworks**:
+
    - TensorFlow
    - JAX
    - MXNet
    - ONNX Runtime
 
-3. **Version Compatibility Checks**:
+1. **Version Compatibility Checks**:
+
    - Check for known compatibility issues
    - Warn about deprecated versions
 
-4. **Performance**: Cache detection results to avoid repeated imports
+1. **Performance**: Cache detection results to avoid repeated imports
