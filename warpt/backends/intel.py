@@ -1,5 +1,4 @@
-"""
-Intel GPU backend placeholder.
+"""Intel GPU backend placeholder.
 
 This backend will use Intel's Level Zero or oneAPI libraries
 when implemented.
@@ -7,7 +6,7 @@ when implemented.
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
@@ -31,7 +30,7 @@ class IntelBackend(GPUBackend):
         """Get the number of Intel GPUs."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def list_devices(self) -> List[GPUInfo]:
+    def list_devices(self) -> list[GPUInfo]:
         """List all Intel GPUs."""
         raise NotImplementedError("Intel backend not yet implemented")
 

@@ -2,16 +2,11 @@
 
 This backend collects GPU information for the list command.
 """
-
-<<<<<<< HEAD
 from typing import Any, Dict, List, Optional
 
-=======
->>>>>>> 5161f24b63c0c145397c8de216d3ca74834b1287
 import pynvml
 
 from warpt.backends.base import GPUBackend
-from warpt.models.list_models import GPUInfo
 
 
 class NvidiaBackend(GPUBackend):
@@ -116,8 +111,7 @@ class NvidiaBackend(GPUBackend):
             return None
 
     def is_available(self) -> bool:
-        """
-        Check if NVIDIA GPUs are available.
+        """Check if NVIDIA GPUs are available.
 
         Returns:
             bool: True if at least one NVIDIA GPU is detected
@@ -128,8 +122,7 @@ class NvidiaBackend(GPUBackend):
             return False
 
     def get_device_count(self) -> int:
-        """
-        Get the number of NVIDIA GPUs.
+        """Get the number of NVIDIA GPUs.
 
         Returns:
             int: Number of NVIDIA GPUs detected
@@ -152,8 +145,7 @@ class NvidiaBackend(GPUBackend):
         return pynvml.nvmlDeviceGetHandleByIndex(index)
 
     def get_pytorch_device_string(self, device_id: int) -> str:
-        """
-        Get PyTorch device string for NVIDIA GPUs.
+        """Get PyTorch device string for NVIDIA GPUs.
 
         Args:
             device_id: GPU index (0-based)
@@ -177,9 +169,9 @@ class NvidiaBackend(GPUBackend):
             device_handle = self._get_device_handle(index)
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(device_handle)
             return {
-                'total': mem_info.total,
-                'used': mem_info.used,
-                'free': mem_info.free,
+                "total": mem_info.total,
+                "used": mem_info.used,
+                "free": mem_info.free,
             }
         except pynvml.NVMLError:
             return None
@@ -198,8 +190,8 @@ class NvidiaBackend(GPUBackend):
             device_handle = self._get_device_handle(index)
             util = pynvml.nvmlDeviceGetUtilizationRates(device_handle)
             return {
-                'gpu': float(util.gpu),
-                'memory': float(util.memory),
+                "gpu": float(util.gpu),
+                "memory": float(util.memory),
             }
         except pynvml.NVMLError:
             return None
@@ -235,34 +227,46 @@ class NvidiaBackend(GPUBackend):
         try:
             device_handle = self._get_device_handle(index)
             throttle_reasons = []
-            clocks_throttle_reasons = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(device_handle)
+            clocks_throttle_reasons = pynvml.nvmlDeviceGetCurrentClocksThrottleReasons(
+                device_handle
+            )
 
             # Check each throttle reason bit flag
             if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonGpuIdle:
-                throttle_reasons.append('gpu_idle')
-            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonApplicationsClocksSetting:
-                throttle_reasons.append('applications_clocks_setting')
+                throttle_reasons.append("gpu_idle")
+            if (
+                clocks_throttle_reasons
+                & pynvml.nvmlClocksThrottleReasonApplicationsClocksSetting
+            ):
+                throttle_reasons.append("applications_clocks_setting")
             if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSwPowerCap:
-                throttle_reasons.append('sw_power_cap')
+                throttle_reasons.append("sw_power_cap")
             if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwSlowdown:
-                throttle_reasons.append('hw_slowdown')
+                throttle_reasons.append("hw_slowdown")
             if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSyncBoost:
-                throttle_reasons.append('sync_boost')
-            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonSwThermalSlowdown:
-                throttle_reasons.append('sw_thermal_slowdown')
-            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwThermalSlowdown:
-                throttle_reasons.append('hw_thermal_slowdown')
-            if clocks_throttle_reasons & pynvml.nvmlClocksThrottleReasonHwPowerBrakeSlowdown:
-                throttle_reasons.append('hw_power_brake_slowdown')
+                throttle_reasons.append("sync_boost")
+            if (
+                clocks_throttle_reasons
+                & pynvml.nvmlClocksThrottleReasonSwThermalSlowdown
+            ):
+                throttle_reasons.append("sw_thermal_slowdown")
+            if (
+                clocks_throttle_reasons
+                & pynvml.nvmlClocksThrottleReasonHwThermalSlowdown
+            ):
+                throttle_reasons.append("hw_thermal_slowdown")
+            if (
+                clocks_throttle_reasons
+                & pynvml.nvmlClocksThrottleReasonHwPowerBrakeSlowdown
+            ):
+                throttle_reasons.append("hw_power_brake_slowdown")
 
             return throttle_reasons
         except pynvml.NVMLError:
             return []
 
     def shutdown(self):
-        """
-        Cleanup and shutdown NVML.
-        """
+        """Cleanup and shutdown NVML."""
         try:
             pynvml.nvmlShutdown()
         except pynvml.NVMLError:

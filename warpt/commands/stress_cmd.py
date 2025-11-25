@@ -132,7 +132,6 @@ def validate_device_availability(
     explicit_gpu_request: bool = False,
 ) -> list[str]:
     """Validate that requested devices are available.
-
     Unavailable targets are removed with warnings.
 
     Args:
@@ -358,7 +357,7 @@ def run_stress(
             )
             print()
 
-        elif target == 'gpu':
+        elif target == "gpu":
             from warpt.stress.gpu_compute import GPUMatMulTest
 
             # Test each GPU individually
@@ -369,14 +368,20 @@ def run_stress(
                 results = test.run(duration=test_duration)
 
                 # Display results
-                print(f"\nResults for GPU {gpu_id} ({results.get('gpu_name', 'Unknown')}):")
+                print(
+                    f"\nResults for GPU {gpu_id} ({results.get('gpu_name', 'Unknown')}):"
+                )
                 print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
                 print(f"  Duration:           {results['duration']:.2f}s")
                 print(f"  Iterations:         {results['iterations']}")
-                print(f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}")
+                print(
+                    f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}"
+                )
                 print(f"  Total Operations:   {results['total_operations']:,}")
                 print(f"  Precision:          {results['precision'].upper()}")
-                print(f"  Memory Used:        {results['memory_used_gb']:.2f} GB / {results['memory_total_gb']:.2f} GB")
+                print(
+                    f"  Memory Used:        {results['memory_used_gb']:.2f} GB / {results['memory_total_gb']:.2f} GB"
+                )
                 print()
 
         elif target == "ram":

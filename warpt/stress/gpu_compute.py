@@ -1,7 +1,6 @@
 """GPU compute stress tests."""
 
 import time
-from typing import Optional
 
 from warpt.backends.base import GPUBackend
 from warpt.models.constants import GPU_STRESS_TEST
@@ -16,11 +15,10 @@ class GPUMatMulTest(StressTest):
         self,
         device_id: int,
         burnin_seconds: int,
-        backend: Optional[GPUBackend] = None,
-        matrix_size: int = 8192
+        backend: GPUBackend | None = None,
+        matrix_size: int = 8192,
     ):
-        """
-        Initialize GPU matmul test.
+        """Initialize GPU matmul test.
 
         Args:
             device_id: GPU device ID (0, 1, 2, etc.)
@@ -34,8 +32,7 @@ class GPUMatMulTest(StressTest):
         self.matrix_size = matrix_size
 
     def run(self, duration: int) -> dict:
-        """
-        Run GPU matrix multiplication test.
+        """Run GPU matrix multiplication test.
 
         Args:
             duration: Test duration in seconds
@@ -47,7 +44,9 @@ class GPUMatMulTest(StressTest):
         try:
             import torch
         except ImportError:
-            raise RuntimeError("PyTorch is not installed. Install with: pip install torch")
+            raise RuntimeError(
+                "PyTorch is not installed. Install with: pip install torch"
+            )
 
         # Get PyTorch device string from backend or default to NVIDIA
         if self.backend:
@@ -74,11 +73,17 @@ class GPUMatMulTest(StressTest):
         gpu_memory_total = gpu_props.total_memory / (1024**3)  # convert to GB
 
         # Burnin/warmup phase - let GPU warm up
-        print(f"  Warming up GPU {self.device_id} ({gpu_name}) for {self.burnin_seconds}s...")
+        print(
+            f"  Warming up GPU {self.device_id} ({gpu_name}) for {self.burnin_seconds}s..."
+        )
         burnin_start = time.time()
         while (time.time() - burnin_start) < self.burnin_seconds:
-            A = torch.randn(self.matrix_size, self.matrix_size, dtype=torch.float32, device=device)
-            B = torch.randn(self.matrix_size, self.matrix_size, dtype=torch.float32, device=device)
+            A = torch.randn(
+                self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
+            )
+            B = torch.randn(
+                self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
+            )
             C = torch.matmul(A, B)
             torch.cuda.synchronize()  # Wait for GPU to finish
             del A, B, C
@@ -95,8 +100,12 @@ class GPUMatMulTest(StressTest):
         torch.cuda.reset_peak_memory_stats(device)
 
         while (time.time() - start_time) < duration:
-            A = torch.randn(self.matrix_size, self.matrix_size, dtype=torch.float32, device=device)
-            B = torch.randn(self.matrix_size, self.matrix_size, dtype=torch.float32, device=device)
+            A = torch.randn(
+                self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
+            )
+            B = torch.randn(
+                self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
+            )
             C = torch.matmul(A, B)
             torch.cuda.synchronize()  # Ensure GPU completes before timing
             iterations += 1
@@ -105,11 +114,13 @@ class GPUMatMulTest(StressTest):
         elapsed = time.time() - start_time
 
         # Get memory stats
-        memory_used = torch.cuda.max_memory_allocated(device) / (1024**3)  # Convert to GB
+        memory_used = torch.cuda.max_memory_allocated(device) / (
+            1024**3
+        )  # Convert to GB
 
         # Calculate TFLOPS
         # Matrix multiplication: 2*N^3 - N^2 operations
-        ops_per_matmul = 2 * (self.matrix_size ** 3) - (self.matrix_size ** 2)
+        ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
         total_ops = iterations * ops_per_matmul
         tflops = calculate_tflops(total_ops, elapsed)
 
@@ -117,18 +128,18 @@ class GPUMatMulTest(StressTest):
         torch.cuda.empty_cache()
 
         return {
-            'test_name': self.get_name(),
-            'device_id': self.device_id,
-            'gpu_name': gpu_name,
-            'tflops': tflops,
-            'duration': elapsed,
-            'iterations': iterations,
-            'matrix_size': self.matrix_size,
-            'total_operations': total_ops,
-            'burnin_seconds': self.burnin_seconds,
-            'memory_used_gb': memory_used,
-            'memory_total_gb': gpu_memory_total,
-            'precision': 'fp32',
+            "test_name": self.get_name(),
+            "device_id": self.device_id,
+            "gpu_name": gpu_name,
+            "tflops": tflops,
+            "duration": elapsed,
+            "iterations": iterations,
+            "matrix_size": self.matrix_size,
+            "total_operations": total_ops,
+            "burnin_seconds": self.burnin_seconds,
+            "memory_used_gb": memory_used,
+            "memory_total_gb": gpu_memory_total,
+            "precision": "fp32",
         }
 
     def get_name(self) -> str:

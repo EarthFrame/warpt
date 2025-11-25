@@ -1,5 +1,4 @@
-"""
-AMD GPU backend placeholder.
+"""AMD GPU backend placeholder.
 
 This backend will use AMD's ROCm system management interface (amdsmi)
 when implemented.
@@ -7,7 +6,7 @@ when implemented.
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
@@ -31,7 +30,7 @@ class AMDBackend(GPUBackend):
         """Get the number of AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def list_devices(self) -> List[GPUInfo]:
+    def list_devices(self) -> list[GPUInfo]:
         """List all AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 

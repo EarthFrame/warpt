@@ -1,12 +1,11 @@
-"""
-Quantum computing backend placeholder.
+"""Quantum computing backend placeholder.
 
 This backend is a placeholder for future quantum computing accelerators.
 
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
@@ -30,7 +29,7 @@ class QuantumBackend(GPUBackend):
         """Get the number of quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def list_devices(self) -> List[GPUInfo]:
+    def list_devices(self) -> list[GPUInfo]:
         """List all quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 

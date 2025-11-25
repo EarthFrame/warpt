@@ -131,8 +131,7 @@ class GPUBackend(ABC):
 
     @abstractmethod
     def get_pytorch_device_string(self, device_id: int) -> str:
-        """
-        Get PyTorch device string for this vendor.
+        """Get PyTorch device string for this vendor.
 
         Used by stress tests to select the correct device in PyTorch.
         Different vendors use different device strings:

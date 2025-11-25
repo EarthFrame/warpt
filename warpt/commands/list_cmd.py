@@ -8,19 +8,31 @@ from pathlib import Path
 import pynvml
 
 from warpt.backends.nvidia import NvidiaBackend
+<<<<<<< Updated upstream
 from warpt.backends.ram import RAM
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
     CPUInfo as CPUInfoModel,
 )
 from warpt.models.list_models import (
+=======
+from warpt.backends.system import CPU
+from warpt.models.list_models import (
+>>>>>>> Stashed changes
     CUDAInfo,
     GPUInfo,
     HardwareInfo,
     ListOutput,
+<<<<<<< Updated upstream
     MemoryInfo,
     SoftwareInfo,
 )
+=======
+    SoftwareInfo,
+)
+
+>>>>>>> Stashed changes
+
 
 
 def random_string(length: int) -> str:
@@ -136,6 +148,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     else:
         print("  No CUDA information (no GPUs detected)")
 
+<<<<<<< Updated upstream
     cpu_model = CPUInfoModel(
         manufacturer=info.make,
         model=info.model,
@@ -191,6 +204,24 @@ def run_list(export_format=None, export_filename=None) -> None:
     if cuda_info:
         software = SoftwareInfo(
             python=None, cuda=cuda_info, frameworks=None, compilers=None
+=======
+    # Export to JSON if requested
+    if export_format == "json":
+        # Build CPUInfo model from backend data
+        from warpt.models.list_models import CPUInfo as ExportCPUInfo
+
+        cpu_model = ExportCPUInfo(
+            manufacturer=info.make,
+            model=info.model,
+            architecture=info.architecture,
+            cores=info.total_physical_cores,
+            threads=info.total_logical_cores,
+            base_frequency_mhz=info.base_frequency,
+            boost_frequency_single_core_mhz=info.boost_frequency_single_core,
+            boost_frequency_multi_core_mhz=info.boost_frequency_multi_core,
+            current_frequency_mhz=info.current_frequency,
+            instruction_sets=None,  # TODO: Populate from backend when available
+>>>>>>> Stashed changes
         )
 
     # Build output with CPU data
@@ -203,11 +234,20 @@ def run_list(export_format=None, export_filename=None) -> None:
     )
     output = ListOutput(hardware=hardware, software=software)
 
+<<<<<<< Updated upstream
     # Generate filename if not provided
     if not export_filename:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         random_tag = random_string(6)
         export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
+=======
+        # Build CUDA info if available
+        cuda_info = None
+        if cuda_driver_version:
+            cuda_info = CUDAInfo(
+                version=cuda_driver_version, driver=cuda_driver_version
+            )
+>>>>>>> Stashed changes
 
     # Write JSON file using Pydantic's built-in serialization
     output_path = Path(export_filename)
