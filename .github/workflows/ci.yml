@@ -38,6 +38,7 @@ jobs:
 
   # Tests (runs on multiple Python versions)
   test:
+    needs: lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
