@@ -116,7 +116,8 @@ class CPU:
     def get_cpu_info(self) -> CPUInfo:
         """Get comprehensive CPU information.
 
-        Returns:
+        Returns
+        -------
             CPUInfo object with system-level summary and optional per-socket
             details.
         """
@@ -200,7 +201,8 @@ class CPU:
         2. Linux: /proc/cpuinfo
         3. Fallback: platform.processor()
 
-        Returns:
+        Returns
+        -------
             CPU brand string
         """
         # Try macOS method
@@ -236,7 +238,8 @@ class CPU:
     def _parse_brand(brand_string: str) -> tuple[str, str]:
         """Parse CPU brand string into make and model.
 
-        Examples:
+        Examples
+        --------
             "Apple M2" -> ("Apple", "M2")
             "Intel Core i9-13900K" -> ("Intel", "Core i9-13900K")
             "AMD Ryzen 9 7950X" -> ("AMD", "Ryzen 9 7950X")
@@ -245,7 +248,8 @@ class CPU:
         Args:
             brand_string: Full CPU brand string
 
-        Returns:
+        Returns
+        -------
             Tuple of (make, model)
         """
         parts = brand_string.strip().split(None, 1)

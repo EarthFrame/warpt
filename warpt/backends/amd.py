@@ -7,7 +7,7 @@ when implemented.
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
@@ -31,7 +31,7 @@ class AMDBackend(GPUBackend):
         """Get the number of AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def list_devices(self) -> List[GPUInfo]:
+    def list_devices(self) -> list[GPUInfo]:
         """List all AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
@@ -39,15 +39,15 @@ class AMDBackend(GPUBackend):
         """Get AMD device handle."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_temperature(self, device_handle: Any) -> Optional[float]:
+    def get_temperature(self, device_handle: Any) -> float | None:
         """Get GPU temperature."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_memory_usage(self, device_handle: Any) -> Optional[Dict]:
+    def get_memory_usage(self, device_handle: Any) -> dict | None:
         """Get GPU memory usage."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_utilization(self, device_handle: Any) -> Optional[Dict]:
+    def get_utilization(self, device_handle: Any) -> dict | None:
         """Get GPU utilization."""
         raise NotImplementedError("AMD backend not yet implemented")
 
@@ -55,11 +55,11 @@ class AMDBackend(GPUBackend):
         """Get PyTorch device string for AMD GPUs."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_power_usage(self, device_handle: Any) -> Optional[float]:
+    def get_power_usage(self, device_handle: Any) -> float | None:
         """Get GPU power usage."""
         raise NotImplementedError("AMD backend not yet implemented")
 
-    def get_throttle_reasons(self, device_handle: Any) -> List[str]:
+    def get_throttle_reasons(self, device_handle: Any) -> list[str]:
         """Get GPU throttling reasons."""
         raise NotImplementedError("AMD backend not yet implemented")
 
