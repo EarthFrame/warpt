@@ -78,6 +78,7 @@ version = "0.1.1"
 The package hash is automatically computed from all Python source files in the warpt package. This provides a consistent way to identify a specific build of the package without relying on external git information.
 
 The hash excludes:
+
 - `__pycache__` directories
 - `.pyc`, `.pyo`, and `.pyd` files
 - `.git` and `.pytest_cache` directories

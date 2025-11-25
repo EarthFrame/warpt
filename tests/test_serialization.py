@@ -46,7 +46,7 @@ def cleanup_torch():
 class TestToDict:
     """Tests for to_dict() method."""
 
-    def test_to_dict_with_framework(self, mock_torch_installed):  # noqa: ARG002
+    def test_to_dict_with_framework(self, _mock_torch_installed):
         """Test to_dict() when framework is installed."""
         detector = PyTorchDetector()
         data = detector.to_dict()
@@ -58,7 +58,7 @@ class TestToDict:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is True
 
-    def test_to_dict_without_framework(self, cleanup_torch):  # noqa: ARG002
+    def test_to_dict_without_framework(self, _cleanup_torch):
         """Test to_dict() when framework is not installed."""
         detector = PyTorchDetector()
         data = detector.to_dict()
@@ -69,7 +69,7 @@ class TestToDict:
 class TestToJson:
     """Tests for to_json() method."""
 
-    def test_to_json_with_indentation(self, mock_torch_no_cuda):  # noqa: ARG002
+    def test_to_json_with_indentation(self, _mock_torch_no_cuda):
         """Test to_json() with indentation."""
         detector = PyTorchDetector()
         json_str = detector.to_json(indent=2)
@@ -82,7 +82,7 @@ class TestToJson:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is False
 
-    def test_to_json_compact(self, mock_torch_installed):  # noqa: ARG002
+    def test_to_json_compact(self, _mock_torch_installed):
         """Test to_json() without indentation."""
         detector = PyTorchDetector()
         compact = detector.to_json(indent=None)
@@ -90,7 +90,7 @@ class TestToJson:
         assert compact is not None
         assert "\n" not in compact
 
-    def test_to_json_without_framework(self, cleanup_torch):  # noqa: ARG002
+    def test_to_json_without_framework(self, _cleanup_torch):
         """Test to_json() when framework is not installed."""
         detector = PyTorchDetector()
         json_str = detector.to_json()
@@ -101,11 +101,11 @@ class TestToJson:
 class TestToYaml:
     """Tests for to_yaml() method."""
 
-    def test_to_yaml(self, mock_torch_installed):  # noqa: ARG002
+    def test_to_yaml(self, _mock_torch_installed):
         """Test to_yaml() produces valid YAML."""
         pytest.importorskip("yaml")
 
-        import yaml
+        import yaml  # type: ignore[import-untyped, unused-ignore]
 
         detector = PyTorchDetector()
         yaml_str = detector.to_yaml()
@@ -118,7 +118,7 @@ class TestToYaml:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is True
 
-    def test_to_yaml_import_error(self, mock_torch_installed, monkeypatch):  # noqa: ARG002
+    def test_to_yaml_import_error(self, _mock_torch_installed, monkeypatch):
         """Test to_yaml() raises ImportError when yaml not available."""
         # Mock yaml import to fail
         import builtins
@@ -140,7 +140,7 @@ class TestToYaml:
 class TestToToml:
     """Tests for to_toml() method."""
 
-    def test_to_toml(self, mock_torch_installed):  # noqa: ARG002
+    def test_to_toml(self, _mock_torch_installed):
         """Test to_toml() produces valid TOML."""
         pytest.importorskip("tomli")
         pytest.importorskip("tomli_w")
@@ -158,7 +158,7 @@ class TestToToml:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is True
 
-    def test_to_toml_import_error(self, mock_torch_installed, monkeypatch):  # noqa: ARG002
+    def test_to_toml_import_error(self, _mock_torch_installed, monkeypatch):
         """Test to_toml() raises ImportError when tomli_w not available."""
         import builtins
 
@@ -179,7 +179,7 @@ class TestToToml:
 class TestToHuml:
     """Tests for to_huml() method."""
 
-    def test_to_huml(self, mock_torch_installed):  # noqa: ARG002
+    def test_to_huml(self, _mock_torch_installed):
         """Test to_huml() produces valid HUML."""
         pyhuml = pytest.importorskip("pyhuml")
 
@@ -194,7 +194,7 @@ class TestToHuml:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is True
 
-    def test_to_huml_import_error(self, mock_torch_installed, monkeypatch):  # noqa: ARG002
+    def test_to_huml_import_error(self, _mock_torch_installed, monkeypatch):
         """Test to_huml() raises ImportError when pyhuml not available."""
         import builtins
 
@@ -215,7 +215,7 @@ class TestToHuml:
 class TestCustomOverride:
     """Tests for custom serialization overrides."""
 
-    def test_custom_to_dict(self, mock_torch_installed):  # noqa: ARG002
+    def test_custom_to_dict(self, _mock_torch_installed):
         """Test that to_dict() can be overridden."""
 
         class CustomDetector(PyTorchDetector):
@@ -234,7 +234,7 @@ class TestCustomOverride:
         assert data["custom_field"] == "custom_value"
         assert "version" in data
 
-    def test_custom_to_dict_affects_json(self, mock_torch_installed):  # noqa: ARG002
+    def test_custom_to_dict_affects_json(self, _mock_torch_installed):
         """Test that custom to_dict() is used by to_json()."""
 
         class CustomDetector(PyTorchDetector):

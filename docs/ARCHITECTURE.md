@@ -11,15 +11,18 @@ Backends Layer (backends/)
 ```
 
 ### CLI Layer
+
 - Click command definitions
 - Argument parsing
 - Calls command handlers
 
 ### Commands Layer
+
 - Handles user interaction and output formatting
 - Calls backend(s) to get data
 
 ### Backends Layer
+
 - Pure data collection
 - No CLI dependencies
 - Returns raw data structures
@@ -27,16 +30,19 @@ Backends Layer (backends/)
 ## Backend Split
 
 **`system.py`** - Generic system info using `psutil`
+
 - CPU cores, usage
 - Memory, disk (future)
 - Platform-agnostic
 
 **`nvidia.py`** - NVIDIA-specific using `pynvml`
+
 - GPU detection
 - Memory, temperature
 - CUDA info
 
 **`future additions`** - additional vendor logic
+
 - amd.py
 - intel.py
 - interface to implement shared methods
@@ -78,6 +84,7 @@ Returns CPU data → formats → prints
 ## Future Additions
 
 Commands need to be created for:
+
 - `monitor` - Real-time monitoring
 - `benchmark` - Performance tests
 - `check` - Health checks

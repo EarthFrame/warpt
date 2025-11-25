@@ -71,10 +71,13 @@ select = [
 ignore = [
     "D100",   # Missing module docstring (sometimes not needed)
     "D104",   # Missing docstring in public package
+    "D212",   # Multi-line docstring summary should start at the first line (NumPy style uses second line)
+    "D406",   # Section name should end with a newline (our NumPy style variation)
+    "D407",   # Missing dashed underline after section (our NumPy style variation)
 ]
 
 [tool.ruff.lint.pydocstyle]
-convention = "google"  # Use Google-style docstrings
+convention = "numpy"  # Use NumPy-style docstrings
 
 [tool.ruff.lint.isort]
 known-first-party = ["warpt"]
