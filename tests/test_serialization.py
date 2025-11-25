@@ -10,7 +10,7 @@ from warpt.backends.software.frameworks import PyTorchDetector
 
 
 @pytest.fixture
-def mock_torch_installed():
+def _mock_torch_installed():
     """Fixture to mock installed torch with CUDA."""
     mock = MagicMock()
     mock.__version__ = "2.1.0"
@@ -22,7 +22,7 @@ def mock_torch_installed():
 
 
 @pytest.fixture
-def mock_torch_no_cuda():
+def _mock_torch_no_cuda():
     """Fixture to mock installed torch without CUDA."""
     mock = MagicMock()
     mock.__version__ = "2.1.0"
