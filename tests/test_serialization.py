@@ -34,7 +34,7 @@ def _mock_torch_no_cuda():
 
 
 @pytest.fixture
-def cleanup_torch():
+def _cleanup_torch():
     """Fixture to ensure torch is not in sys.modules."""
     if "torch" in sys.modules:
         del sys.modules["torch"]
