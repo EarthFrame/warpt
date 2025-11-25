@@ -9,17 +9,11 @@ repos:
       - id: black
         types: [python]
 
-  # Ruff: Fast Python linting and formatting
+  # Ruff: Fast Python linting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.1.8
     hooks:
-      # Linting
       - id: ruff
-        args: [--fix]
-        types: [python]
-
-      # Formatting (optional but recommended)
-      - id: ruff-format
         types: [python]
 
   # Mypy: Static type checking
@@ -49,4 +43,5 @@ repos:
     rev: 0.7.17
     hooks:
       - id: mdformat
+        args: ["--check"]
         types: [markdown]
