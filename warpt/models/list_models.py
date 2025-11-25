@@ -61,7 +61,10 @@ class MemoryInfo(BaseModel):
     """System memory information."""
 
     total_gb: int = Field(..., description="Total system memory in GB", ge=1)
+    free_gb: float = Field(..., description="Free system memory in GB", ge=0)
     type: str | None = Field(None, description="Memory type (DDR4, DDR5, etc.)")
+    speed_mhz: int | None = Field(None, description="Memory speed in MHz")
+    channels: int | None = Field(None, description="Number of memory channels")
 
 
 class StorageDevice(BaseModel):
