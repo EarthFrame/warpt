@@ -28,9 +28,10 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
-        additional_dependencies: ['types-psutil']
-        args: [--ignore-missing-imports]
+        additional_dependencies: ['types-psutil', 'pydantic']
+        args: [warpt/]
         types: [python]
+        pass_filenames: false
 
   # Python syntax checking
   - repo: https://github.com/pre-commit/pre-commit-hooks

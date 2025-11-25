@@ -44,7 +44,7 @@ class FrameworkDetector(ABC):
         info = self.detect()
         if info is None:
             return None
-        return info.model_dump()  # type: ignore[no-any-return]
+        return info.model_dump()
 
     def to_json(self, indent: int | None = 2) -> str | None:
         """Convert framework info to JSON string.

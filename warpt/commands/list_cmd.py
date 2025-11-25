@@ -160,23 +160,27 @@ def run_list(export_format=None, export_filename=None) -> None:
                 version=cuda_driver_version, driver=cuda_driver_version
             )
 
-        # Build software info
-        software = None
-        if cuda_info:
-            software = SoftwareInfo(cuda=cuda_info)
+    # Build software info
+    software = None
+    if cuda_info:
+        software = SoftwareInfo(
+            python=None, cuda=cuda_info, frameworks=None, compilers=None
+        )
 
-        # Build output with CPU data
-        hardware = HardwareInfo(cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models)
-        output = ListOutput(hardware=hardware, software=software)
+    # Build output with CPU data
+    hardware = HardwareInfo(
+        cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models, memory=None, storage=None
+    )
+    output = ListOutput(hardware=hardware, software=software)
 
-        # Generate filename if not provided
-        if not export_filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            random_tag = random_string(6)
-            export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
+    # Generate filename if not provided
+    if not export_filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        random_tag = random_string(6)
+        export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
 
-        # Write JSON file using Pydantic's built-in serialization
-        output_path = Path(export_filename)
-        output_path.write_text(output.model_dump_json(indent=2))
+    # Write JSON file using Pydantic's built-in serialization
+    output_path = Path(export_filename)
+    output_path.write_text(output.model_dump_json(indent=2))
 
-        print(f"\n✓ JSON exported to: {export_filename}")
+    print(f"\n✓ JSON exported to: {export_filename}")
