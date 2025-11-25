@@ -3,7 +3,6 @@
 This backend collects GPU information for the list command.
 """
 
-
 import pynvml
 
 
