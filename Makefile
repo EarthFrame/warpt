@@ -1,4 +1,4 @@
-.PHONY: check format help lint type-check mdformat
+.PHONY: check format help lint type-check mdformat test
 
 help:
 	@echo "Available targets:"
@@ -7,6 +7,7 @@ help:
 	@echo "  format      - Apply formatting (Black, Ruff fix, mdformat)"
 	@echo "  type-check  - Run mypy for static typing"
 	@echo "  mdformat    - Format Markdown files in docs/examples/README"
+	@echo "  test        - Run pytest on the tests/ directory"
 
 lint:
 	pre-commit run --all-files ruff
@@ -26,3 +27,6 @@ type-check:
 
 mdformat:
 	mdformat docs/ examples/ README.md
+
+test:
+	pytest tests/
