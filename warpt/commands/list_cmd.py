@@ -2,19 +2,21 @@
 
 import random
 import string
-import subprocess
 from datetime import datetime
 from pathlib import Path
+
 import pynvml
 
 from warpt.backends.nvidia import NvidiaBackend
-from warpt.backends.system import CPU, System
-from warpt.models.list_models import CUDAInfo, GPUInfo, HardwareInfo, ListOutput, SoftwareInfo
+from warpt.backends.system import CPU
+from warpt.models.list_models import (
+    CUDAInfo,
+    GPUInfo,
+    HardwareInfo,
+    ListOutput,
+    SoftwareInfo,
+)
 
-def random_string(length: int) -> str:
-    """Generate random uppercase string for unique filenames."""
-    chars = string.ascii_uppercase
-    return "".join(random.choice(chars) for _ in range(length))
 
 def random_string(length: int) -> str:
     """Generate random uppercase string for unique filenames."""
@@ -92,9 +94,9 @@ def run_list(export_format=None, export_filename=None) -> None:
                 print(f"  [{gpu['index']}] {gpu['model']}")
                 print(f"      Memory:         {gpu['memory_gb']} GB")
                 print(f"      CUDA Compute:   {gpu['compute_capability']}")
-                if gpu.get('pcie_gen'):
+                if gpu.get("pcie_gen"):
                     print(f"      PCIe Gen:       {gpu['pcie_gen']}")
-                if gpu.get('driver_version'):
+                if gpu.get("driver_version"):
                     print(f"      Driver Version: {gpu['driver_version']}")
 
         gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
@@ -107,7 +109,8 @@ def run_list(export_format=None, export_filename=None) -> None:
         gpu_list = None
 
     # CUDA Detection
-    # TODO: Add CUDA toolkit version detection (nvcc) - for now just using driver version
+    # TODO: Add CUDA toolkit version detection (nvcc) - for now just using
+    # driver version
     print("\nCUDA Information:")
     cuda_driver_version = None
 
@@ -126,9 +129,10 @@ def run_list(export_format=None, export_filename=None) -> None:
         print("  No CUDA information (no GPUs detected)")
 
     # Export to JSON if requested
-    if export_format == 'json':
+    if export_format == "json":
         # Build CPUInfo model from backend data
         from warpt.models.list_models import CPUInfo as ExportCPUInfo
+
         cpu_model = ExportCPUInfo(
             manufacturer=info.make,
             model=info.model,
@@ -152,25 +156,31 @@ def run_list(export_format=None, export_filename=None) -> None:
         # Build CUDA info if available
         cuda_info = None
         if cuda_driver_version:
-            cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
+            cuda_info = CUDAInfo(
+                version=cuda_driver_version, driver=cuda_driver_version
+            )
 
-        # Build software info
-        software = None
-        if cuda_info:
-            software = SoftwareInfo(cuda=cuda_info)
+    # Build software info
+    software = None
+    if cuda_info:
+        software = SoftwareInfo(
+            python=None, cuda=cuda_info, frameworks=None, compilers=None
+        )
 
-        # Build output with CPU data
-        hardware = HardwareInfo(cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models)
-        output = ListOutput(hardware=hardware, software=software)
+    # Build output with CPU data
+    hardware = HardwareInfo(
+        cpu=cpu_model, gpu_count=gpu_count, gpu=gpu_models, memory=None, storage=None
+    )
+    output = ListOutput(hardware=hardware, software=software)
 
-        # Generate filename if not provided
-        if not export_filename:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            random_tag = random_string(6)
-            export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
+    # Generate filename if not provided
+    if not export_filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        random_tag = random_string(6)
+        export_filename = f"warpt_list_{timestamp}_{random_tag}.json"
 
-        # Write JSON file using Pydantic's built-in serialization
-        output_path = Path(export_filename)
-        output_path.write_text(output.model_dump_json(indent=2))
+    # Write JSON file using Pydantic's built-in serialization
+    output_path = Path(export_filename)
+    output_path.write_text(output.model_dump_json(indent=2))
 
-        print(f"\n✓ JSON exported to: {export_filename}")
+    print(f"\n✓ JSON exported to: {export_filename}")

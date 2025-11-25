@@ -32,32 +32,38 @@ That's it! Pre-commit will now run automatically on every `git commit`.
 ## 📋 Common Commands
 
 ### Run on Staged Files (Before Commit)
+
 ```bash
 pre-commit run
 ```
 
 ### Run on All Files
+
 ```bash
 pre-commit run --all-files
 ```
 
 ### Run Specific Hook
+
 ```bash
 pre-commit run ruff --all-files
 pre-commit run ruff-format --all-files
 ```
 
 ### Skip Pre-commit (Not Recommended!)
+
 ```bash
 git commit --no-verify
 ```
 
 ### Reinstall Hooks
+
 ```bash
 pre-commit install
 ```
 
 ### Update Hook Versions
+
 ```bash
 pre-commit autoupdate
 ```
@@ -65,11 +71,13 @@ pre-commit autoupdate
 ## 🐛 Troubleshooting
 
 ### "pre-commit: command not found"
+
 ```bash
 pip install pre-commit
 ```
 
 ### Hooks Not Running on Commit
+
 ```bash
 # Reinstall hooks
 pre-commit install
@@ -79,13 +87,16 @@ ls -la .git/hooks/pre-commit
 ```
 
 ### Want to Disable a Specific Hook
+
 Edit `.pre-commit-config.yaml` and set `stages: [manual]` on the hook, then run manually when needed.
 
 ### Large File Rejection
+
 Files over 500KB will be rejected. Options:
+
 1. Split into smaller files
-2. Use Git LFS for large files
-3. Skip with `git commit --no-verify` (not recommended)
+1. Use Git LFS for large files
+1. Skip with `git commit --no-verify` (not recommended)
 
 ## 📝 Workflow Example
 
@@ -157,10 +168,10 @@ See [README.md](README.md) for more details.
 ## 🎯 Best Practices
 
 1. ✅ Install pre-commit hooks in all local repos
-2. ✅ Run `pre-commit run --all-files` before pushing
-3. ✅ Keep hook configuration in version control
-4. ✅ Update hooks regularly: `pre-commit autoupdate`
-5. ❌ Avoid `--no-verify` unless absolutely necessary
+1. ✅ Run `pre-commit run --all-files` before pushing
+1. ✅ Keep hook configuration in version control
+1. ✅ Update hooks regularly: `pre-commit autoupdate`
+1. ❌ Avoid `--no-verify` unless absolutely necessary
 
 ## 🔗 Resources
 

@@ -1,7 +1,7 @@
 """Base class for stress tests."""
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class StressTest(ABC):
@@ -9,43 +9,43 @@ class StressTest(ABC):
 
     @abstractmethod
     def run(self, duration: int) -> dict:
-        """
-        Run the stress test.
+        """Run the stress test.
 
         Args:
             duration: Test duration in seconds
 
-        Returns:
+        Returns
+        -------
             Dictionary containing test results
         """
         pass
 
     @abstractmethod
     def get_name(self) -> str:
-        """
-        Get the test name for display.
+        """Get the test name for display.
 
-        Returns:
+        Returns
+        -------
             Human-readable test name
         """
         pass
 
     @staticmethod
     def generate_timestamp_start() -> str:
-        """
-        Generate a start timestamp for the test.
+        """Generate a start timestamp for the test.
 
-        Returns:
+        Returns
+        -------
             ISO format timestamp string (UTC)
         """
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     @staticmethod
     def generate_timestamp_end() -> str:
-        """
-        Generate an end timestamp for the test.
+        """Generate an end timestamp for the test.
 
-        Returns:
+        Returns
+        -------
             ISO format timestamp string (UTC)
         """
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()

@@ -62,6 +62,7 @@ pre-commit run --all-files
 We use [pre-commit](https://pre-commit.com) for automated code quality checks. Hooks run automatically on `git commit`.
 
 **What gets checked:**
+
 - **ruff**: Fast Python linting (PEP 8, naming, imports, etc.)
 - **ruff format**: Code formatting
 - **YAML syntax**: Valid YAML files

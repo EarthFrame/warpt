@@ -17,7 +17,8 @@ class FrameworkDetector(ABC):
     def detect(self) -> FrameworkInfo | None:
         """Detect if the framework is installed and gather its information.
 
-        Returns:
+        Returns
+        -------
             FrameworkInfo object if framework is installed, None otherwise.
         """
         pass
@@ -34,7 +35,8 @@ class FrameworkDetector(ABC):
     def to_dict(self) -> dict[str, str | bool] | None:
         """Convert framework info to dictionary format.
 
-        Returns:
+        Returns
+        -------
             Dictionary with framework info, or None if not installed.
             Default implementation returns the FrameworkInfo as a dict.
             Override this method to customize the output structure.
@@ -50,7 +52,8 @@ class FrameworkDetector(ABC):
         Args:
             indent: Number of spaces for indentation (None for compact)
 
-        Returns:
+        Returns
+        -------
             JSON string with framework info, or None if not installed.
             Override this method to customize the JSON output.
         """
@@ -62,15 +65,17 @@ class FrameworkDetector(ABC):
     def to_yaml(self) -> str | None:
         """Convert framework info to YAML string.
 
-        Returns:
+        Returns
+        -------
             YAML string with framework info, or None if not installed.
             Override this method to customize the YAML output.
 
-        Raises:
+        Raises
+        ------
             ImportError: If PyYAML is not installed.
         """
         try:
-            import yaml  # type: ignore
+            import yaml  # type: ignore[import-untyped, unused-ignore]
         except ImportError as e:
             raise ImportError(
                 "PyYAML is required for YAML output. "
@@ -80,20 +85,22 @@ class FrameworkDetector(ABC):
         data = self.to_dict()
         if data is None:
             return None
-        return yaml.dump(data, default_flow_style=False, sort_keys=False)
+        return yaml.dump(data, default_flow_style=False, sort_keys=False)  # type: ignore[no-any-return]
 
     def to_toml(self) -> str | None:
         """Convert framework info to TOML string.
 
-        Returns:
+        Returns
+        -------
             TOML string with framework info, or None if not installed.
             Override this method to customize the TOML output.
 
-        Raises:
+        Raises
+        ------
             ImportError: If tomli_w is not installed.
         """
         try:
-            import tomli_w  # type: ignore
+            import tomli_w
         except ImportError as e:
             raise ImportError(
                 "tomli_w is required for TOML output. "
@@ -103,20 +110,22 @@ class FrameworkDetector(ABC):
         data = self.to_dict()
         if data is None:
             return None
-        return tomli_w.dumps(data)
+        return tomli_w.dumps(data)  # type: ignore[no-any-return]
 
     def to_huml(self) -> str | None:
         """Convert framework info to HUML (Human Markup Language) string.
 
-        Returns:
+        Returns
+        -------
             HUML string with framework info, or None if not installed.
             Override this method to customize the HUML output.
 
-        Raises:
+        Raises
+        ------
             ImportError: If pyhuml is not installed.
         """
         try:
-            import pyhuml  # type: ignore
+            import pyhuml
         except ImportError as e:
             raise ImportError(
                 "pyhuml is required for HUML output. "
@@ -126,7 +135,7 @@ class FrameworkDetector(ABC):
         data = self.to_dict()
         if data is None:
             return None
-        return pyhuml.dumps(data)
+        return pyhuml.dumps(data)  # type: ignore[no-any-return]
 
     @staticmethod
     def _safe_import(module_name: str) -> object | None:
@@ -135,7 +144,8 @@ class FrameworkDetector(ABC):
         Args:
             module_name: Name of the module to import
 
-        Returns:
+        Returns
+        -------
             The imported module if successful, None otherwise.
         """
         try:

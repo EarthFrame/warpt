@@ -55,6 +55,7 @@ PyTorch is installed:
 ### `framework_serialization_demo.py`
 
 Demonstrates the serialization methods available on framework detectors. Shows:
+
 - Converting framework info to dict, JSON, YAML, and TOML formats
 - How to override serialization methods for custom output
 - Exporting in multiple formats simultaneously

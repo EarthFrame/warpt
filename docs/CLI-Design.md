@@ -7,33 +7,38 @@
 ## Installation
 
 ### pip (Recommended)
+
 ```bash
 pip install warpt
 ```
 
 ### conda
+
 ```bash
 conda install -c conda-forge warpt
 ```
 
 ### poetry
+
 ```bash
 poetry add warpt
 ```
 
 ### uv
+
 ```bash
 uv pip install warpt
 ```
 
 ### From Source
+
 ```bash
 git clone https://github.com/your-org/warpt.git
 cd warpt
 pip install -e .
 ```
 
----
+______________________________________________________________________
 
 ## Core Command Structure
 
@@ -60,6 +65,7 @@ warpt check --format json      # Machine-readable output
 ```
 
 **Output (text format):**
+
 ```
 ✓ CPU: 16 cores, all functional
 ✓ GPU: NVIDIA RTX 4090 (24GB), CUDA 12.1
@@ -70,6 +76,7 @@ Summary: 3 passed, 1 failed
 ```
 
 **Output (JSON format):**
+
 ```json
 {
   "timestamp": "2025-10-14T10:30:00Z",
@@ -101,6 +108,7 @@ warpt stress --all --duration 10m
 ```
 
 **Output:**
+
 ```
 [████████░░] 80% CPU Stress Test (1m 12s remaining)
 Current: 16 threads at 100% utilization
@@ -109,6 +117,7 @@ Power Draw: 125W
 ```
 
 **JSON Output:**
+
 ```json
 {
   "test": "cpu_stress",
@@ -143,6 +152,7 @@ warpt benchmark --output results.json    # Save results
 ```
 
 **Output:**
+
 ```
 GPU Benchmark Results:
   FP32 Performance: 82.3 TFLOPS
@@ -156,6 +166,7 @@ Comparison to baseline:
 ```
 
 **JSON Output:**
+
 ```json
 {
   "benchmark": "gpu",
@@ -197,6 +208,7 @@ warpt run --output profile.json python train.py
 ```
 
 **Output:**
+
 ```
 Command: python train.py
 Duration: 5m 32s
@@ -215,6 +227,7 @@ Timeline:
 ```
 
 **JSON Output:**
+
 ```json
 {
   "command": "python train.py",
@@ -261,6 +274,7 @@ warpt monitor --alert cpu:80   # Alert when CPU > 80%
 ```
 
 **Output (Live Dashboard):**
+
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║  WARPT Monitor - ml-workstation-01  [10:30:45]          ║
@@ -297,6 +311,7 @@ warpt report --trend --since 30d      # Trend analysis
 ```
 
 **Output (Text):**
+
 ```
 System Report - ml-workstation-01
 Generated: 2025-10-14 10:30:00
@@ -336,35 +351,37 @@ warpt list --detailed          # Verbose output
 ```
 
 **Output:**
+
 ```
 Hardware:
   CPU: Intel Xeon E5-2686 v4
     Cores: 16, Threads: 32
     Features: AVX, AVX2, SSE4.2, FMA
-  
+
   GPU:
     [0] NVIDIA RTX 4090 (24GB, CUDA 8.9)
     [1] NVIDIA RTX 4090 (24GB, CUDA 8.9)
-  
+
   Memory: 64GB DDR4
-  
+
   Storage:
     /dev/nvme0n1: 2TB NVMe SSD
 
 Software:
   Python: 3.11.4 (/usr/bin/python3.11)
   CUDA: 12.1.1 (driver 530.30.02)
-  
+
   Frameworks:
     PyTorch: 2.0.1 (CUDA 12.1)
     TensorFlow: 2.13.0 (CUDA 12.1)
-  
+
   Compilers:
     GCC: 11.4.0
     NVCC: 12.1.105
 ```
 
 **JSON Output:**
+
 ```json
 {
   "hardware": {
@@ -407,11 +424,12 @@ Software:
 }
 ```
 
----
+______________________________________________________________________
 
 ## Target Components
 
 ### Hardware Targets
+
 - `cpu` - CPU diagnostics and testing
 - `gpu` - GPU diagnostics and compute tests
 - `memory` / `ram` - Memory testing
@@ -419,12 +437,13 @@ Software:
 - `network` - Network interface testing
 
 ### Software Targets
+
 - `pytorch` - PyTorch installation and functionality
 - `tensorflow` - TensorFlow checks
 - `cuda` - CUDA toolkit and drivers
 - `drivers` - Driver health checks
 
----
+______________________________________________________________________
 
 ## Global Options
 
@@ -440,7 +459,7 @@ Software:
 --version              Show version
 ```
 
----
+______________________________________________________________________
 
 ## Logging System
 
@@ -449,12 +468,14 @@ Software:
 All commands automatically log to `~/.warpt/logs/` unless `--no-log` is specified.
 
 **Log filename format:**
+
 ```
 {timestamp}-{command}-{target}-{id}.json
 Example: 20251014-103045-benchmark-gpu-a1b2c3.json
 ```
 
 **Log contents:**
+
 ```json
 {
   "metadata": {
@@ -500,15 +521,15 @@ warpt logs show --latest
 warpt logs clean --older-than 30d
 ```
 
----
+______________________________________________________________________
 
 ## Configuration
 
 ### Config File Locations
 
 1. `~/.config/warpt/config.yaml` (user config)
-2. `./warpt.yaml` (project config)
-3. Environment variables: `WARPT_*`
+1. `./warpt.yaml` (project config)
+1. Environment variables: `WARPT_*`
 
 ### Sample Configuration
 
@@ -532,7 +553,7 @@ targets:
   gpu:
     cuda_checks: true
     memory_test: true
-  
+
   pytorch:
     version_check: true
     gpu_support: true
@@ -543,11 +564,12 @@ baselines:
   cpu_gflops: 450
 ```
 
----
+______________________________________________________________________
 
 ## Usage Examples
 
 ### Quick Start
+
 ```bash
 # Check if system is healthy
 warpt check
@@ -560,6 +582,7 @@ warpt monitor gpu --live
 ```
 
 ### Benchmarking Workflow
+
 ```bash
 # 1. Create baseline
 warpt benchmark --all --output baseline.json
@@ -574,6 +597,7 @@ warpt report --compare baseline.json current.json --output report.html
 ```
 
 ### Profiling Workflow
+
 ```bash
 # Profile a training script
 warpt run --gpu --memory python train.py --output training-profile.json
@@ -587,6 +611,7 @@ python train.py
 ```
 
 ### CI/CD Integration
+
 ```bash
 # In CI pipeline
 warpt check --all --format json > system-check.json
@@ -602,7 +627,7 @@ fi
 warpt benchmark --quick --output ci-benchmark.json
 ```
 
----
+______________________________________________________________________
 
 ## Environment Management (Extended Features)
 
@@ -623,6 +648,7 @@ warpt inspect --mounts         # Show mounted volumes
 ```
 
 **Output:**
+
 ```json
 {
   "environment": {
@@ -661,6 +687,7 @@ warpt export --minimal minimal-env.yaml
 ```
 
 **Environment Spec Format (env.yaml):**
+
 ```yaml
 metadata:
   exported: "2025-10-14T10:30:00Z"
@@ -699,6 +726,7 @@ install:
 ```
 
 **Generated Dockerfile:**
+
 ```dockerfile
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
@@ -743,6 +771,7 @@ warpt diff env1.yaml env2.yaml --summary
 ```
 
 **Output:**
+
 ```
 Environment Comparison: baseline.yaml vs current.yaml
 
@@ -762,12 +791,14 @@ Breaking changes: 1 (CUDA upgrade may require rebuilds)
 ### Container Workflows
 
 #### Verify GPU in Container
+
 ```bash
 docker run --gpus all my-image warpt check gpu
 docker run --gpus all my-image warpt list --gpu --detailed
 ```
 
 #### Export and Recreate
+
 ```bash
 # On dev machine
 warpt export dev-env.yaml --with-install
@@ -781,6 +812,7 @@ docker run ml-dev:v1 warpt check --all
 ```
 
 #### Environment Versioning
+
 ```bash
 # Save baseline
 warpt export baseline.yaml
@@ -792,7 +824,7 @@ warpt export current.yaml
 warpt diff baseline.yaml current.yaml --output changes.txt
 ```
 
----
+______________________________________________________________________
 
 ## Exit Codes
 
@@ -803,24 +835,27 @@ warpt diff baseline.yaml current.yaml --output changes.txt
 3  - Invalid arguments
 ```
 
----
+______________________________________________________________________
 
 ## Implementation Notes
 
 ### Technology Stack
+
 - **CLI Framework**: Click or Typer (Python)
 - **Hardware Detection**: psutil, GPUtil, pynvml
 - **Container Detection**: Check `/proc/1/cgroup`, `/.dockerenv`
 - **Output Formats**: rich (terminal), JSON, YAML, HTML templates
 
 ### Key Features
+
 1. **Progressive Disclosure**: Simple commands for beginners, advanced options for power users
-2. **Machine-Readable Output**: All commands support JSON/YAML for automation
-3. **Automatic Logging**: Every run logged for historical analysis
-4. **Container-Aware**: Detects and adapts to containerized environments
-5. **Extensible**: Plugin system for custom targets and tests
+1. **Machine-Readable Output**: All commands support JSON/YAML for automation
+1. **Automatic Logging**: Every run logged for historical analysis
+1. **Container-Aware**: Detects and adapts to containerized environments
+1. **Extensible**: Plugin system for custom targets and tests
 
 ### Container Detection
+
 ```python
 def is_container():
     """Detect if running in a container"""
@@ -834,6 +869,7 @@ def is_container():
 ```
 
 ### GPU Detection
+
 ```python
 def detect_gpus():
     """Detect available GPUs"""
