@@ -85,7 +85,7 @@ class FrameworkDetector(ABC):
         data = self.to_dict()
         if data is None:
             return None
-        return yaml.dump(data, default_flow_style=False, sort_keys=False)  # type: ignore[no-any-return]
+        return yaml.dump(data, default_flow_style=False, sort_keys=False)  # type: ignore[no-any-return, unused-ignore]
 
     def to_toml(self) -> str | None:
         """Convert framework info to TOML string.
