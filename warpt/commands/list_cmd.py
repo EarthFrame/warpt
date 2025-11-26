@@ -151,7 +151,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     gpu_models = None
     gpu_count = None
     if gpu_list:
-        gpu_models = gpu_list  # Already list[GPUInfo] from backend
+        gpu_models = gpu_list  # list[GPUInfo]
         gpu_count = len(gpu_list)
 
     cuda_info = None
