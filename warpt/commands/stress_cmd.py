@@ -132,6 +132,7 @@ def validate_device_availability(
     explicit_gpu_request: bool = False,
 ) -> list[str]:
     """Validate that requested devices are available.
+
     Unavailable targets are removed with warnings.
 
     Args:

@@ -11,7 +11,6 @@ interfaces that all vendor-specific backends must implement
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 from warpt.models.list_models import GPUInfo
 
@@ -149,7 +148,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_power_usage(self, index: int) -> Optional[float]:
+    def get_power_usage(self, index: int) -> float | None:
         """
         Get current GPU power usage in Watts.
 
@@ -165,7 +164,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_throttle_reasons(self, index: int) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> list[str]:
         """
         Get current GPU throttling reasons.
 

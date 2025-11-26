@@ -5,8 +5,6 @@ This backend is a placeholder for future quantum computing accelerators.
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any
-
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
 
@@ -33,15 +31,15 @@ class QuantumBackend(GPUBackend):
         """List all quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_temperature(self, index: int) -> Optional[float]:
+    def get_temperature(self, index: int) -> float | None:
         """Get quantum processor temperature."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_memory_usage(self, index: int) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> dict | None:
         """Get quantum processor memory usage."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_utilization(self, index: int) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> dict | None:
         """Get quantum processor utilization."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
@@ -49,11 +47,11 @@ class QuantumBackend(GPUBackend):
         """Get PyTorch device string for quantum processors."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_power_usage(self, index: int) -> Optional[float]:
+    def get_power_usage(self, index: int) -> float | None:
         """Get quantum processor power usage."""
         raise NotImplementedError("Quantum backend not yet implemented")
 
-    def get_throttle_reasons(self, index: int) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> list[str]:
         """Get quantum processor throttling reasons."""
         raise NotImplementedError("Quantum backend not yet implemented")
 

@@ -2,7 +2,6 @@
 
 This backend collects GPU information for the list command.
 """
-from typing import Any, Dict, List, Optional
 
 import pynvml
 
@@ -107,7 +106,6 @@ class NvidiaBackend(GPUBackend):
             return pynvml.nvmlDeviceGetTemperature(  # type: ignore[no-any-return]
                 device_handle, pynvml.NVML_TEMPERATURE_GPU
             )
-            return float(temp)
         except pynvml.NVMLError:
             return None
 
@@ -156,7 +154,7 @@ class NvidiaBackend(GPUBackend):
         """
         return f"cuda:{device_id}"
 
-    def get_memory_usage(self, index: int) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> dict | None:
         """
         Get current GPU memory usage.
 
@@ -177,7 +175,7 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return None
 
-    def get_utilization(self, index: int) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> dict | None:
         """
         Get GPU utilization percentage.
 
@@ -197,7 +195,7 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return None
 
-    def get_power_usage(self, index: int) -> Optional[float]:
+    def get_power_usage(self, index: int) -> float | None:
         """
         Get current GPU power usage in Watts.
 
@@ -215,7 +213,7 @@ class NvidiaBackend(GPUBackend):
         except pynvml.NVMLError:
             return None
 
-    def get_throttle_reasons(self, index: int) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> list[str]:
         """
         Get current GPU throttling reasons.
 

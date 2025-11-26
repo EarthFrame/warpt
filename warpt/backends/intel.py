@@ -6,8 +6,6 @@ when implemented.
 Currently raises NotImplementedError for all methods.
 """
 
-from typing import Any
-
 from warpt.backends.base import GPUBackend
 from warpt.models.list_models import GPUInfo
 
@@ -34,15 +32,15 @@ class IntelBackend(GPUBackend):
         """List all Intel GPUs."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def get_temperature(self, index: int) -> Optional[float]:
+    def get_temperature(self, index: int) -> float | None:
         """Get GPU temperature."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def get_memory_usage(self, index: int) -> Optional[Dict]:
+    def get_memory_usage(self, index: int) -> dict | None:
         """Get GPU memory usage."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def get_utilization(self, index: int) -> Optional[Dict]:
+    def get_utilization(self, index: int) -> dict | None:
         """Get GPU utilization."""
         raise NotImplementedError("Intel backend not yet implemented")
 
@@ -50,11 +48,11 @@ class IntelBackend(GPUBackend):
         """Get PyTorch device string for Intel GPUs."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def get_power_usage(self, index: int) -> Optional[float]:
+    def get_power_usage(self, index: int) -> float | None:
         """Get GPU power usage."""
         raise NotImplementedError("Intel backend not yet implemented")
 
-    def get_throttle_reasons(self, index: int) -> List[str]:
+    def get_throttle_reasons(self, index: int) -> list[str]:
         """Get GPU throttling reasons."""
         raise NotImplementedError("Intel backend not yet implemented")
 
