@@ -43,6 +43,23 @@ def _cleanup_torch():
         del sys.modules["torch"]
 
 
+@pytest.fixture
+def _mock_missing_torch():
+    """Fixture to simulate torch not being installed."""
+    import builtins
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "torch":
+            raise ImportError("Mocked missing torch")
+        return real_import(name, globals, locals, fromlist, level)
+
+    builtins.__import__ = fake_import
+    yield
+    builtins.__import__ = real_import
+
+
 class TestToDict:
     """Tests for to_dict() method."""
 
@@ -58,7 +75,7 @@ class TestToDict:
         assert data["version"] == "2.1.0"
         assert data["cuda_support"] is True
 
-    def test_to_dict_without_framework(self, _cleanup_torch):
+    def test_to_dict_without_framework(self, _cleanup_torch, _mock_missing_torch):
         """Test to_dict() when framework is not installed."""
         detector = PyTorchDetector()
         data = detector.to_dict()
@@ -90,7 +107,7 @@ class TestToJson:
         assert compact is not None
         assert "\n" not in compact
 
-    def test_to_json_without_framework(self, _cleanup_torch):
+    def test_to_json_without_framework(self, _cleanup_torch, _mock_missing_torch):
         """Test to_json() when framework is not installed."""
         detector = PyTorchDetector()
         json_str = detector.to_json()

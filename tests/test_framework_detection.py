@@ -1,5 +1,5 @@
 """Test framework detection functionality."""
-
+import builtins
 import sys
 from unittest.mock import MagicMock
 
@@ -26,9 +26,21 @@ def cleanup_torch():
     """Fixture to ensure torch is not in sys.modules."""
     if "torch" in sys.modules:
         del sys.modules["torch"]
-    yield
-    if "torch" in sys.modules:
-        del sys.modules["torch"]
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "torch":
+            raise ImportError("Mocked missing torch")
+        return original_import(name, globals, locals, fromlist, level)
+
+    builtins.__import__ = fake_import
+
+    try:
+        yield
+    finally:
+        if "torch" in sys.modules:
+            del sys.modules["torch"]
+        builtins.__import__ = original_import
 
 
 def test_framework_name():

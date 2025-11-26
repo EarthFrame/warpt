@@ -11,7 +11,6 @@ interfaces that all vendor-specific backends must implement
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 from warpt.models.list_models import GPUInfo
 
@@ -72,31 +71,14 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_device_handle(self, index: int):
-        """Get a vendor specific device handle for a GPU.
-
-        This handle is used for monitoring
-        The type of handle is vendor specific
-
-        Args:
-            index: GPU index (0-based)
-
-        Returns
-        -------
-            Vendor-specific device handle object
-
-        """
-        pass
-
-    @abstractmethod
-    def get_temperature(self, device_handle: Any) -> float | None:
+    def get_temperature(self, index: int) -> float | None:
         """Get GPU temperature in degrees C.
 
         Used for monitoring and stress testing, and for detecting
         thermal throttling and ensuring system health
 
         Args:
-            device_handle: vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
         Returns
         -------
@@ -105,7 +87,7 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_memory_usage(self, device_handle: Any) -> dict | None:
+    def get_memory_usage(self, index: int) -> dict | None:
         """Get current GPU memory usage.
 
         Used for monitoring memory pressure during stress tests and
@@ -114,7 +96,7 @@ class GPUBackend(ABC):
         detecting memory leaks or over-allocation
 
         Args:
-            device_handle: Vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
         Returns
         -------
@@ -127,14 +109,14 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
-    def get_utilization(self, device_handle: Any) -> dict | None:
+    def get_utilization(self, index: int) -> dict | None:
         """Get GPU util %.
 
         Used for real time monitoring and stress testing
         identify if GPU is being fully utilized or if there are bottlenecks
 
         Args:
-            device_handle: Vendor specific device handle from get_device_handle()
+            index: GPU index (0-based)
 
         Returns
         -------
@@ -143,6 +125,62 @@ class GPUBackend(ABC):
                 - memory (float): Memory bandwidth utilization percentage (0-100)
             Or None if unavailable
 
+        """
+        pass
+
+    @abstractmethod
+    def get_pytorch_device_string(self, device_id: int) -> str:
+        """Get PyTorch device string for this vendor.
+
+        Used by stress tests to select the correct device in PyTorch.
+        Different vendors use different device strings:
+        - NVIDIA: 'cuda:0', 'cuda:1', etc.
+        - AMD (ROCm): 'cuda:0' (same as NVIDIA when using ROCm-enabled PyTorch)
+        - Intel: 'xpu:0', 'xpu:1', etc.
+        - Apple: 'mps:0'
+
+        Args:
+            device_id: GPU index (0-based)
+
+        Returns:
+            str: PyTorch device string (e.g., 'cuda:0')
+        """
+        pass
+
+    @abstractmethod
+    def get_power_usage(self, index: int) -> float | None:
+        """
+        Get current GPU power usage in Watts.
+
+        Used for monitoring power consumption during stress tests and
+        detecting power throttling.
+
+        Args:
+            index: GPU index (0-based)
+
+        Returns:
+            float: Power usage in Watts, or None if unavailable
+        """
+        pass
+
+    @abstractmethod
+    def get_throttle_reasons(self, index: int) -> list[str]:
+        """
+        Get current GPU throttling reasons.
+
+        Used for detecting performance degradation during stress tests.
+        Common throttle reasons:
+        - 'thermal' - Temperature limit reached
+        - 'power_limit' - Power limit reached
+        - 'sw_power_cap' - Software-imposed power cap
+        - 'hw_slowdown' - Hardware slowdown
+        - 'sync_boost' - Sync boost limit
+
+        Args:
+            index: GPU index (0-based)
+
+        Returns:
+            List[str]: List of active throttle reasons, empty list if not throttling
         """
         pass
 
