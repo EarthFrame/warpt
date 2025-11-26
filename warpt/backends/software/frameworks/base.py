@@ -150,5 +150,5 @@ class FrameworkDetector(ABC):
         """
         try:
             return __import__(module_name)
-        except (ImportError, ModuleNotFoundError):
+        except (ImportError, ModuleNotFoundError, RuntimeError):
             return None

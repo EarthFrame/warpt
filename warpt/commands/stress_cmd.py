@@ -360,27 +360,37 @@ def run_stress(
         elif target == "gpu":
             from warpt.stress.gpu_compute import GPUMatMulTest
 
-            # Test each GPU individually
-            for gpu_id in gpu_ids:
-                print(f"=== GPU {gpu_id} Compute Stress Test ===\n")
+            if not gpu_ids:
+                print("No GPUs available for testing.")
+                continue
 
-                test = GPUMatMulTest(device_id=gpu_id, burnin_seconds=burnin_seconds)
-                results = test.run(duration=test_duration)
+            # Test each GPU individually
+            for gpu_index in gpu_ids:
+                print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
+
+                gpu_test = GPUMatMulTest(
+                    device_id=gpu_index, burnin_seconds=burnin_seconds
+                )
+                results = gpu_test.run(duration=test_duration)
 
                 # Display results
                 print(
-                    f"\nResults for GPU {gpu_id} ({results.get('gpu_name', 'Unknown')}):"
+                    f"\nResults for GPU {gpu_index} "
+                    f"({results.get('gpu_name', 'Unknown')}):"
                 )
                 print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
                 print(f"  Duration:           {results['duration']:.2f}s")
                 print(f"  Iterations:         {results['iterations']}")
                 print(
-                    f"  Matrix Size:        {results['matrix_size']}x{results['matrix_size']}"
+                    "  Matrix Size:        "
+                    f"{results['matrix_size']}x{results['matrix_size']}"
                 )
                 print(f"  Total Operations:   {results['total_operations']:,}")
                 print(f"  Precision:          {results['precision'].upper()}")
                 print(
-                    f"  Memory Used:        {results['memory_used_gb']:.2f} GB / {results['memory_total_gb']:.2f} GB"
+                    "  Memory Used:        "
+                    f"{results['memory_used_gb']:.2f} GB / "
+                    f"{results['memory_total_gb']:.2f} GB"
                 )
                 print()
 

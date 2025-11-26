@@ -12,7 +12,7 @@ from warpt.models.list_models import GPUInfo
 
 
 class QuantumBackend(GPUBackend):
-    """Backend for quantum computing accelerators"""
+    """Backend for quantum computing accelerators."""
 
     def __init__(self):
         """Initialize Quantum backend."""

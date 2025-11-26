@@ -107,6 +107,7 @@ class NvidiaBackend(GPUBackend):
             return pynvml.nvmlDeviceGetTemperature(  # type: ignore[no-any-return]
                 device_handle, pynvml.NVML_TEMPERATURE_GPU
             )
+            return float(temp)
         except pynvml.NVMLError:
             return None
 
@@ -128,7 +129,7 @@ class NvidiaBackend(GPUBackend):
             int: Number of NVIDIA GPUs detected
         """
         try:
-            return pynvml.nvmlDeviceGetCount()
+            return int(pynvml.nvmlDeviceGetCount())
         except pynvml.NVMLError:
             return 0
 
@@ -210,7 +211,7 @@ class NvidiaBackend(GPUBackend):
             device_handle = self._get_device_handle(index)
             # pynvml returns power in milliwatts
             power_mw = pynvml.nvmlDeviceGetPowerUsage(device_handle)
-            return power_mw / 1000.0  # Convert to Watts
+            return float(power_mw) / 1000.0  # Convert to Watts
         except pynvml.NVMLError:
             return None
 

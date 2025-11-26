@@ -23,7 +23,8 @@ class GPUMatMulTest(StressTest):
         Args:
             device_id: GPU device ID (0, 1, 2, etc.)
             burnin_seconds: Warmup duration before measurement
-            backend: GPU backend (NvidiaBackend, AMDBackend, etc.). If None, defaults to NVIDIA.
+            backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
+                If None, defaults to NVIDIA.
             matrix_size: Size of square matrices (NxN). Default 8192 for GPU.
         """
         self.device_id = device_id
@@ -46,7 +47,7 @@ class GPUMatMulTest(StressTest):
         except ImportError:
             raise RuntimeError(
                 "PyTorch is not installed. Install with: pip install torch"
-            )
+            ) from None
 
         # Get PyTorch device string from backend or default to NVIDIA
         if self.backend:
@@ -55,12 +56,14 @@ class GPUMatMulTest(StressTest):
         else:
             # Backward compatibility: default to NVIDIA/CUDA
             if not torch.cuda.is_available():
-                raise RuntimeError("CUDA is not available. Cannot run GPU stress test.")
+                raise RuntimeError(
+                    "CUDA is not available. Cannot run GPU stress test."
+                ) from None
             if self.device_id >= torch.cuda.device_count():
                 raise ValueError(
                     f"GPU device {self.device_id} not found. "
                     f"Available devices: 0-{torch.cuda.device_count() - 1}"
-                )
+                ) from None
             device_str = f"cuda:{self.device_id}"
 
         # Set device
@@ -74,19 +77,21 @@ class GPUMatMulTest(StressTest):
 
         # Burnin/warmup phase - let GPU warm up
         print(
-            f"  Warming up GPU {self.device_id} ({gpu_name}) for {self.burnin_seconds}s..."
+            "  Warming up GPU "
+            f"{self.device_id} ({gpu_name}) "
+            f"for {self.burnin_seconds}s..."
         )
         burnin_start = time.time()
         while (time.time() - burnin_start) < self.burnin_seconds:
-            A = torch.randn(
+            a = torch.randn(
                 self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
             )
-            B = torch.randn(
+            b = torch.randn(
                 self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
             )
-            C = torch.matmul(A, B)
+            c = torch.matmul(a, b)
             torch.cuda.synchronize()  # Wait for GPU to finish
-            del A, B, C
+            del a, b, c
 
         # Clear cache after burnin, before actual test
         torch.cuda.empty_cache()
@@ -100,16 +105,16 @@ class GPUMatMulTest(StressTest):
         torch.cuda.reset_peak_memory_stats(device)
 
         while (time.time() - start_time) < duration:
-            A = torch.randn(
+            a = torch.randn(
                 self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
             )
-            B = torch.randn(
+            b = torch.randn(
                 self.matrix_size, self.matrix_size, dtype=torch.float32, device=device
             )
-            C = torch.matmul(A, B)
+            c = torch.matmul(a, b)
             torch.cuda.synchronize()  # Ensure GPU completes before timing
             iterations += 1
-            del A, B, C
+            del a, b, c
 
         elapsed = time.time() - start_time
 
