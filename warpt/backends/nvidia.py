@@ -6,6 +6,7 @@ This backend collects GPU information for the list command.
 import pynvml
 
 from warpt.backends.base import GPUBackend
+from warpt.models.list_models import GPUInfo
 
 
 class NvidiaBackend(GPUBackend):
@@ -60,12 +61,12 @@ class NvidiaBackend(GPUBackend):
         """
         return int(bytes_value / (1024**3))
 
-    def list_devices(self):
+    def list_devices(self) -> list[GPUInfo]:
         """List all NVIDIA GPUs with information for the list command.
 
         Returns
         -------
-            list[dict]: List of GPU information dictionaries matching GPUInfo model
+            list[GPUInfo]: List of GPU information objects
         """
         device_count = self.get_device_count()
 
@@ -77,16 +78,16 @@ class NvidiaBackend(GPUBackend):
         for i in range(device_count):
             device_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
             device_info.append(
-                {
-                    "index": i,
-                    "model": pynvml.nvmlDeviceGetName(device_handle),
-                    "memory_gb": self._bytes_to_gb(
+                GPUInfo(
+                    index=i,
+                    model=pynvml.nvmlDeviceGetName(device_handle),
+                    memory_gb=self._bytes_to_gb(
                         pynvml.nvmlDeviceGetMemoryInfo(device_handle).total
                     ),
-                    "compute_capability": self._get_compute_capability(device_handle),
-                    "pcie_gen": self._get_pcie_generation(device_handle),
-                    "driver_version": driver_version,
-                }
+                    compute_capability=self._get_compute_capability(device_handle),
+                    pcie_gen=self._get_pcie_generation(device_handle),
+                    driver_version=driver_version,
+                )
             )
 
         return device_info

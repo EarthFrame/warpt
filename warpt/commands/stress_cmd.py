@@ -97,11 +97,11 @@ def get_available_gpus() -> list[int]:
         List of GPU IDs or empty list if no GPUs available
     """
     try:
-        from warpt.backends.nvidia import NvidiaBackend
+        from warpt.backends.factory import get_gpu_backend
 
-        backend = NvidiaBackend()
+        backend = get_gpu_backend()
         gpus = backend.list_devices()
-        return [gpu["index"] for gpu in gpus]
+        return [gpu.index for gpu in gpus]
     except Exception:
         return []
 
@@ -359,11 +359,25 @@ def run_stress(
             print()
 
         elif target == "gpu":
+            from warpt.backends.factory import get_gpu_backend
+            from warpt.backends.nvidia import NvidiaBackend
             from warpt.stress.gpu_compute import GPUMatMulTest
 
             if not gpu_ids:
                 print("No GPUs available for testing.")
                 continue
+
+            # TODO MVP limitation: Only NVIDIA GPUs supported for stress tests
+            try:
+                backend = get_gpu_backend()
+                if not isinstance(backend, NvidiaBackend):
+                    raise click.ClickException(
+                        f"GPU stress tests currently only support NVIDIA GPUs.\n"
+                        f"Detected: {backend.__class__.__name__}\n"
+                        f"AMD and Intel GPU stress test support coming soon."
+                    )
+            except RuntimeError as e:
+                raise click.ClickException(str(e)) from e
 
             # Test each GPU individually
             for gpu_index in gpu_ids:
