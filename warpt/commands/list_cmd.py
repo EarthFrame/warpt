@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pynvml
 
-from warpt.backends.nvidia import NvidiaBackend
+from warpt.backends.factory import get_gpu_backend
 from warpt.backends.ram import RAM
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
@@ -15,7 +15,6 @@ from warpt.models.list_models import (
 )
 from warpt.models.list_models import (
     CUDAInfo,
-    GPUInfo,
     HardwareInfo,
     ListOutput,
     MemoryInfo,
@@ -91,7 +90,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     # GPU Detection
     print("\nGPU Information:")
     try:
-        backend = NvidiaBackend()
+        backend = get_gpu_backend()
         gpus = backend.list_devices()
 
         # backend.list_devices() returns empty list when no GPUs are present
@@ -99,13 +98,13 @@ def run_list(export_format=None, export_filename=None) -> None:
             print("  No GPUs detected")
         else:
             for gpu in gpus:
-                print(f"  [{gpu['index']}] {gpu['model']}")
-                print(f"      Memory:         {gpu['memory_gb']} GB")
-                print(f"      CUDA Compute:   {gpu['compute_capability']}")
-                if gpu.get("pcie_gen"):
-                    print(f"      PCIe Gen:       {gpu['pcie_gen']}")
-                if gpu.get("driver_version"):
-                    print(f"      Driver Version: {gpu['driver_version']}")
+                print(f"  [{gpu.index}] {gpu.model}")
+                print(f"      Memory:         {gpu.memory_gb} GB")
+                print(f"      CUDA Compute:   {gpu.compute_capability}")
+                if gpu.pcie_gen:
+                    print(f"      PCIe Gen:       {gpu.pcie_gen}")
+                if gpu.driver_version:
+                    print(f"      Driver Version: {gpu.driver_version}")
 
         gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
 
@@ -152,7 +151,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     gpu_models = None
     gpu_count = None
     if gpu_list:
-        gpu_models = [GPUInfo(**gpu) for gpu in gpu_list]
+        gpu_models = gpu_list  # list[GPUInfo]
         gpu_count = len(gpu_list)
 
     cuda_info = None
