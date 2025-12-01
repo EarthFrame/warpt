@@ -9,12 +9,14 @@ import pynvml
 
 from warpt.backends.factory import get_gpu_backend
 from warpt.backends.ram import RAM
+from warpt.backends.software import DockerDetector
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
     CPUInfo as CPUInfoModel,
 )
 from warpt.models.list_models import (
     CUDAInfo,
+    DockerInfo,
     HardwareInfo,
     ListOutput,
     MemoryInfo,
@@ -158,6 +160,24 @@ def run_list(export_format=None, export_filename=None) -> None:
     if cuda_driver_version:
         cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
 
+    # Docker Detection
+    print("\nDocker Information:")
+    docker_detector = DockerDetector()
+    docker_result = docker_detector.detect()
+    docker_info = DockerInfo(
+        installed=docker_result is not None,
+        version=docker_result.version if docker_result else None,
+        path=docker_result.path if docker_result else None,
+    )
+    if docker_info.installed:
+        print("  Installed:         Yes")
+        if docker_info.version:
+            print(f"  Version:           {docker_info.version}")
+        if docker_info.path:
+            print(f"  Path:              {docker_info.path}")
+    else:
+        print("  Docker CLI not found")
+
     # RAM Detection
     print("\nMemory Information:")
     ram_backend = RAM()
@@ -186,11 +206,13 @@ def run_list(export_format=None, export_filename=None) -> None:
     )
 
     # Build software info
-    software = None
-    if cuda_info:
-        software = SoftwareInfo(
-            python=None, cuda=cuda_info, frameworks=None, compilers=None
-        )
+    software = SoftwareInfo(
+        python=None,
+        cuda=cuda_info,
+        frameworks=None,
+        compilers=None,
+        docker=docker_info,
+    )
 
     # Build output with CPU data
     hardware = HardwareInfo(

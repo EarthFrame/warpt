@@ -1,5 +1,6 @@
 """Software detection backends."""
 
+from warpt.backends.software.docker import DockerDetectionResult, DockerDetector
 from warpt.backends.software.frameworks import (
     FrameworkDetector,
     PyTorchDetector,
@@ -8,6 +9,8 @@ from warpt.backends.software.frameworks import (
 )
 
 __all__ = [
+    "DockerDetectionResult",
+    "DockerDetector",
     "FrameworkDetector",
     "PyTorchDetector",
     "detect_all_frameworks",
