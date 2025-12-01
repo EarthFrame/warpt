@@ -106,6 +106,21 @@ class CUDAInfo(BaseModel):
     driver: str = Field(..., description="NVIDIA driver version")
 
 
+class NvidiaContainerToolkitInfo(BaseModel):
+    """NVIDIA Container Toolkit information."""
+
+    installed: bool = Field(..., description="Whether the toolkit is available")
+    cli_version: str | None = Field(None, description="nvidia-container-cli version")
+    cli_path: str | None = Field(None, description="Path to nvidia-container-cli")
+    runtime_path: str | None = Field(
+        None, description="Path to nvidia-container-runtime"
+    )
+    docker_runtime_ready: bool | None = Field(
+        None,
+        description="Whether Docker exposes the 'nvidia' runtime",
+    )
+
+
 class FrameworkInfo(BaseModel):
     """ML framework information."""
 
@@ -127,6 +142,9 @@ class SoftwareInfo(BaseModel):
 
     python: PythonInfo | None = Field(None, description="Python installation")
     cuda: CUDAInfo | None = Field(None, description="CUDA toolkit")
+    nvidia_container_toolkit: NvidiaContainerToolkitInfo | None = Field(
+        None, description="NVIDIA Container Toolkit detection results"
+    )
     frameworks: dict[str, FrameworkInfo] | None = Field(
         None,
         description="ML frameworks (pytorch, tensorflow, jax, etc.)",
