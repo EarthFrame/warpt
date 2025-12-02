@@ -1,23 +1,18 @@
-"""Docker detection utilities implemented with the Python standard library."""
+"""Docker detection utilities."""
 
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
-from dataclasses import dataclass
+
+from warpt.backends.software.base import SoftwareDetector
+from warpt.models.list_models import DockerInfo
 
 
-@dataclass(frozen=True)
-class DockerDetectionResult:
-    """Structured result describing a detected Docker installation."""
+class DockerDetector(SoftwareDetector):
+    """Detect the presence of the Docker CLI.
 
-    path: str
-    version: str | None
-
-
-class DockerDetector:
-    """Detect the presence of the Docker CLI."""
+    Inherits serialization methods from SoftwareDetector base class.
+    """
 
     def __init__(self, executable: str = "docker") -> None:
         """Initialize the detector.
@@ -27,56 +22,48 @@ class DockerDetector:
         """
         self._executable = executable
 
-    def is_installed(self) -> bool:
-        """Return True when Docker is available.
+    @property
+    def software_name(self) -> str:
+        """Return the canonical name of the software."""
+        return "docker"
 
-        Returns
-        -------
-            True if Docker can be located and responds to ``--version``.
-        """
-        return self.detect() is not None
-
-    def detect(self) -> DockerDetectionResult | None:
+    def detect(self) -> DockerInfo | None:
         """Detect Docker and collect path and version details.
 
         Returns
         -------
-            DockerDetectionResult when Docker is installed, None otherwise.
+            DockerInfo when Docker is installed, None otherwise.
         """
-        path = shutil.which(self._executable)
+        path = self._which(self._executable)
         if path is None:
             return None
 
         version = self._read_version(path)
-        return DockerDetectionResult(path=path, version=version)
+        return DockerInfo(
+            installed=True,
+            version=version,
+            path=path,
+        )
 
-    @staticmethod
-    def _read_version(executable_path: str) -> str | None:
+    def _read_version(self, executable_path: str) -> str | None:
         """Invoke ``docker --version`` and parse the version string.
 
-        Args
-        ----
+        Args:
             executable_path: Resolved path to the docker executable.
 
         Returns
         -------
             Parsed version string if available, otherwise None.
         """
-        try:
-            result = subprocess.run(
-                [executable_path, "--version"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+        result = self._run_command([executable_path, "--version"])
+        if result is None:
             return None
 
-        if result.returncode != 0:
+        returncode, stdout, stderr = result
+        if returncode != 0:
             return None
 
-        output = (result.stdout or result.stderr or "").strip()
+        output = (stdout or stderr).strip()
         if not output:
             return None
 
@@ -87,4 +74,4 @@ class DockerDetector:
         return output
 
 
-__all__ = ["DockerDetectionResult", "DockerDetector"]
+__all__ = ["DockerDetector", "DockerInfo"]

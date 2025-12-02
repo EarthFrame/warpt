@@ -6,15 +6,13 @@ import types
 
 import pytest
 
-from warpt.backends.software.docker import (
-    DockerDetectionResult,
-    DockerDetector,
-)
+from warpt.backends.software.docker import DockerDetector
+from warpt.models.list_models import DockerInfo
 
 
 def test_detect_returns_none_when_executable_missing(monkeypatch: pytest.MonkeyPatch):
     """Detector should return None when docker is not on PATH."""
-    monkeypatch.setattr("warpt.backends.software.docker.shutil.which", lambda _: None)
+    monkeypatch.setattr("shutil.which", lambda _: None)
 
     detector = DockerDetector()
     assert detector.detect() is None
@@ -33,21 +31,17 @@ def test_detect_success(monkeypatch: pytest.MonkeyPatch):
             stderr="",
         )
 
-    monkeypatch.setattr(
-        "warpt.backends.software.docker.shutil.which",
-        fake_which,
-    )
-    monkeypatch.setattr(
-        "warpt.backends.software.docker.subprocess.run",
-        fake_run,
-    )
+    monkeypatch.setattr("shutil.which", fake_which)
+    monkeypatch.setattr("subprocess.run", fake_run)
 
     detector = DockerDetector()
     result = detector.detect()
 
     assert result is not None
+    assert isinstance(result, DockerInfo)
     assert result.path == "/usr/local/bin/docker"
     assert result.version == "25.0.3"
+    assert result.installed is True
 
 
 def test_is_installed_relies_on_detect(monkeypatch: pytest.MonkeyPatch):
@@ -57,9 +51,46 @@ def test_is_installed_relies_on_detect(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         DockerDetector,
         "detect",
-        lambda _: DockerDetectionResult(path="/tmp/docker", version="1.0"),
+        lambda _: DockerInfo(installed=True, path="/tmp/docker", version="1.0"),
     )
     assert detector.is_installed() is True
 
     monkeypatch.setattr(DockerDetector, "detect", lambda _: None)
     assert detector.is_installed() is False
+
+
+def test_software_name():
+    """software_name property should return 'docker'."""
+    detector = DockerDetector()
+    assert detector.software_name == "docker"
+
+
+def test_to_dict(monkeypatch: pytest.MonkeyPatch):
+    """to_dict should return dictionary representation."""
+    detector = DockerDetector()
+    monkeypatch.setattr(
+        DockerDetector,
+        "detect",
+        lambda _: DockerInfo(installed=True, path="/usr/bin/docker", version="25.0.3"),
+    )
+
+    result = detector.to_dict()
+    assert result is not None
+    assert result["installed"] is True
+    assert result["path"] == "/usr/bin/docker"
+    assert result["version"] == "25.0.3"
+
+
+def test_to_json(monkeypatch: pytest.MonkeyPatch):
+    """to_json should return JSON string."""
+    detector = DockerDetector()
+    monkeypatch.setattr(
+        DockerDetector,
+        "detect",
+        lambda _: DockerInfo(installed=True, path="/usr/bin/docker", version="25.0.3"),
+    )
+
+    result = detector.to_json()
+    assert result is not None
+    assert '"installed": true' in result
+    assert '"path": "/usr/bin/docker"' in result
