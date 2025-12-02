@@ -117,6 +117,14 @@ class CUDAInfo(BaseModel):
     driver: str = Field(..., description="NVIDIA driver version")
 
 
+class DockerInfo(BaseModel):
+    """Docker CLI information."""
+
+    installed: bool = Field(..., description="Whether Docker CLI is available")
+    version: str | None = Field(None, description="Detected Docker version")
+    path: str | None = Field(None, description="Path to docker executable")
+
+
 class FrameworkInfo(BaseModel):
     """ML framework information."""
 
@@ -138,6 +146,7 @@ class SoftwareInfo(BaseModel):
 
     python: PythonInfo | None = Field(None, description="Python installation")
     cuda: CUDAInfo | None = Field(None, description="CUDA toolkit")
+    docker: DockerInfo | None = Field(None, description="Docker CLI information")
     frameworks: dict[str, FrameworkInfo] | None = Field(
         None,
         description="ML frameworks (pytorch, tensorflow, jax, etc.)",
