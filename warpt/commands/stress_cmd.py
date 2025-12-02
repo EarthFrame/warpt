@@ -210,6 +210,9 @@ def run_stress(
     export_format: str | None,
     export_filename: str | None,
     log_file: str | None,
+    compute: bool,
+    precision: bool,
+    memory: bool,
 ) -> None:
     """Run stress tests based on user specifications.
 
@@ -222,6 +225,9 @@ def run_stress(
         export_format: Export format ('json' or None)
         export_filename: Custom export filename or None
         log_file: Log file path or None
+        compute: Run compute stress test (GPU only)
+        precision: Run mixed precision profiling test (GPU only)
+        memory: Run memory bandwidth test (GPU only)
     """
     # Parse and validate targets
     try:
@@ -251,6 +257,31 @@ def run_stress(
     # Expand 'all' target to individual targets
     if "all" in parsed_targets:
         parsed_targets = ["cpu", "gpu", "ram"]
+
+    # Validate test type flags are only used with GPU target
+    if (compute or precision or memory) and "gpu" not in parsed_targets:
+        print(
+            "Error: --compute, --precision, and --memory can only be used "
+            "with --target gpu"
+        )
+        print(f"You specified --target {','.join(parsed_targets)}")
+        sys.exit(1)
+
+    # Determine which GPU tests to run
+    # Default: if no test type flags specified and GPU is in targets, run all tests
+    gpu_tests_to_run = []
+    if "gpu" in parsed_targets:
+        if not compute and not precision and not memory:
+            # No flags specified - run all tests by default
+            gpu_tests_to_run = ["compute", "precision", "memory"]
+        else:
+            # User specified specific tests
+            if compute:
+                gpu_tests_to_run.append("compute")
+            if precision:
+                gpu_tests_to_run.append("precision")
+            if memory:
+                gpu_tests_to_run.append("memory")
 
     # Validate device IDs match specified targets
     if cpu_ids and "cpu" not in parsed_targets:
@@ -296,6 +327,7 @@ def run_stress(
     print(f"  Burnin:         {burnin_seconds}s")
 
     if "gpu" in parsed_targets:
+        print(f"  GPU Tests:      {', '.join(gpu_tests_to_run)}")
         if default_to_all_gpus:
             print(
                 f"  GPU IDs:        all (defaulting to all available GPUs: "
@@ -369,15 +401,6 @@ def run_stress(
             from warpt.backends.factory import get_gpu_backend
             from warpt.backends.nvidia import NvidiaBackend
 
-            try:
-                from warpt.stress.gpu_compute import GPUMatMulTest
-            except ImportError:
-                print(
-                    "Error: torch is required for GPU stress tests.\n"
-                    "Install with: pip install warpt[stress]"
-                )
-                sys.exit(1)
-
             if not gpu_ids:
                 print("No GPUs available for testing.")
                 continue
@@ -394,35 +417,73 @@ def run_stress(
             except RuntimeError as e:
                 raise click.ClickException(str(e)) from e
 
+            # Import test classes based on which tests we're running
+            test_classes: dict[str, type] = {}
+            try:
+                if "compute" in gpu_tests_to_run:
+                    from warpt.stress.gpu_compute import GPUMatMulTest
+
+                    test_classes["compute"] = GPUMatMulTest
+                if "precision" in gpu_tests_to_run:
+                    from warpt.stress.gpu_precision import GPUPrecisionTest
+
+                    test_classes["precision"] = GPUPrecisionTest
+                if "memory" in gpu_tests_to_run:
+                    # TODO: Implement GPUMemoryTest
+                    pass
+            except ImportError:
+                print(
+                    "Error: torch is required for GPU stress tests.\n"
+                    "Install with: pip install warpt[stress]"
+                )
+                sys.exit(1)
+
             # Test each GPU individually
             for gpu_index in gpu_ids:
-                print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
+                # Run each test type for this GPU
+                for test_type in gpu_tests_to_run:
+                    if test_type == "compute":
+                        print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
 
-                gpu_test = GPUMatMulTest(
-                    device_id=gpu_index, burnin_seconds=burnin_seconds
-                )
-                results = gpu_test.run(duration=test_duration)
+                        gpu_test = test_classes["compute"](
+                            device_id=gpu_index, burnin_seconds=burnin_seconds
+                        )
+                        results = gpu_test.run(duration=test_duration)
 
-                # Display results
-                print(
-                    f"\nResults for GPU {gpu_index} "
-                    f"({results.get('gpu_name', 'Unknown')}):"
-                )
-                print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-                print(f"  Duration:           {results['duration']:.2f}s")
-                print(f"  Iterations:         {results['iterations']}")
-                print(
-                    "  Matrix Size:        "
-                    f"{results['matrix_size']}x{results['matrix_size']}"
-                )
-                print(f"  Total Operations:   {results['total_operations']:,}")
-                print(f"  Precision:          {results['precision'].upper()}")
-                print(
-                    "  Memory Used:        "
-                    f"{results['memory_used_gb']:.2f} GB / "
-                    f"{results['memory_total_gb']:.2f} GB"
-                )
-                print()
+                        # Display results
+                        print(
+                            f"\nResults for GPU {gpu_index} "
+                            f"({results.get('gpu_name', 'Unknown')}):"
+                        )
+                        print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
+                        print(f"  Duration:           {results['duration']:.2f}s")
+                        print(f"  Iterations:         {results['iterations']}")
+                        print(
+                            "  Matrix Size:        "
+                            f"{results['matrix_size']}x{results['matrix_size']}"
+                        )
+                        print(f"  Total Operations:   {results['total_operations']:,}")
+                        print(f"  Precision:          {results['precision'].upper()}")
+                        print(
+                            "  Memory Used:        "
+                            f"{results['memory_used_gb']:.2f} GB / "
+                            f"{results['memory_total_gb']:.2f} GB"
+                        )
+                        print()
+
+                    if test_type == "precision":
+                        print(f"=== GPU {gpu_index} Mixed Precision Profile ===\n")
+
+                        precision_test = test_classes["precision"](
+                            device_id=gpu_index, burnin_seconds=burnin_seconds
+                        )
+                        results = precision_test.run(duration=test_duration)
+
+                        # Display results (summary already printed by test)
+                        print()
+
+                    if test_type == "memory":
+                        print(f"[TODO] GPU {gpu_index} Memory Bandwidth Test\n")
 
         elif target == "ram":
             print("[TODO] RAM stress tests not yet implemented\n")

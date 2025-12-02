@@ -137,9 +137,37 @@ def check():
 @click.option(
     "--log-file", default=None, help="Write detailed execution logs to specified file"
 )
+@click.option(
+    "--compute",
+    is_flag=True,
+    default=False,
+    help="Run compute stress test (sustained workload for GPU health)",
+)
+@click.option(
+    "--precision",
+    is_flag=True,
+    default=False,
+    help="Run mixed precision profiling test (FP32/FP16/BF16/INT8 capabilities)",
+)
+@click.option(
+    "--memory",
+    is_flag=True,
+    default=False,
+    help="Run memory bandwidth test (GPU memory performance)",
+)
 # TODO - add --nic-id
 def stress(
-    target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file
+    target,
+    gpu_id,
+    cpu_id,
+    duration,
+    burnin_seconds,
+    export,
+    export_file,
+    log_file,
+    compute,
+    precision,
+    memory,
 ):
     """Run system stress tests."""
     from warpt.commands.stress_cmd import run_stress
@@ -164,6 +192,9 @@ def stress(
         export_format=export_format,
         export_filename=export_filename,
         log_file=log_file,
+        compute=compute,
+        precision=precision,
+        memory=memory,
     )
 
 

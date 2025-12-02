@@ -74,6 +74,51 @@ class CPUSystemResult(BaseModel):
     )
 
 
+class PrecisionResult(BaseModel):
+    """Results for a single precision test."""
+
+    supported: bool = Field(..., description="Whether this precision is supported")
+    iterations: int | None = Field(None, description="Number of iterations completed")
+    avg_time_per_iter: float | None = Field(
+        None, description="Average time per iteration in seconds"
+    )
+    dtype: str = Field(..., description="Data type used (e.g., 'torch.float16')")
+    tflops: float | None = Field(None, description="Performance in TFLOPS")
+    matrix_size: int = Field(..., description="Matrix size used for test")
+    hardware_supported: bool | None = Field(
+        None, description="Hardware support (e.g., Tensor Cores)"
+    )
+    runtime_supported: bool | None = Field(None, description="Runtime/driver support")
+    method: str | None = Field(
+        None, description="Method used (e.g., 'pytorch_quantization' for INT8)"
+    )
+    note: str | None = Field(None, description="Additional notes about the test")
+
+
+class MixedPrecisionResults(BaseModel):
+    """Complete mixed precision test results."""
+
+    fp32: PrecisionResult = Field(..., description="FP32 test results")
+    fp16: PrecisionResult | None = Field(None, description="FP16 test results")
+    bf16: PrecisionResult | None = Field(None, description="BF16 test results")
+    int8: PrecisionResult | None = Field(None, description="INT8 test results")
+
+    # Speedup comparisons (relative to FP32 baseline)
+    fp16_speedup: float | None = Field(
+        None, description="FP16 speedup over FP32 (< 1.0 means slower)", gt=0
+    )
+    bf16_speedup: float | None = Field(
+        None, description="BF16 speedup over FP32 (< 1.0 means slower)", gt=0
+    )
+    int8_speedup: float | None = Field(
+        None, description="INT8 speedup over FP32 (< 1.0 means slower)", gt=0
+    )
+
+    mixed_precision_ready: bool = Field(
+        ..., description="Whether GPU is ready for mixed precision training"
+    )
+
+
 class GPUDeviceResult(BaseModel):
     """Results from individual GPU stress test."""
 
@@ -111,6 +156,11 @@ class GPUDeviceResult(BaseModel):
     avg_power: float | None = Field(None, description="Average power in Watts")
     throttle_events: list[ThrottleEvent] = Field(
         default_factory=list, description="List of throttling events during test"
+    )
+
+    # Mixed precision results
+    mixed_precision: MixedPrecisionResults | None = Field(
+        None, description="Mixed precision test results"
     )
 
 
