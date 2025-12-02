@@ -337,7 +337,14 @@ def run_stress(
     for target in parsed_targets:
         if target == "cpu":
             print("=== CPU Compute Stress Test ===\n")
-            from warpt.stress.cpu_compute import CPUMatMulTest
+            try:
+                from warpt.stress.cpu_compute import CPUMatMulTest
+            except ImportError:
+                print(
+                    "Error: numpy is required for CPU stress tests.\n"
+                    "Install with: pip install warpt[stress]"
+                )
+                sys.exit(1)
 
             test = CPUMatMulTest(burnin_seconds=burnin_seconds)
             results = test.run(duration=test_duration)
@@ -361,7 +368,15 @@ def run_stress(
         elif target == "gpu":
             from warpt.backends.factory import get_gpu_backend
             from warpt.backends.nvidia import NvidiaBackend
-            from warpt.stress.gpu_compute import GPUMatMulTest
+
+            try:
+                from warpt.stress.gpu_compute import GPUMatMulTest
+            except ImportError:
+                print(
+                    "Error: torch is required for GPU stress tests.\n"
+                    "Install with: pip install warpt[stress]"
+                )
+                sys.exit(1)
 
             if not gpu_ids:
                 print("No GPUs available for testing.")

@@ -73,6 +73,17 @@ class StorageDevice(BaseModel):
     device_path: str = Field(..., description="Device path (e.g., /dev/nvme0n1)")
     capacity_gb: int = Field(..., description="Storage capacity in GB", ge=1)
     type: str = Field(..., description="Storage type (NVMe SSD, SATA SSD, HDD, etc.)")
+    model: str | None = Field(None, description="Device model string (if available)")
+    manufacturer: str | None = Field(
+        None, description="Device manufacturer/vendor (if detected)"
+    )
+    serial: str | None = Field(None, description="Device serial number")
+    bus_type: str | None = Field(
+        None, description="Bus/interconnect type (PCIe, SATA, USB, etc.)"
+    )
+    link_speed_gbps: float | None = Field(
+        None, description="Reported interface speed in Gbps"
+    )
 
 
 class HardwareInfo(BaseModel):
