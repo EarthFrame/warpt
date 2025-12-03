@@ -15,7 +15,11 @@ from warpt.backends.hardware.storage.base import (
 )
 from warpt.backends.hardware.storage.factory import get_storage_manager
 from warpt.backends.ram import RAM
-from warpt.backends.software import DockerDetector, NvidiaContainerToolkitDetector
+from warpt.backends.software import (
+    DockerDetector,
+    NvidiaContainerToolkitDetector,
+    detect_all_frameworks,
+)
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
     CPUInfo as CPUInfoModel,
@@ -118,8 +122,8 @@ def _collect_storage_devices() -> list[StorageDeviceModel]:
 
 def run_list(export_format=None, export_filename=None) -> None:
     """Display comprehensive CPU and GPU information."""
-    if export_format:
-        raise NotImplementedError("Export format not implemented")
+    if export_format and export_format != "json":
+        raise NotImplementedError(f"Export format '{export_format}' not implemented")
 
     cpu = CPU()
     info = cpu.get_cpu_info()
@@ -291,6 +295,16 @@ def run_list(export_format=None, export_filename=None) -> None:
     else:
         print("  Docker CLI not found")
 
+    # Framework Detection
+    print("\nML Frameworks:")
+    detected_frameworks = detect_all_frameworks()
+    if detected_frameworks:
+        for name, framework_info in detected_frameworks.items():
+            cuda_str = "✓ CUDA" if framework_info.cuda_support else "CPU"
+            print(f"  {name.capitalize()}: {framework_info.version} ({cuda_str})")
+    else:
+        print("  No ML frameworks detected")
+
     # RAM Detection
     print("\nMemory Information:")
     ram_backend = RAM()
@@ -344,7 +358,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     software = SoftwareInfo(
         python=None,
         cuda=cuda_info,
-        frameworks=None,
+        frameworks=detected_frameworks or None,
         compilers=None,
         nvidia_container_toolkit=toolkit_info,
         docker=docker_info,
