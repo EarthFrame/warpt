@@ -1,11 +1,13 @@
 """Framework detection utilities."""
 
 from warpt.backends.software.frameworks.base import FrameworkDetector
+from warpt.backends.software.frameworks.jax import JAXDetector
 from warpt.backends.software.frameworks.pytorch import PyTorchDetector
 from warpt.models.list_models import FrameworkInfo
 
 __all__ = [
     "FrameworkDetector",
+    "JAXDetector",
     "PyTorchDetector",
     "detect_all_frameworks",
     "detect_framework",
@@ -15,6 +17,7 @@ __all__ = [
 # Registry of all available framework detectors
 _FRAMEWORK_DETECTORS = [
     PyTorchDetector(),
+    JAXDetector(),
 ]
 
 
