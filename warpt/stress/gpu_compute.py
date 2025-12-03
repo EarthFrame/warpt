@@ -17,6 +17,7 @@ class GPUMatMulTest(StressTest):
         burnin_seconds: int,
         backend: GPUBackend | None = None,
         matrix_size: int = 8192,
+        allow_tf32: bool = True,
     ):
         """Initialize GPU matmul test.
 
@@ -26,11 +27,13 @@ class GPUMatMulTest(StressTest):
             backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
                 If None, defaults to NVIDIA.
             matrix_size: Size of square matrices (NxN). Default 8192 for GPU.
+            allow_tf32: Enable TF32 for FP32 operations (default True).
         """
         self.device_id = device_id
         self.burnin_seconds = burnin_seconds
         self.backend = backend
         self.matrix_size = matrix_size
+        self.allow_tf32 = allow_tf32
 
     def run(self, duration: int) -> dict:
         """Run GPU matrix multiplication test.
@@ -70,10 +73,21 @@ class GPUMatMulTest(StressTest):
         device = torch.device(device_str)
         torch.cuda.set_device(device)
 
+        # Configure TF32 (TensorFloat-32) for FP32 operations
+        if device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = self.allow_tf32
+            torch.backends.cudnn.allow_tf32 = self.allow_tf32
+
         # Get GPU properties
         gpu_name = torch.cuda.get_device_name(device)
         gpu_props = torch.cuda.get_device_properties(device)
         gpu_memory_total = gpu_props.total_memory / (1024**3)  # convert to GB
+
+        # Display TF32 status
+        if self.allow_tf32:
+            print("  TF32: Enabled (use --no-tf32 to disable)")
+        else:
+            print("  TF32: Disabled")
 
         # Burnin/warmup phase - let GPU warm up
         print(
@@ -145,6 +159,7 @@ class GPUMatMulTest(StressTest):
             "memory_used_gb": memory_used,
             "memory_total_gb": gpu_memory_total,
             "precision": "fp32",
+            "tf32_enabled": self.allow_tf32,
         }
 
     def get_name(self) -> str:

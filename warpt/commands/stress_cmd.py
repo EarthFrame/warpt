@@ -213,6 +213,7 @@ def run_stress(
     compute: bool,
     precision: bool,
     memory: bool,
+    allow_tf32: bool,
 ) -> None:
     """Run stress tests based on user specifications.
 
@@ -228,6 +229,7 @@ def run_stress(
         compute: Run compute stress test (GPU only)
         precision: Run mixed precision profiling test (GPU only)
         memory: Run memory bandwidth test (GPU only)
+        allow_tf32: Enable TF32 for GPU tests (default True)
     """
     # Parse and validate targets
     try:
@@ -446,7 +448,9 @@ def run_stress(
                         print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
 
                         gpu_test = test_classes["compute"](
-                            device_id=gpu_index, burnin_seconds=burnin_seconds
+                            device_id=gpu_index,
+                            burnin_seconds=burnin_seconds,
+                            allow_tf32=allow_tf32,
                         )
                         results = gpu_test.run(duration=test_duration)
 
@@ -475,7 +479,9 @@ def run_stress(
                         print(f"=== GPU {gpu_index} Mixed Precision Profile ===\n")
 
                         precision_test = test_classes["precision"](
-                            device_id=gpu_index, burnin_seconds=burnin_seconds
+                            device_id=gpu_index,
+                            burnin_seconds=burnin_seconds,
+                            allow_tf32=allow_tf32,
                         )
                         results = precision_test.run(duration=test_duration)
 

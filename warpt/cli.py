@@ -155,6 +155,12 @@ def check():
     default=False,
     help="Run memory bandwidth test (GPU memory performance)",
 )
+@click.option(
+    "--no-tf32",
+    is_flag=True,
+    default=False,
+    help="Disable TF32 (TensorFloat-32) for GPU tests. By default, TF32 is enabled.",
+)
 # TODO - add --nic-id
 def stress(
     target,
@@ -168,6 +174,7 @@ def stress(
     compute,
     precision,
     memory,
+    no_tf32,
 ):
     """Run system stress tests."""
     from warpt.commands.stress_cmd import run_stress
@@ -195,6 +202,7 @@ def stress(
         compute=compute,
         precision=precision,
         memory=memory,
+        allow_tf32=not no_tf32,  # Invert the flag: --no-tf32 -> allow_tf32=False
     )
 
 

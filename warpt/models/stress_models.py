@@ -117,6 +117,9 @@ class MixedPrecisionResults(BaseModel):
     mixed_precision_ready: bool = Field(
         ..., description="Whether GPU is ready for mixed precision training"
     )
+    tf32_enabled: bool = Field(
+        ..., description="Whether TF32 was enabled for FP32 operations"
+    )
 
 
 class GPUDeviceResult(BaseModel):

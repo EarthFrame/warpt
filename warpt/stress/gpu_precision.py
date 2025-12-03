@@ -22,6 +22,7 @@ class GPUPrecisionTest(StressTest):
         backend: GPUBackend | None = None,
         matrix_size: int = 2048,
         test_duration: int = 5,
+        allow_tf32: bool = True,
     ):
         """Initialize GPU precision test.
 
@@ -32,12 +33,14 @@ class GPUPrecisionTest(StressTest):
                 If None, defaults to NVIDIA.
             matrix_size: Size of square matrices (NxN). Default 2048 for precision.
             test_duration: Default duration per precision test in seconds
+            allow_tf32: Enable TF32 for FP32 operations (default True).
         """
         self.device_id = device_id
         self.burnin_seconds = burnin_seconds
         self.backend = backend
         self.matrix_size = matrix_size
         self.test_duration = test_duration
+        self.allow_tf32 = allow_tf32
 
     def get_name(self) -> str:
         """Return test name."""
@@ -77,6 +80,11 @@ class GPUPrecisionTest(StressTest):
         device = torch.device(device_str)
         torch.cuda.set_device(device)
 
+        # Configure TF32 (TensorFloat-32) for FP32 operations
+        if device.type == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = self.allow_tf32
+            torch.backends.cudnn.allow_tf32 = self.allow_tf32
+
         # Calculate per-precision duration
         # 3 precisions: FP32, FP16, BF16 (INT8 TODO)
         num_precisions = 3
@@ -89,6 +97,12 @@ class GPUPrecisionTest(StressTest):
             print(f"Burnin per Precision: {self.burnin_seconds}s")
         else:
             print("Burnin per Precision: 3 iterations (default)")
+
+        # Display TF32 status
+        if self.allow_tf32:
+            print("TF32: Enabled (use --no-tf32 to disable)")
+        else:
+            print("TF32: Disabled")
         print()
 
         # Test each precision
@@ -144,6 +158,7 @@ class GPUPrecisionTest(StressTest):
             bf16_speedup=bf16_speedup,
             int8_speedup=None,
             mixed_precision_ready=mixed_precision_ready,
+            tf32_enabled=self.allow_tf32,
         )
 
     def _test_precision(
