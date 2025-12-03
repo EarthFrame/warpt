@@ -117,7 +117,7 @@ class GPUPrecisionTest(StressTest):
             device, torch.bfloat16, "BF16", "torch.bfloat16", per_precision_duration
         )
 
-        # INT8 is more complex - skip for now
+        # INT8 skip for now - TODO
         # int8_result = self._test_int8_precision(device, per_precision_duration)
 
         # Calculate speedups relative to FP32 baseline
