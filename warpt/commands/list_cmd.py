@@ -15,7 +15,7 @@ from warpt.backends.hardware.storage.base import (
 )
 from warpt.backends.hardware.storage.factory import get_storage_manager
 from warpt.backends.ram import RAM
-from warpt.backends.software import DockerDetector
+from warpt.backends.software import DockerDetector, NvidiaContainerToolkitDetector
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
     CPUInfo as CPUInfoModel,
@@ -26,6 +26,7 @@ from warpt.models.list_models import (
     HardwareInfo,
     ListOutput,
     MemoryInfo,
+    NvidiaContainerToolkitInfo,
     SoftwareInfo,
 )
 from warpt.models.list_models import (
@@ -245,6 +246,33 @@ def run_list(export_format=None, export_filename=None) -> None:
     if cuda_driver_version:
         cuda_info = CUDAInfo(version=cuda_driver_version, driver=cuda_driver_version)
 
+    # NVIDIA Container Toolkit Detection
+    print("\nNVIDIA Container Toolkit:")
+    toolkit_detector = NvidiaContainerToolkitDetector()
+    toolkit_result = toolkit_detector.detect()
+    toolkit_info = NvidiaContainerToolkitInfo(
+        installed=toolkit_result.installed if toolkit_result else False,
+        cli_version=toolkit_result.cli_version if toolkit_result else None,
+        cli_path=toolkit_result.cli_path if toolkit_result else None,
+        runtime_path=toolkit_result.runtime_path if toolkit_result else None,
+        docker_runtime_ready=(
+            toolkit_result.docker_runtime_ready if toolkit_result else None
+        ),
+    )
+
+    if toolkit_info.installed:
+        print("  Installed:         Yes")
+        if toolkit_info.cli_version:
+            print(f"  CLI Version:       {toolkit_info.cli_version}")
+        if toolkit_info.cli_path:
+            print(f"  CLI Path:          {toolkit_info.cli_path}")
+        if toolkit_info.runtime_path:
+            print(f"  Runtime Path:      {toolkit_info.runtime_path}")
+        if toolkit_info.docker_runtime_ready is not None:
+            docker_state = "Yes" if toolkit_info.docker_runtime_ready else "No"
+            print(f"  Docker Runtime:    {docker_state}")
+    else:
+        print("  Installed:         No")
     # Docker Detection
     print("\nDocker Information:")
     docker_detector = DockerDetector()
@@ -318,6 +346,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         cuda=cuda_info,
         frameworks=None,
         compilers=None,
+        nvidia_container_toolkit=toolkit_info,
         docker=docker_info,
     )
 
