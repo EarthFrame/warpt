@@ -1,6 +1,12 @@
 """Constants for warpt models and commands."""
 
-from enum import StrEnum, auto
+import sys
+from enum import auto
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum  # noqa: UP035
 
 
 class Target(StrEnum):
