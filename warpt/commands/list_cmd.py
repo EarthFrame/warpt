@@ -256,7 +256,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         cli_path=toolkit_result.cli_path if toolkit_result else None,
         runtime_path=toolkit_result.runtime_path if toolkit_result else None,
         docker_runtime_ready=(
-            toolkit_result.docker_runtime_available if toolkit_result else None
+            toolkit_result.docker_runtime_ready if toolkit_result else None
         ),
     )
 

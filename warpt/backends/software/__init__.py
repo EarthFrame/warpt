@@ -9,8 +9,8 @@ from warpt.backends.software.frameworks import (
     detect_framework,
 )
 from warpt.backends.software.nvidia_toolkit import (
-    NvidiaContainerToolkitDetectionResult,
     NvidiaContainerToolkitDetector,
+    NvidiaContainerToolkitInfo,
 )
 from warpt.models.list_models import DockerInfo
 
@@ -18,8 +18,8 @@ __all__ = [
     "DockerDetector",
     "DockerInfo",
     "FrameworkDetector",
-    "NvidiaContainerToolkitDetectionResult",
     "NvidiaContainerToolkitDetector",
+    "NvidiaContainerToolkitInfo",
     "PyTorchDetector",
     "SoftwareDetector",
     "detect_all_frameworks",
