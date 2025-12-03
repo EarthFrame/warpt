@@ -8,19 +8,29 @@ from pathlib import Path
 import pynvml
 
 from warpt.backends.factory import get_gpu_backend
+from warpt.backends.hardware.storage.base import (
+    BusType,
+    StorageDeviceInfo,
+    StorageType,
+)
+from warpt.backends.hardware.storage.factory import get_storage_manager
 from warpt.backends.ram import RAM
-from warpt.backends.software import NvidiaContainerToolkitDetector
+from warpt.backends.software import DockerDetector, NvidiaContainerToolkitDetector
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
     CPUInfo as CPUInfoModel,
 )
 from warpt.models.list_models import (
     CUDAInfo,
+    DockerInfo,
     HardwareInfo,
     ListOutput,
     MemoryInfo,
     NvidiaContainerToolkitInfo,
     SoftwareInfo,
+)
+from warpt.models.list_models import (
+    StorageDevice as StorageDeviceModel,
 )
 
 
@@ -28,6 +38,82 @@ def random_string(length: int) -> str:
     """Generate random uppercase string for unique filenames."""
     chars = string.ascii_uppercase
     return "".join(random.choice(chars) for _ in range(length))
+
+
+_STORAGE_TYPE_LABELS: dict[StorageType, str] = {
+    StorageType.NVME_SSD: "NVMe SSD",
+    StorageType.SATA_SSD: "SATA SSD",
+    StorageType.SSD: "SSD",
+    StorageType.HDD: "HDD",
+    StorageType.USB: "USB storage",
+    StorageType.UNKNOWN_BLOCK: "Unknown block device",
+}
+
+
+def _storage_type_label(device: StorageDeviceInfo) -> str:
+    """Return a human-readable label for a storage device type.
+
+    Args:
+        device: StorageDeviceInfo describing the device.
+
+    Returns:
+        Human-readable label for the detected storage type.
+    """
+    label = _STORAGE_TYPE_LABELS.get(device.device_type)
+    if label:
+        return label
+    return device.device_type.value.replace("_", " ").title()
+
+
+def _storage_bus_type(device: StorageDeviceInfo) -> str | None:
+    """Render the bus type for a detected device."""
+    bus_value = getattr(device, "bus_type", None)
+    if isinstance(bus_value, BusType):
+        return bus_value.value
+    if isinstance(bus_value, str):
+        return bus_value
+    return None
+
+
+def _storage_link_speed(device: StorageDeviceInfo) -> float | None:
+    """Return the reported link speed for the provided device."""
+    link_speed = getattr(device, "link_speed_gbps", None)
+    if isinstance(link_speed, int | float):
+        return float(link_speed)
+    return None
+
+
+def _collect_storage_devices() -> list[StorageDeviceModel]:
+    """Collect local storage devices for list command reporting.
+
+    Returns:
+        List of StorageDeviceModel items derived from detected local disks.
+    """
+    try:
+        manager = get_storage_manager()
+    except RuntimeError:
+        return []
+
+    devices: list[StorageDeviceModel] = []
+    try:
+        local_devices = manager.list_local_devices()
+    except Exception:
+        return []
+
+    for device in local_devices:
+        devices.append(
+            StorageDeviceModel(
+                device_path=device.device_path,
+                capacity_gb=device.capacity_gb,
+                type=_storage_type_label(device),
+                model=device.model,
+                manufacturer=device.manufacturer,
+                serial=getattr(device, "serial", None),
+                bus_type=_storage_bus_type(device),
+                link_speed_gbps=_storage_link_speed(device),
+            )
+        )
+    return devices
 
 
 def run_list(export_format=None, export_filename=None) -> None:
@@ -187,6 +273,23 @@ def run_list(export_format=None, export_filename=None) -> None:
             print(f"  Docker Runtime:    {docker_state}")
     else:
         print("  Installed:         No")
+    # Docker Detection
+    print("\nDocker Information:")
+    docker_detector = DockerDetector()
+    docker_result = docker_detector.detect()
+    docker_info = DockerInfo(
+        installed=docker_result is not None,
+        version=docker_result.version if docker_result else None,
+        path=docker_result.path if docker_result else None,
+    )
+    if docker_info.installed:
+        print("  Installed:         Yes")
+        if docker_info.version:
+            print(f"  Version:           {docker_info.version}")
+        if docker_info.path:
+            print(f"  Path:              {docker_info.path}")
+    else:
+        print("  Docker CLI not found")
 
     # RAM Detection
     print("\nMemory Information:")
@@ -215,6 +318,28 @@ def run_list(export_format=None, export_filename=None) -> None:
         channels=channels,
     )
 
+    storage_devices = _collect_storage_devices()
+    if storage_devices:
+        print("\nStorage:")
+        for storage in storage_devices:
+            print(f"  {storage.device_path}: {storage.capacity_gb} GB ({storage.type})")
+            if storage.manufacturer or storage.model:
+                name = storage.model or ""
+                if storage.manufacturer:
+                    name = f"{storage.manufacturer} {name}".strip()
+                print(f"      Model:             {name}")
+            if storage.serial:
+                print(f"      Serial:            {storage.serial}")
+            if storage.bus_type or storage.link_speed_gbps:
+                interface = []
+                if storage.bus_type:
+                    interface.append(storage.bus_type.upper())
+                if storage.link_speed_gbps is not None:
+                    interface.append(f"{storage.link_speed_gbps:.1f} Gbps")
+                print(f"      Interface:         {' @ '.join(interface)}")
+    else:
+        print("\nStorage: No local block devices detected")
+
     # Build software info
     software = SoftwareInfo(
         python=None,
@@ -222,6 +347,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         frameworks=None,
         compilers=None,
         nvidia_container_toolkit=toolkit_info,
+        docker=docker_info,
     )
 
     # Build output with CPU data
@@ -230,7 +356,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         gpu_count=gpu_count,
         gpu=gpu_models,
         memory=memory_info,
-        storage=None,
+        storage=storage_devices or None,
     )
     output = ListOutput(hardware=hardware, software=software)
 
