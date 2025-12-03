@@ -3,6 +3,7 @@
 import time
 
 from warpt.backends.base import GPUBackend
+from warpt.models.constants import MIXED_PRECISION_TEST
 from warpt.models.stress_models import MixedPrecisionResults, PrecisionResult
 from warpt.stress.base import StressTest
 from warpt.stress.utils import calculate_tflops
@@ -44,7 +45,7 @@ class GPUPrecisionTest(StressTest):
 
     def get_name(self) -> str:
         """Return test name."""
-        return "GPU Mixed Precision Profile"
+        return MIXED_PRECISION_TEST
 
     def run(self, duration: int) -> MixedPrecisionResults:
         """Run mixed precision profiling.
