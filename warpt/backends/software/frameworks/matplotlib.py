@@ -1,37 +1,37 @@
-"""NVIDIA BioNeMo framework detection."""
+"""Matplotlib framework detection."""
 
 from warpt.backends.software.frameworks.base import FrameworkDetector
 from warpt.models.list_models import FrameworkInfo
 
 
-class BioNeMoDetector(FrameworkDetector):
-    """Detector for NVIDIA BioNeMo installation."""
+class MatplotlibDetector(FrameworkDetector):
+    """Detector for Matplotlib installation."""
 
     @property
     def framework_name(self) -> str:
         """Return the canonical name of the framework."""
-        return "bionemo"
+        return "matplotlib"
 
     def detect(self) -> FrameworkInfo | None:
-        """Detect BioNeMo installation and gather version information.
+        """Detect Matplotlib installation and gather version information.
 
         Returns
         -------
             FrameworkInfo with version if installed, None otherwise.
         """
-        bionemo = self._safe_import("bionemo")
-        if bionemo is None:
+        matplotlib = self._safe_import("matplotlib")
+        if matplotlib is None:
             return None
 
         # Get version
         try:
-            version = bionemo.__version__  # type: ignore[attr-defined]
+            version = matplotlib.__version__  # type: ignore[attr-defined]
         except AttributeError:
             version = "unknown"
 
-        # BioNeMo is GPU-optimized and requires CUDA
+        # Matplotlib is a visualization library, CPU-only
         return FrameworkInfo(
             installed=True,
             version=version,
-            cuda_support=True,
+            cuda_support=False,
         )

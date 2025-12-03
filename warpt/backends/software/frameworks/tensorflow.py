@@ -41,6 +41,7 @@ class TensorFlowDetector(FrameworkDetector):
             pass
 
         return FrameworkInfo(
+            installed=True,
             version=version,
             cuda_support=cuda_support,
         )

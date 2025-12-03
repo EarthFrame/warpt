@@ -128,10 +128,11 @@ class DockerInfo(BaseModel):
 class FrameworkInfo(BaseModel):
     """ML framework information."""
 
-    version: str = Field(..., description="Framework version")
-    cuda_support: bool = Field(
-        default=False, description="Whether CUDA support is enabled"
+    installed: bool = Field(..., description="Whether the framework is installed")
+    version: str | None = Field(
+        None, description="Framework version (None if not installed)"
     )
+    cuda_support: bool = Field(False, description="Whether CUDA support is enabled")
 
 
 class CompilerInfo(BaseModel):

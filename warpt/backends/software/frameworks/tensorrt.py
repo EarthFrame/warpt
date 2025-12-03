@@ -31,6 +31,7 @@ class TensorRTDetector(FrameworkDetector):
 
         # TensorRT is GPU-only and requires CUDA
         return FrameworkInfo(
+            installed=True,
             version=version,
             cuda_support=True,
         )

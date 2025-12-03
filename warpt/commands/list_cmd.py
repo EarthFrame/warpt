@@ -267,11 +267,15 @@ def run_list(export_format=None, export_filename=None) -> None:
     print("\nML Frameworks:")
     detected_frameworks = detect_all_frameworks()
     if detected_frameworks:
-        for name, framework_info in detected_frameworks.items():
-            cuda_str = "✓ CUDA" if framework_info.cuda_support else "CPU"
-            print(f"  {name.capitalize()}: {framework_info.version} ({cuda_str})")
+        for name, framework_info in sorted(detected_frameworks.items()):
+            display_name = name.replace("_", "-").capitalize()
+            if framework_info.installed:
+                cuda_str = "✓ CUDA" if framework_info.cuda_support else "CPU"
+                print(f"  {display_name}: {framework_info.version} ({cuda_str})")
+            else:
+                print(f"  {display_name}: not installed")
     else:
-        print("  No ML frameworks detected")
+        print("  No ML frameworks configured")
 
     # RAM Detection
     print("\nMemory Information:")

@@ -30,6 +30,7 @@ class ONNXDetector(FrameworkDetector):
             version = "unknown"
 
         return FrameworkInfo(
+            installed=True,
             version=version,
             cuda_support=False,  # ONNX is a model format, not a compute framework
         )

@@ -1,37 +1,37 @@
-"""NVIDIA BioNeMo framework detection."""
+"""Pandas framework detection."""
 
 from warpt.backends.software.frameworks.base import FrameworkDetector
 from warpt.models.list_models import FrameworkInfo
 
 
-class BioNeMoDetector(FrameworkDetector):
-    """Detector for NVIDIA BioNeMo installation."""
+class PandasDetector(FrameworkDetector):
+    """Detector for Pandas installation."""
 
     @property
     def framework_name(self) -> str:
         """Return the canonical name of the framework."""
-        return "bionemo"
+        return "pandas"
 
     def detect(self) -> FrameworkInfo | None:
-        """Detect BioNeMo installation and gather version information.
+        """Detect Pandas installation and gather version information.
 
         Returns
         -------
             FrameworkInfo with version if installed, None otherwise.
         """
-        bionemo = self._safe_import("bionemo")
-        if bionemo is None:
+        pandas = self._safe_import("pandas")
+        if pandas is None:
             return None
 
         # Get version
         try:
-            version = bionemo.__version__  # type: ignore[attr-defined]
+            version = pandas.__version__  # type: ignore[attr-defined]
         except AttributeError:
             version = "unknown"
 
-        # BioNeMo is GPU-optimized and requires CUDA
+        # Pandas is CPU-only data analysis library
         return FrameworkInfo(
             installed=True,
             version=version,
-            cuda_support=True,
+            cuda_support=False,
         )

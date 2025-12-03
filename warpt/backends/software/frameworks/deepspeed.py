@@ -32,6 +32,7 @@ class DeepSpeedDetector(FrameworkDetector):
         # DeepSpeed is GPU-optimized for distributed training
         # It supports CUDA for GPU operations
         return FrameworkInfo(
+            installed=True,
             version=version,
             cuda_support=True,
         )

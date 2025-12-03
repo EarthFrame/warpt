@@ -1,41 +1,40 @@
-"""Apache MXNet framework detection."""
+"""FairScale framework detection."""
 
 from warpt.backends.software.frameworks.base import FrameworkDetector
 from warpt.models.list_models import FrameworkInfo
 
 
-class MXNetDetector(FrameworkDetector):
-    """Detector for Apache MXNet installation."""
+class FairScaleDetector(FrameworkDetector):
+    """Detector for FairScale installation."""
 
     @property
     def framework_name(self) -> str:
         """Return the canonical name of the framework."""
-        return "mxnet"
+        return "fairscale"
 
     def detect(self) -> FrameworkInfo | None:
-        """Detect MXNet installation and gather version information.
+        """Detect FairScale installation and gather version information.
 
         Returns
         -------
-            FrameworkInfo with version and CUDA support status if installed,
-            None if MXNet is not installed.
+            FrameworkInfo with version if installed, None otherwise.
         """
-        mxnet = self._safe_import("mxnet")
-        if mxnet is None:
+        fairscale = self._safe_import("fairscale")
+        if fairscale is None:
             return None
 
         # Get version
         try:
-            version = mxnet.__version__  # type: ignore[attr-defined]
+            version = fairscale.__version__  # type: ignore[attr-defined]
         except AttributeError:
             version = "unknown"
 
-        # Check for CUDA support
+        # FairScale is PyTorch-based distributed training library
         cuda_support = False
         try:
-            # Check if MXNet is built with GPU support
-            num_gpus = mxnet.device.num_gpus()  # type: ignore[attr-defined]
-            cuda_support = num_gpus > 0
+            torch = self._safe_import("torch")
+            if torch is not None:
+                cuda_support = torch.cuda.is_available()  # type: ignore[attr-defined]
         except (AttributeError, RuntimeError):
             pass
 

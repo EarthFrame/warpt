@@ -1,37 +1,37 @@
-"""NVIDIA BioNeMo framework detection."""
+"""Weights & Biases (wandb) framework detection."""
 
 from warpt.backends.software.frameworks.base import FrameworkDetector
 from warpt.models.list_models import FrameworkInfo
 
 
-class BioNeMoDetector(FrameworkDetector):
-    """Detector for NVIDIA BioNeMo installation."""
+class WandBDetector(FrameworkDetector):
+    """Detector for Weights & Biases (wandb) installation."""
 
     @property
     def framework_name(self) -> str:
         """Return the canonical name of the framework."""
-        return "bionemo"
+        return "wandb"
 
     def detect(self) -> FrameworkInfo | None:
-        """Detect BioNeMo installation and gather version information.
+        """Detect wandb installation and gather version information.
 
         Returns
         -------
             FrameworkInfo with version if installed, None otherwise.
         """
-        bionemo = self._safe_import("bionemo")
-        if bionemo is None:
+        wandb = self._safe_import("wandb")
+        if wandb is None:
             return None
 
         # Get version
         try:
-            version = bionemo.__version__  # type: ignore[attr-defined]
+            version = wandb.__version__  # type: ignore[attr-defined]
         except AttributeError:
             version = "unknown"
 
-        # BioNeMo is GPU-optimized and requires CUDA
+        # wandb is a CPU-only experiment tracking and logging platform
         return FrameworkInfo(
             installed=True,
             version=version,
-            cuda_support=True,
+            cuda_support=False,
         )
