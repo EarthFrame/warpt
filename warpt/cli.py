@@ -145,9 +145,13 @@ def check():
 )
 @click.option(
     "--precision",
-    is_flag=True,
-    default=False,
-    help="Run mixed precision profiling test (FP32/FP16/BF16/INT8 capabilities)",
+    "precision_type",
+    default=None,
+    help=(
+        "Run mixed precision profiling test. "
+        "Optionally specify precisions as comma-separated list (e.g., fp16,bf16). "
+        "If no list provided, tests fp32,fp16,bf16 by default."
+    ),
 )
 @click.option(
     "--memory",
@@ -172,7 +176,7 @@ def stress(
     export_file,
     log_file,
     compute,
-    precision,
+    precision_type,
     memory,
     no_tf32,
 ):
@@ -200,7 +204,7 @@ def stress(
         export_filename=export_filename,
         log_file=log_file,
         compute=compute,
-        precision=precision,
+        precision_type=precision_type,
         memory=memory,
         allow_tf32=not no_tf32,  # Invert the flag: --no-tf32 -> allow_tf32=False
     )
