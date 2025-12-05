@@ -137,9 +137,48 @@ def check():
 @click.option(
     "--log-file", default=None, help="Write detailed execution logs to specified file"
 )
+@click.option(
+    "--compute",
+    is_flag=True,
+    default=False,
+    help="Run compute stress test (sustained workload for GPU health)",
+)
+@click.option(
+    "--precision",
+    "precision_type",
+    default=None,
+    help=(
+        "Run mixed precision profiling test. "
+        "Optionally specify precisions as comma-separated list (e.g., fp16,bf16). "
+        "If no list provided, tests fp32,fp16,bf16 by default."
+    ),
+)
+@click.option(
+    "--memory",
+    is_flag=True,
+    default=False,
+    help="Run memory bandwidth test (GPU memory performance)",
+)
+@click.option(
+    "--no-tf32",
+    is_flag=True,
+    default=False,
+    help="Disable TF32 (TensorFloat-32) for GPU tests. By default, TF32 is enabled.",
+)
 # TODO - add --nic-id
 def stress(
-    target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file
+    target,
+    gpu_id,
+    cpu_id,
+    duration,
+    burnin_seconds,
+    export,
+    export_file,
+    log_file,
+    compute,
+    precision_type,
+    memory,
+    no_tf32,
 ):
     """Run system stress tests."""
     from warpt.commands.stress_cmd import run_stress
@@ -164,6 +203,10 @@ def stress(
         export_format=export_format,
         export_filename=export_filename,
         log_file=log_file,
+        compute=compute,
+        precision_type=precision_type,
+        memory=memory,
+        allow_tf32=not no_tf32,  # Invert the flag: --no-tf32 -> allow_tf32=False
     )
 
 

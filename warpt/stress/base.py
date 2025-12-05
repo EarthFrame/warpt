@@ -2,13 +2,14 @@
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
+from typing import Any
 
 
 class StressTest(ABC):
     """Abstract base class for all stress tests."""
 
     @abstractmethod
-    def run(self, duration: int) -> dict:
+    def run(self, duration: int) -> Any:
         """Run the stress test.
 
         Args:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from warpt.backends.software.base import SoftwareDetector
+from warpt.models.constants import DOCKER_NAME
 from warpt.models.list_models import DockerInfo
 
 
@@ -25,7 +26,7 @@ class DockerDetector(SoftwareDetector):
     @property
     def software_name(self) -> str:
         """Return the canonical name of the software."""
-        return "docker"
+        return DOCKER_NAME
 
     def detect(self) -> DockerInfo | None:
         """Detect Docker and collect path and version details.

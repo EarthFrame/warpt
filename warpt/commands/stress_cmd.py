@@ -7,6 +7,7 @@ import click
 from warpt.models.constants import (
     DEFAULT_STRESS_SECONDS,
     VALID_STRESS_TARGETS,
+    Precision,
 )
 
 
@@ -86,6 +87,54 @@ def parse_device_ids(device_id_str: str | None) -> list[int] | None:
             f"Must be comma-separated integers (e.g., '0' or '0,1')."
         )
         print("Run 'warpt list' to see available devices.")
+        sys.exit(1)
+
+
+def parse_precisions(precision_str: str) -> list[Precision]:
+    """Parse comma-separated precision string into list of Precision enums.
+
+    Args:
+        precision_str: Comma-separated precisions (e.g., 'fp16,bf16' or 'fp32')
+
+    Returns
+    -------
+        List of Precision enums
+
+    Raises
+    ------
+        SystemExit: If precision is invalid
+    """
+    valid_precisions = {
+        "fp32": Precision.FP32,
+        "fp16": Precision.FP16,
+        "bf16": Precision.BF16,
+        "int8": Precision.INT8,
+    }
+
+    try:
+        # Split and filter out empty strings
+        precision_strings = [
+            s.strip().lower() for s in precision_str.split(",") if s.strip()
+        ]
+
+        if not precision_strings:
+            print("Error: No valid precisions provided.")
+            print(f"Valid precisions: {', '.join(sorted(valid_precisions.keys()))}")
+            sys.exit(1)
+
+        parsed = []
+        for p in precision_strings:
+            if p not in valid_precisions:
+                print(
+                    f"Error: Invalid precision '{p}'. "
+                    f"Valid: {', '.join(sorted(valid_precisions.keys()))}"
+                )
+                sys.exit(1)
+            parsed.append(valid_precisions[p])
+
+        return parsed
+    except Exception as e:
+        print(f"Error parsing precisions: {e}")
         sys.exit(1)
 
 
@@ -210,6 +259,10 @@ def run_stress(
     export_format: str | None,
     export_filename: str | None,
     log_file: str | None,
+    compute: bool,
+    precision_type: str | None,
+    memory: bool,
+    allow_tf32: bool,
 ) -> None:
     """Run stress tests based on user specifications.
 
@@ -222,6 +275,10 @@ def run_stress(
         export_format: Export format ('json' or None)
         export_filename: Custom export filename or None
         log_file: Log file path or None
+        compute: Run compute stress test (GPU only)
+        precision: Run mixed precision profiling test (GPU only)
+        memory: Run memory bandwidth test (GPU only)
+        allow_tf32: Enable TF32 for GPU tests (default True)
     """
     # Parse and validate targets
     try:
@@ -251,6 +308,44 @@ def run_stress(
     # Expand 'all' target to individual targets
     if "all" in parsed_targets:
         parsed_targets = ["cpu", "gpu", "ram"]
+
+    # Validate test type flags are only used with GPU target
+    if (
+        compute or precision_type is not None or memory
+    ) and "gpu" not in parsed_targets:
+        print(
+            "Error: --compute, --precision, and --memory can only be used "
+            "with --target gpu"
+        )
+        print(f"You specified --target {','.join(parsed_targets)}")
+        sys.exit(1)
+
+    # Parse precision types if provided
+    precision_list = None
+    if precision_type is not None:
+        # User provided --precision flag (with or without value)
+        if precision_type == "":
+            # --precision with no value -> use defaults
+            precision_list = None  # Will use GPUPrecisionTest defaults
+        else:
+            # --precision fp16,bf16 -> parse the list
+            precision_list = parse_precisions(precision_type)
+
+    # Determine which GPU tests to run
+    # Default: if no test type flags specified and GPU is in targets, run all tests
+    gpu_tests_to_run = []
+    if "gpu" in parsed_targets:
+        if not compute and precision_type is None and not memory:
+            # No flags specified - run all tests by default
+            gpu_tests_to_run = ["compute", "precision", "memory"]
+        else:
+            # User specified specific tests
+            if compute:
+                gpu_tests_to_run.append("compute")
+            if precision_type is not None:
+                gpu_tests_to_run.append("precision")
+            if memory:
+                gpu_tests_to_run.append("memory")
 
     # Validate device IDs match specified targets
     if cpu_ids and "cpu" not in parsed_targets:
@@ -296,6 +391,7 @@ def run_stress(
     print(f"  Burnin:         {burnin_seconds}s")
 
     if "gpu" in parsed_targets:
+        print(f"  GPU Tests:      {', '.join(gpu_tests_to_run)}")
         if default_to_all_gpus:
             print(
                 f"  GPU IDs:        all (defaulting to all available GPUs: "
@@ -369,15 +465,6 @@ def run_stress(
             from warpt.backends.factory import get_gpu_backend
             from warpt.backends.nvidia import NvidiaBackend
 
-            try:
-                from warpt.stress.gpu_compute import GPUMatMulTest
-            except ImportError:
-                print(
-                    "Error: torch is required for GPU stress tests.\n"
-                    "Install with: pip install warpt[stress]"
-                )
-                sys.exit(1)
-
             if not gpu_ids:
                 print("No GPUs available for testing.")
                 continue
@@ -394,35 +481,78 @@ def run_stress(
             except RuntimeError as e:
                 raise click.ClickException(str(e)) from e
 
+            # Import test classes based on which tests we're running
+            test_classes: dict[str, type] = {}
+            try:
+                if "compute" in gpu_tests_to_run:
+                    from warpt.stress.gpu_compute import GPUMatMulTest
+
+                    test_classes["compute"] = GPUMatMulTest
+                if "precision" in gpu_tests_to_run:
+                    from warpt.stress.gpu_precision import GPUPrecisionTest
+
+                    test_classes["precision"] = GPUPrecisionTest
+                if "memory" in gpu_tests_to_run:
+                    # TODO: Implement GPUMemoryTest
+                    pass
+            except ImportError:
+                print(
+                    "Error: torch is required for GPU stress tests.\n"
+                    "Install with: pip install warpt[stress]"
+                )
+                sys.exit(1)
+
             # Test each GPU individually
             for gpu_index in gpu_ids:
-                print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
+                # Run each test type for this GPU
+                for test_type in gpu_tests_to_run:
+                    if test_type == "compute":
+                        print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
 
-                gpu_test = GPUMatMulTest(
-                    device_id=gpu_index, burnin_seconds=burnin_seconds
-                )
-                results = gpu_test.run(duration=test_duration)
+                        gpu_test = test_classes["compute"](
+                            device_id=gpu_index,
+                            burnin_seconds=burnin_seconds,
+                            allow_tf32=allow_tf32,
+                        )
+                        results = gpu_test.run(duration=test_duration)
 
-                # Display results
-                print(
-                    f"\nResults for GPU {gpu_index} "
-                    f"({results.get('gpu_name', 'Unknown')}):"
-                )
-                print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-                print(f"  Duration:           {results['duration']:.2f}s")
-                print(f"  Iterations:         {results['iterations']}")
-                print(
-                    "  Matrix Size:        "
-                    f"{results['matrix_size']}x{results['matrix_size']}"
-                )
-                print(f"  Total Operations:   {results['total_operations']:,}")
-                print(f"  Precision:          {results['precision'].upper()}")
-                print(
-                    "  Memory Used:        "
-                    f"{results['memory_used_gb']:.2f} GB / "
-                    f"{results['memory_total_gb']:.2f} GB"
-                )
-                print()
+                        # Display results
+                        print(
+                            f"\nResults for GPU {gpu_index} "
+                            f"({results.get('gpu_name', 'Unknown')}):"
+                        )
+                        print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
+                        print(f"  Duration:           {results['duration']:.2f}s")
+                        print(f"  Iterations:         {results['iterations']}")
+                        print(
+                            "  Matrix Size:        "
+                            f"{results['matrix_size']}x{results['matrix_size']}"
+                        )
+                        print(f"  Total Operations:   {results['total_operations']:,}")
+                        print(f"  Precision:          {results['precision'].upper()}")
+                        print(
+                            "  Memory Used:        "
+                            f"{results['memory_used_gb']:.2f} GB / "
+                            f"{results['memory_total_gb']:.2f} GB"
+                        )
+                        print()
+
+                    if test_type == "precision":
+                        print(f"=== GPU {gpu_index} Mixed Precision Profile ===\n")
+
+                        precision_test = test_classes["precision"](
+                            device_id=gpu_index,
+                            burnin_seconds=burnin_seconds,
+                            allow_tf32=allow_tf32,
+                            precisions=precision_list,
+                        )
+                        results = precision_test.run(duration=test_duration)
+
+                        # Display results (summary already printed by test)
+                        print()
+
+                    if test_type == "memory":
+                        print(f"[TODO] GPU {gpu_index} Memory Bandwidth Test\n")
 
         elif target == "ram":
             print("[TODO] RAM stress tests not yet implemented\n")
