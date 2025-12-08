@@ -308,17 +308,11 @@ def run_stress(
     # Expand 'all' target to individual targets
     if "all" in parsed_targets:
         parsed_targets = ["cpu", "gpu", "ram"]
-
-    # Validate test type flags are only used with GPU target
-    if (
-        compute or precision_type is not None or memory
-    ) and "gpu" not in parsed_targets:
-        print(
-            "Error: --compute, --precision, and --memory can only be used "
-            "with --target gpu"
-        )
-        print(f"You specified --target {','.join(parsed_targets)}")
-        sys.exit(1)
+        # Track that these came from "all" expansion, not explicit request
+        explicitly_requested_targets = set()
+    else:
+        # User explicitly requested these targets
+        explicitly_requested_targets = set(parsed_targets)
 
     # Parse precision types if provided
     precision_list = None
@@ -347,6 +341,30 @@ def run_stress(
             if memory:
                 gpu_tests_to_run.append("memory")
 
+    # Determine which CPU tests to run
+    # CPU only has compute test currently
+    run_cpu_tests = False
+    if "cpu" in parsed_targets:
+        if not compute and precision_type is None and not memory:
+            # No flags specified - run CPU tests by default
+            run_cpu_tests = True
+        elif compute:
+            # Compute flag specified - run CPU compute
+            run_cpu_tests = True
+        # else: precision or memory specified - skip CPU (not applicable)
+
+    # Determine which RAM tests to run
+    # RAM only has memory stress test TODO
+    run_ram_tests = False
+    if "ram" in parsed_targets:
+        if not compute and precision_type is None and not memory:
+            # No flags specified - run RAM tests by default
+            run_ram_tests = True
+        elif memory:
+            # Memory flag specified - run RAM memory test
+            run_ram_tests = True
+        # else: compute or precision specified - skip RAM (not applicable)
+
     # Validate device IDs match specified targets
     if cpu_ids and "cpu" not in parsed_targets:
         print("Error: --cpu-id can only be used with --target cpu")
@@ -371,6 +389,26 @@ def run_stress(
     parsed_targets = validate_device_availability(
         parsed_targets, gpu_ids, cpu_ids, explicit_gpu_request
     )
+
+    # Remove targets that won't run any tests (clean up before config display)
+    if "cpu" in parsed_targets and not run_cpu_tests:
+        parsed_targets.remove("cpu")
+    if "gpu" in parsed_targets and not gpu_tests_to_run:
+        parsed_targets.remove("gpu")
+    if "ram" in parsed_targets and not run_ram_tests:
+        parsed_targets.remove("ram")
+
+    # Check if any targets remain after filtering
+    if not parsed_targets:
+        print("No applicable tests will run for the specified configuration.")
+        if compute or precision_type is not None or memory:
+            print(
+                "The specified test flags don't apply to any available "
+                "hardware targets."
+            )
+        print("\nRun 'warpt stress --help' to see available options.")
+        print("Run 'warpt list' to see available hardware.")
+        sys.exit(0)
 
     # Handle defaulting to all devices when target specified but no device IDs
     default_to_all_gpus = False
@@ -440,6 +478,12 @@ def run_stress(
     # Run stress tests
     for target in parsed_targets:
         if target == "cpu":
+            if not run_cpu_tests:
+                # Only show skip message if explicitly requested
+                if "cpu" in explicitly_requested_targets:
+                    print("⊘ CPU tests skipped (test flags don't apply)\n")
+                continue
+
             print("=== CPU Compute Stress Test ===\n")
             try:
                 from warpt.stress.cpu_compute import CPUMatMulTest
@@ -655,6 +699,9 @@ def run_stress(
                         )
                         print()
 
+                        # Store memory results
+                        gpu_device_results[gpu_key]["memory_result"] = mem_results
+
             # Build GPUDeviceResult models from collected data
             from warpt.models.stress_models import GPUSystemResult
 
@@ -663,10 +710,11 @@ def run_stress(
             for gpu_key, gpu_data in gpu_device_results.items():
                 compute_res = gpu_data["compute_result"]
                 precision_res = gpu_data["precision_result"]
+                memory_res = gpu_data["memory_result"]
 
-                # We need at least compute results to build the model
-                if compute_res:
-                    # Get GPU UUID - use pynvml directly
+                # We need at least one test result to build the model
+                if compute_res or memory_res:
+                    # Get GPU UUID and name
                     import pynvml
 
                     gpu_index_int = int(gpu_key.split("_")[1])
@@ -676,24 +724,50 @@ def run_stress(
                     except Exception:
                         gpu_uuid = f"gpu_{gpu_index_int}_unknown"
 
+                    # Get GPU name from whichever test result is available
+                    if compute_res:
+                        gpu_name = compute_res["gpu_name"]
+                    elif memory_res:
+                        gpu_name = memory_res.gpu_name
+                    else:
+                        gpu_name = "Unknown"
+
+                    # Determine burnin_seconds from any available test
+                    if compute_res:
+                        burnin = compute_res["burnin_seconds"]
+                    elif memory_res:
+                        burnin = memory_res.burnin_seconds
+                    else:
+                        burnin = burnin_seconds  # Fallback to CLI param
+
                     gpu_device_result = GPUDeviceResult(
                         device_id=gpu_key,
                         gpu_uuid=gpu_uuid,
-                        gpu_name=compute_res["gpu_name"],
-                        tflops=compute_res["tflops"],
-                        duration=compute_res["duration"],
-                        iterations=compute_res["iterations"],
-                        total_operations=compute_res["total_operations"],
-                        burnin_seconds=compute_res["burnin_seconds"],
-                        metrics={
-                            "matrix_size": compute_res["matrix_size"],
-                            "precision": compute_res["precision"],
-                            "tf32_enabled": compute_res.get("tf32_enabled", False),
-                        },
-                        memory_used_gb=compute_res["memory_used_gb"],
+                        gpu_name=gpu_name,
+                        # Compute metrics (optional)
+                        tflops=compute_res["tflops"] if compute_res else None,
+                        duration=compute_res["duration"] if compute_res else None,
+                        iterations=compute_res["iterations"] if compute_res else None,
+                        total_operations=(
+                            compute_res["total_operations"] if compute_res else None
+                        ),
+                        burnin_seconds=burnin,
+                        metrics=(
+                            {
+                                "matrix_size": compute_res["matrix_size"],
+                                "precision": compute_res["precision"],
+                                "tf32_enabled": compute_res.get("tf32_enabled", False),
+                            }
+                            if compute_res
+                            else {}
+                        ),
+                        memory_used_gb=(
+                            compute_res["memory_used_gb"] if compute_res else None
+                        ),
                         max_temp=None,  # TODO: Implement temperature monitoring
                         avg_power=None,  # TODO: Implement power monitoring
                         mixed_precision=precision_res if precision_res else None,
+                        memory_bandwidth=memory_res if memory_res else None,
                     )
                     gpu_results_dict[gpu_key] = gpu_device_result
 
@@ -707,6 +781,12 @@ def run_stress(
                 targets_tested.append("gpu")
 
         elif target == "ram":
+            if not run_ram_tests:
+                # Only show skip message if explicitly requested
+                if "ram" in explicitly_requested_targets:
+                    print("⊘ RAM tests skipped (test flags don't apply)\n")
+                continue
+
             print("[TODO] RAM stress tests not yet implemented\n")
 
     print("✓ Stress tests completed")
@@ -747,7 +827,7 @@ def run_stress(
             gpu_tflops_list = [
                 gpu_res.tflops
                 for gpu_res in gpu_test_results.results.values()
-                if isinstance(gpu_res, GPUDeviceResult)
+                if isinstance(gpu_res, GPUDeviceResult) and gpu_res.tflops is not None
             ]
             avg_tflops = (
                 sum(gpu_tflops_list) / len(gpu_tflops_list) if gpu_tflops_list else 0.0

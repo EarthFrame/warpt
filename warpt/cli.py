@@ -146,11 +146,13 @@ def check():
 @click.option(
     "--precision",
     "precision_type",
+    flag_value="",
     default=None,
     help=(
         "Run mixed precision profiling test. "
-        "Optionally specify precisions as comma-separated list (e.g., fp16,bf16). "
-        "If no list provided, tests fp32,fp16,bf16 by default."
+        "Optionally specify precisions as comma-separated list "
+        "(e.g., --precision fp16,bf16). "
+        "Use --precision alone to test all precisions (fp32,fp16,bf16)."
     ),
 )
 @click.option(

@@ -177,16 +177,16 @@ class GPUDeviceResult(BaseModel):
     )
     gpu_name: str = Field(..., description="GPU model name")
 
-    # Performance metrics
-    tflops: float = Field(
-        ..., ge=0, description="GPU computational throughput in TFLOPS"
+    # Performance metrics (from compute test - optional if only other tests run)
+    tflops: float | None = Field(
+        None, ge=0, description="GPU computational throughput in TFLOPS"
     )
-    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    duration: float | None = Field(None, ge=0, description="Test duration in seconds")
     iterations: int | None = Field(
         None, ge=0, description="Iterations completed (if applicable)"
     )
-    total_operations: int = Field(
-        ..., ge=0, description="Total floating point operations"
+    total_operations: int | None = Field(
+        None, ge=0, description="Total floating point operations"
     )
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
 
@@ -199,7 +199,9 @@ class GPUDeviceResult(BaseModel):
     )
 
     # GPU-specific monitoring
-    memory_used_gb: float = Field(..., ge=0, description="GPU memory used in GB")
+    memory_used_gb: float | None = Field(
+        None, ge=0, description="GPU memory used in GB"
+    )
     max_temp: float | None = Field(None, description="Peak temperature in Celsius")
     avg_power: float | None = Field(None, description="Average power in Watts")
     throttle_events: list[ThrottleEvent] = Field(
@@ -209,6 +211,11 @@ class GPUDeviceResult(BaseModel):
     # Mixed precision results
     mixed_precision: MixedPrecisionResults | None = Field(
         None, description="Mixed precision test results"
+    )
+
+    # Memory bandwidth results
+    memory_bandwidth: GPUMemoryBandwidthResult | None = Field(
+        None, description="Memory bandwidth test results"
     )
 
 
