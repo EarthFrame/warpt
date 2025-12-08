@@ -7,6 +7,7 @@ import click
 from warpt.models.constants import (
     DEFAULT_STRESS_SECONDS,
     VALID_STRESS_TARGETS,
+    Precision,
 )
 
 
@@ -86,6 +87,54 @@ def parse_device_ids(device_id_str: str | None) -> list[int] | None:
             f"Must be comma-separated integers (e.g., '0' or '0,1')."
         )
         print("Run 'warpt list' to see available devices.")
+        sys.exit(1)
+
+
+def parse_precisions(precision_str: str) -> list[Precision]:
+    """Parse comma-separated precision string into list of Precision enums.
+
+    Args:
+        precision_str: Comma-separated precisions (e.g., 'fp16,bf16' or 'fp32')
+
+    Returns
+    -------
+        List of Precision enums
+
+    Raises
+    ------
+        SystemExit: If precision is invalid
+    """
+    valid_precisions = {
+        "fp32": Precision.FP32,
+        "fp16": Precision.FP16,
+        "bf16": Precision.BF16,
+        "int8": Precision.INT8,
+    }
+
+    try:
+        # Split and filter out empty strings
+        precision_strings = [
+            s.strip().lower() for s in precision_str.split(",") if s.strip()
+        ]
+
+        if not precision_strings:
+            print("Error: No valid precisions provided.")
+            print(f"Valid precisions: {', '.join(sorted(valid_precisions.keys()))}")
+            sys.exit(1)
+
+        parsed = []
+        for p in precision_strings:
+            if p not in valid_precisions:
+                print(
+                    f"Error: Invalid precision '{p}'. "
+                    f"Valid: {', '.join(sorted(valid_precisions.keys()))}"
+                )
+                sys.exit(1)
+            parsed.append(valid_precisions[p])
+
+        return parsed
+    except Exception as e:
+        print(f"Error parsing precisions: {e}")
         sys.exit(1)
 
 
@@ -211,7 +260,7 @@ def run_stress(
     export_filename: str | None,
     log_file: str | None,
     compute: bool,
-    precision: bool,
+    precision_type: str | None,
     memory: bool,
     allow_tf32: bool,
 ) -> None:
@@ -261,7 +310,9 @@ def run_stress(
         parsed_targets = ["cpu", "gpu", "ram"]
 
     # Validate test type flags are only used with GPU target
-    if (compute or precision or memory) and "gpu" not in parsed_targets:
+    if (
+        compute or precision_type is not None or memory
+    ) and "gpu" not in parsed_targets:
         print(
             "Error: --compute, --precision, and --memory can only be used "
             "with --target gpu"
@@ -269,18 +320,29 @@ def run_stress(
         print(f"You specified --target {','.join(parsed_targets)}")
         sys.exit(1)
 
+    # Parse precision types if provided
+    precision_list = None
+    if precision_type is not None:
+        # User provided --precision flag (with or without value)
+        if precision_type == "":
+            # --precision with no value -> use defaults
+            precision_list = None  # Will use GPUPrecisionTest defaults
+        else:
+            # --precision fp16,bf16 -> parse the list
+            precision_list = parse_precisions(precision_type)
+
     # Determine which GPU tests to run
     # Default: if no test type flags specified and GPU is in targets, run all tests
     gpu_tests_to_run = []
     if "gpu" in parsed_targets:
-        if not compute and not precision and not memory:
+        if not compute and precision_type is None and not memory:
             # No flags specified - run all tests by default
             gpu_tests_to_run = ["compute", "precision", "memory"]
         else:
             # User specified specific tests
             if compute:
                 gpu_tests_to_run.append("compute")
-            if precision:
+            if precision_type is not None:
                 gpu_tests_to_run.append("precision")
             if memory:
                 gpu_tests_to_run.append("memory")
@@ -537,6 +599,7 @@ def run_stress(
                             device_id=gpu_index,
                             burnin_seconds=burnin_seconds,
                             allow_tf32=allow_tf32,
+                            precisions=precision_list,
                         )
                         results = precision_test.run(duration=test_duration)
 

@@ -54,6 +54,15 @@ class MemoryType(StrEnum):
     HBM2 = "hbm2"
 
 
+class Precision(StrEnum):
+    """Precision types for GPU testing."""
+
+    FP32 = "fp32"
+    FP16 = "fp16"
+    BF16 = "bf16"
+    INT8 = "int8"
+
+
 # Stress test timing defaults (in seconds)
 DEFAULT_STRESS_SECONDS = 30  # Duration when --duration not specified
 DEFAULT_BURNIN_SECONDS = 5  # Warmup period before measurements

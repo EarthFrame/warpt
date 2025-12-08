@@ -3,7 +3,7 @@
 import time
 
 from warpt.backends.base import GPUBackend
-from warpt.models.constants import MIXED_PRECISION_TEST
+from warpt.models.constants import MIXED_PRECISION_TEST, Precision
 from warpt.models.stress_models import MixedPrecisionResults, PrecisionResult
 from warpt.stress.base import StressTest
 from warpt.stress.utils import calculate_tflops
@@ -24,6 +24,7 @@ class GPUPrecisionTest(StressTest):
         matrix_size: int = 2048,
         test_duration: int = 5,
         allow_tf32: bool = True,
+        precisions: list[Precision] | None = None,
     ):
         """Initialize GPU precision test.
 
@@ -35,6 +36,9 @@ class GPUPrecisionTest(StressTest):
             matrix_size: Size of square matrices (NxN). Default 2048 for precision.
             test_duration: Default duration per precision test in seconds
             allow_tf32: Enable TF32 for FP32 operations (default True).
+            precisions: List of precisions to test. If None, defaults to
+                [FP32, FP16, BF16]. Unsupported precisions will be tested
+                and marked as not supported in results and command line.
         """
         self.device_id = device_id
         self.burnin_seconds = burnin_seconds
@@ -42,6 +46,16 @@ class GPUPrecisionTest(StressTest):
         self.matrix_size = matrix_size
         self.test_duration = test_duration
         self.allow_tf32 = allow_tf32
+
+        # Default precisions: FP32, FP16, BF16
+        # INT8 is available in enum but not included by default
+        if precisions is None:
+            self.precisions = [Precision.FP32, Precision.FP16, Precision.BF16]
+        else:
+            self.precisions = list(precisions)
+            # Ensure FP32 is always included as baseline
+            if Precision.FP32 not in self.precisions:
+                self.precisions.insert(0, Precision.FP32)
 
     def get_name(self) -> str:
         """Return test name."""
@@ -86,14 +100,24 @@ class GPUPrecisionTest(StressTest):
             torch.backends.cuda.matmul.allow_tf32 = self.allow_tf32
             torch.backends.cudnn.allow_tf32 = self.allow_tf32
 
-        # Calculate per-precision duration
-        # 3 precisions: FP32, FP16, BF16 (INT8 TODO)
-        num_precisions = 3
+        # Precision to torch dtype mapping
+        precision_dtype_map = {
+            Precision.FP32: torch.float32,
+            Precision.FP16: torch.float16,
+            Precision.BF16: torch.bfloat16,
+            # INT8 will be added when implemented
+        }
+
+        # Calculate per-precision duration based on user-selected precisions
+        num_precisions = len(self.precisions)
         per_precision_duration = max(duration // num_precisions, 5)  # Min 5s each
 
         print(f"\n=== Mixed Precision Profile: GPU {self.device_id} ===\n")
         print(f"Matrix Size: {self.matrix_size}x{self.matrix_size}")
         print(f"Duration per Precision: {per_precision_duration}s")
+        print(
+            f"Precisions to Test: {', '.join(p.value.upper() for p in self.precisions)}"
+        )
         if self.burnin_seconds > 0:
             print(f"Burnin per Precision: {self.burnin_seconds}s")
         else:
@@ -106,42 +130,49 @@ class GPUPrecisionTest(StressTest):
             print("TF32: Disabled")
         print()
 
-        # Test each precision
-        fp32_result = self._test_precision(
-            device, torch.float32, "FP32", "torch.float32", per_precision_duration
-        )
-        fp16_result = self._test_precision(
-            device, torch.float16, "FP16", "torch.float16", per_precision_duration
-        )
-        bf16_result = self._test_precision(
-            device, torch.bfloat16, "BF16", "torch.bfloat16", per_precision_duration
-        )
+        # Test each precision in the list
+        precision_results: dict[Precision, PrecisionResult] = {}
+        for precision in self.precisions:
+            if precision not in precision_dtype_map:
+                # Precision not yet implemented (e.g., INT8)
+                print(f"Skipping {precision.value.upper()}: Not yet implemented\n")
+                continue
 
-        # INT8 skip for now - TODO
-        # int8_result = self._test_int8_precision(device, per_precision_duration)
+            torch_dtype = precision_dtype_map[precision]
+            precision_results[precision] = self._test_precision(
+                device,
+                torch_dtype,
+                precision.value.upper(),
+                f"torch.{torch_dtype}",
+                per_precision_duration,
+            )
 
         # Calculate speedups relative to FP32 baseline
-        fp32_tflops = fp32_result.tflops or 0.0
-        fp16_speedup = (
-            (fp16_result.tflops / fp32_tflops) if fp16_result.tflops else None
-        )
-        bf16_speedup = (
-            (bf16_result.tflops / fp32_tflops) if bf16_result.tflops else None
-        )
+        fp32_baseline = precision_results.get(Precision.FP32)
+        fp32_tflops = fp32_baseline.tflops if fp32_baseline else 0.0
+
+        # Calculate speedup for each non-FP32 precision
+        speedups: dict[Precision, float | None] = {}
+        for precision, result in precision_results.items():
+            if precision != Precision.FP32:  # Only calculate for non-baseline
+                if result.tflops and fp32_tflops:
+                    speedups[precision] = result.tflops / fp32_tflops
+                else:
+                    speedups[precision] = None
 
         # Determine if GPU is mixed precision ready
-        # (has meaningful speedup in FP16 or BF16)
+        # (has meaningful speedup in any non-FP32 precision)
         mixed_precision_ready = False
-        if fp16_speedup and fp16_speedup > 1.1:  # At least 10% speedup
-            mixed_precision_ready = True
-        if bf16_speedup and bf16_speedup > 1.1:
-            mixed_precision_ready = True
+        for speedup in speedups.values():
+            if speedup and speedup > 1.5:  # At least 50% speedup
+                mixed_precision_ready = True
+                break
 
+        # Print speedup summary
         print("\n--- Speedup Summary ---")
-        if fp16_speedup:
-            print(f"FP16 vs FP32: {fp16_speedup:.2f}x")
-        if bf16_speedup:
-            print(f"BF16 vs FP32: {bf16_speedup:.2f}x")
+        for precision, speedup in speedups.items():
+            if speedup:
+                print(f"{precision.value.upper()} vs FP32: {speedup:.2f}x")
         hw_info = (
             "Tensor Cores detected" if mixed_precision_ready else "No acceleration"
         )
@@ -150,14 +181,20 @@ class GPUPrecisionTest(StressTest):
             f"({hw_info})"
         )
 
+        # Build MixedPrecisionResults dynamically
+        # FP32 is required as baseline (guaranteed by __init__)
+        fp32_result = precision_results.get(Precision.FP32)
+        if not fp32_result:
+            raise RuntimeError("FP32 baseline test failed or was not run")
+
         return MixedPrecisionResults(
             fp32=fp32_result,
-            fp16=fp16_result,
-            bf16=bf16_result,
-            int8=None,  # TODO: Implement INT8
-            fp16_speedup=fp16_speedup,
-            bf16_speedup=bf16_speedup,
-            int8_speedup=None,
+            fp16=precision_results.get(Precision.FP16),
+            bf16=precision_results.get(Precision.BF16),
+            int8=precision_results.get(Precision.INT8),
+            fp16_speedup=speedups.get(Precision.FP16),
+            bf16_speedup=speedups.get(Precision.BF16),
+            int8_speedup=speedups.get(Precision.INT8),
             mixed_precision_ready=mixed_precision_ready,
             tf32_enabled=self.allow_tf32,
         )
@@ -261,7 +298,8 @@ class GPUPrecisionTest(StressTest):
             )
 
         except Exception as e:
-            print(f"Failed: {e}")
+            error_msg = f"GPU {self.device_id} does not support {precision_name}"
+            print(f"Not supported ({e})")
             return PrecisionResult(
                 supported=False,
                 iterations=None,
@@ -269,10 +307,10 @@ class GPUPrecisionTest(StressTest):
                 dtype=dtype_str,
                 tflops=None,
                 matrix_size=self.matrix_size,
-                hardware_supported=None,
-                runtime_supported=None,
+                hardware_supported=False,
+                runtime_supported=False,
                 method=None,
-                note=f"Test failed: {e!s}",
+                note=error_msg,
             )
 
     def _check_hardware_support(self, dtype) -> bool:
