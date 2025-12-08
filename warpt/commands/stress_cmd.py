@@ -426,8 +426,16 @@ def run_stress(
     print("Running Stress Tests...")
     print("=" * 60 + "\n")
 
-    # TODO: Add timestamp tracking for JSON export: start and end times from
-    # base class helper functions
+    # Track timestamps and collect results for JSON export
+    from datetime import UTC, datetime
+
+    timestamp_start = datetime.now(UTC).isoformat()
+
+    # Result collectors (will build Pydantic models as we run tests)
+    cpu_test_results = None
+    gpu_test_results = None
+    # ram_test_results = None  # TODO: Implement RAM tests
+    targets_tested: list[str] = []
 
     # Run stress tests
     for target in parsed_targets:
@@ -460,6 +468,37 @@ def run_stress(
                 f"physical, {results['cpu_logical_cores']} logical"
             )
             print()
+
+            # Collect results for JSON export
+            from warpt.backends.system import CPU
+            from warpt.models.stress_models import CPUSystemResult, CPUTestResults
+
+            # Get CPU info for model/architecture/sockets
+            cpu_backend = CPU()
+            cpu_info = cpu_backend.get_cpu_info()
+
+            cpu_system_result = CPUSystemResult(
+                cpu_model=cpu_info.model,
+                cpu_architecture=cpu_info.architecture,
+                tflops=results["tflops"],
+                duration=results["duration"],
+                iterations=results["iterations"],
+                total_operations=results["total_operations"],
+                burnin_seconds=results["burnin_seconds"],
+                metrics={"matrix_size": results["matrix_size"]},
+                sockets_used=cpu_info.total_sockets,
+                physical_cores=results["cpu_physical_cores"],
+                logical_cores=results["cpu_logical_cores"],
+                max_temp=None,  # TODO: Implement temperature monitoring
+                avg_power=None,  # TODO: Implement power monitoring
+            )
+
+            cpu_test_results = CPUTestResults(
+                test_mode="system_level",
+                device_count=cpu_info.total_sockets,
+                results={"cpu_system": cpu_system_result},
+            )
+            targets_tested.append("cpu")
 
         elif target == "gpu":
             from warpt.backends.factory import get_gpu_backend
@@ -503,8 +542,21 @@ def run_stress(
                 )
                 sys.exit(1)
 
+            # Collect GPU results for export (per-device mode)
+            from warpt.models.stress_models import GPUDeviceResult, GPUTestResults
+
+            gpu_device_results: dict[str, dict] = {}  # Temp storage per GPU
+
             # Test each GPU individually
             for gpu_index in gpu_ids:
+                gpu_key = f"gpu_{gpu_index}"
+                if gpu_key not in gpu_device_results:
+                    gpu_device_results[gpu_key] = {
+                        "device_id": gpu_key,
+                        "compute_result": None,
+                        "precision_result": None,
+                        "memory_result": None,
+                    }
                 # Run each test type for this GPU
                 for test_type in gpu_tests_to_run:
                     if test_type == "compute":
@@ -538,6 +590,9 @@ def run_stress(
                         )
                         print()
 
+                        # Store compute results
+                        gpu_device_results[gpu_key]["compute_result"] = results
+
                     if test_type == "precision":
                         print(f"=== GPU {gpu_index} Mixed Precision Profile ===\n")
 
@@ -551,6 +606,9 @@ def run_stress(
 
                         # Display results (summary already printed by test)
                         print()
+
+                        # Store precision results
+                        gpu_device_results[gpu_key]["precision_result"] = results
 
                     if test_type == "memory":
                         from warpt.models.stress_models import (
@@ -597,7 +655,129 @@ def run_stress(
                         )
                         print()
 
+            # Build GPUDeviceResult models from collected data
+            from warpt.models.stress_models import GPUSystemResult
+
+            gpu_results_dict: dict[str, GPUDeviceResult | GPUSystemResult] = {}
+
+            for gpu_key, gpu_data in gpu_device_results.items():
+                compute_res = gpu_data["compute_result"]
+                precision_res = gpu_data["precision_result"]
+
+                # We need at least compute results to build the model
+                if compute_res:
+                    # Get GPU UUID - use pynvml directly
+                    import pynvml
+
+                    gpu_index_int = int(gpu_key.split("_")[1])
+                    try:
+                        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_index_int)
+                        gpu_uuid = pynvml.nvmlDeviceGetUUID(handle)
+                    except Exception:
+                        gpu_uuid = f"gpu_{gpu_index_int}_unknown"
+
+                    gpu_device_result = GPUDeviceResult(
+                        device_id=gpu_key,
+                        gpu_uuid=gpu_uuid,
+                        gpu_name=compute_res["gpu_name"],
+                        tflops=compute_res["tflops"],
+                        duration=compute_res["duration"],
+                        iterations=compute_res["iterations"],
+                        total_operations=compute_res["total_operations"],
+                        burnin_seconds=compute_res["burnin_seconds"],
+                        metrics={
+                            "matrix_size": compute_res["matrix_size"],
+                            "precision": compute_res["precision"],
+                            "tf32_enabled": compute_res.get("tf32_enabled", False),
+                        },
+                        memory_used_gb=compute_res["memory_used_gb"],
+                        max_temp=None,  # TODO: Implement temperature monitoring
+                        avg_power=None,  # TODO: Implement power monitoring
+                        mixed_precision=precision_res if precision_res else None,
+                    )
+                    gpu_results_dict[gpu_key] = gpu_device_result
+
+            # Build GPUTestResults container
+            if gpu_results_dict:
+                gpu_test_results = GPUTestResults(
+                    test_mode="per_device",
+                    device_count=len(gpu_results_dict),
+                    results=gpu_results_dict,
+                )
+                targets_tested.append("gpu")
+
         elif target == "ram":
             print("[TODO] RAM stress tests not yet implemented\n")
 
     print("✓ Stress tests completed")
+
+    # Capture end timestamp
+    timestamp_end = datetime.now(UTC).isoformat()
+
+    # Export to JSON if requested
+    if export_format == "json":
+        from pathlib import Path
+
+        from warpt.commands.list_cmd import random_string
+        from warpt.models.stress_models import (
+            CPUSummary,
+            GPUSummary,
+            StressTestExport,
+        )
+
+        # Build results dict
+        results_dict: dict = {}
+        if cpu_test_results:
+            results_dict["cpu"] = cpu_test_results
+        if gpu_test_results:
+            results_dict["gpu"] = gpu_test_results
+        # RAM tests not yet implemented, ram_test_results will always be None
+
+        # Build summary dict (simplified for now)
+        summary_dict: dict = {}
+        if cpu_test_results:
+            cpu_summary = CPUSummary(
+                status="pass",
+                performance="completed",
+                tflops=cpu_test_results.results["cpu_system"].tflops,
+            )
+            summary_dict["cpu"] = cpu_summary
+
+        if gpu_test_results:
+            gpu_tflops_list = [
+                gpu_res.tflops
+                for gpu_res in gpu_test_results.results.values()
+                if isinstance(gpu_res, GPUDeviceResult)
+            ]
+            avg_tflops = (
+                sum(gpu_tflops_list) / len(gpu_tflops_list) if gpu_tflops_list else 0.0
+            )
+            gpu_summary = GPUSummary(
+                total_devices_tested=gpu_test_results.device_count,
+                avg_tflops=avg_tflops,
+                healthy_devices=gpu_test_results.device_count,
+                warnings=[],
+            )
+            summary_dict["gpu"] = gpu_summary
+
+        # Build StressTestExport model
+        export_model = StressTestExport(
+            targets_tested=targets_tested,
+            results=results_dict,
+            summary=summary_dict,
+            timestamp_start=timestamp_start,
+            timestamp_end=timestamp_end,
+            warpt_version="0.1.0",  # TODO: Get from package
+        )
+
+        # Generate filename if not provided
+        if not export_filename:
+            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            random_tag = random_string(6)
+            export_filename = f"warpt_stress_{timestamp_str}_{random_tag}.json"
+
+        # Write JSON file using Pydantic's built-in serialization
+        export_path = Path(export_filename)
+        export_path.write_text(export_model.model_dump_json(indent=2))
+
+        print(f"\n✓ JSON exported to: {export_filename}")
