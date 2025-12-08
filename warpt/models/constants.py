@@ -74,6 +74,7 @@ VALID_STRESS_TARGETS = ("cpu", "gpu", "ram", "all")
 CPU_STRESS_TEST = "CPU Matrix Multiplication"
 GPU_STRESS_TEST = "GPU Matrix Multiplication"
 MIXED_PRECISION_TEST = "GPU Mixed Precision Profile"
+GPU_MEMORY_TEST = "GPU Memory Bandwidth"
 
 # Docker
 DOCKER_NAME = "docker"

@@ -122,6 +122,51 @@ class MixedPrecisionResults(BaseModel):
     )
 
 
+class GPUMemoryBandwidthResult(BaseModel):
+    """Results from GPU memory bandwidth test."""
+
+    # Device identifiers
+    device_id: str = Field(..., description="Logical device ID (e.g., 'gpu_0')")
+    gpu_uuid: str = Field(
+        ..., description="Persistent GPU UUID for tracking across systems"
+    )
+    gpu_name: str = Field(..., description="GPU model name")
+
+    # Test metadata
+    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+    data_size_gb: float = Field(
+        ..., gt=0, description="Size of data transferred per test in GB"
+    )
+    used_pinned_memory: bool = Field(
+        ..., description="Whether pinned memory was used for H2D/D2H transfers"
+    )
+
+    # Device-to-Device (GPU memory bandwidth)
+    d2d_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Device-to-device memory bandwidth in GB/s"
+    )
+    d2d_iterations: int = Field(
+        ..., ge=0, description="Number of D2D iterations completed"
+    )
+
+    # Host-to-Device (PCIe upload bandwidth)
+    h2d_bandwidth_gbps: float | None = Field(
+        None, ge=0, description="Host-to-device memory bandwidth in GB/s"
+    )
+    h2d_iterations: int | None = Field(
+        None, ge=0, description="Number of H2D iterations completed"
+    )
+
+    # Device-to-Host (PCIe download bandwidth)
+    d2h_bandwidth_gbps: float | None = Field(
+        None, ge=0, description="Device-to-host memory bandwidth in GB/s"
+    )
+    d2h_iterations: int | None = Field(
+        None, ge=0, description="Number of D2H iterations completed"
+    )
+
+
 class GPUDeviceResult(BaseModel):
     """Results from individual GPU stress test."""
 

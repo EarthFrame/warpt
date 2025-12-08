@@ -493,8 +493,9 @@ def run_stress(
 
                     test_classes["precision"] = GPUPrecisionTest
                 if "memory" in gpu_tests_to_run:
-                    # TODO: Implement GPUMemoryTest
-                    pass
+                    from warpt.stress.gpu_memory import GPUMemoryBandwidthTest
+
+                    test_classes["memory"] = GPUMemoryBandwidthTest
             except ImportError:
                 print(
                     "Error: torch is required for GPU stress tests.\n"
@@ -552,7 +553,49 @@ def run_stress(
                         print()
 
                     if test_type == "memory":
-                        print(f"[TODO] GPU {gpu_index} Memory Bandwidth Test\n")
+                        from warpt.models.stress_models import (
+                            GPUMemoryBandwidthResult,
+                        )
+
+                        print(f"=== GPU {gpu_index} Memory Bandwidth Test ===\n")
+
+                        memory_test = test_classes["memory"](
+                            device_id=gpu_index,
+                            burnin_seconds=burnin_seconds,
+                        )
+                        mem_results: GPUMemoryBandwidthResult = memory_test.run(
+                            duration=test_duration
+                        )
+
+                        # Display results
+                        print(
+                            f"\nResults for GPU {gpu_index} "
+                            f"({mem_results.gpu_name}):"
+                        )
+                        print(
+                            f"  D2D Bandwidth:      "
+                            f"{mem_results.d2d_bandwidth_gbps:.1f} GB/s"
+                        )
+                        if mem_results.h2d_bandwidth_gbps is not None:
+                            print(
+                                f"  H2D Bandwidth:      "
+                                f"{mem_results.h2d_bandwidth_gbps:.1f} GB/s"
+                            )
+                        if mem_results.d2h_bandwidth_gbps is not None:
+                            print(
+                                f"  D2H Bandwidth:      "
+                                f"{mem_results.d2h_bandwidth_gbps:.1f} GB/s"
+                            )
+                        print(
+                            f"  Data Size:          "
+                            f"{mem_results.data_size_gb} GB per test"
+                        )
+                        print(f"  Duration:           " f"{mem_results.duration:.1f}s")
+                        print(
+                            f"  Pinned Memory:      "
+                            f"{'Yes' if mem_results.used_pinned_memory else 'No'}"
+                        )
+                        print()
 
         elif target == "ram":
             print("[TODO] RAM stress tests not yet implemented\n")
