@@ -1,6 +1,8 @@
 """Stress test command - runs comprehensive hardware stress tests."""
 
+import json
 import sys
+from pathlib import Path
 
 import click
 
@@ -8,6 +10,7 @@ from warpt.models.constants import (
     DEFAULT_STRESS_SECONDS,
     VALID_STRESS_TARGETS,
 )
+from warpt.monitoring import ResourceSnapshot, SystemMonitorDaemon
 
 
 def parse_targets(
@@ -210,6 +213,9 @@ def run_stress(
     export_format: str | None,
     export_filename: str | None,
     log_file: str | None,
+    monitor: bool,
+    monitor_interval: float,
+    monitor_output: str | None,
 ) -> None:
     """Run stress tests based on user specifications.
 
@@ -222,6 +228,9 @@ def run_stress(
         export_format: Export format ('json' or None)
         export_filename: Custom export filename or None
         log_file: Log file path or None
+        monitor: Whether to enable the background monitor while tests run.
+        monitor_interval: Sampling interval in seconds for the monitor.
+        monitor_output: Optional path to write monitor samples as JSON.
     """
     # Parse and validate targets
     try:
@@ -326,105 +335,158 @@ def run_stress(
         else:
             print("  Export to:      warpt_stress_<timestamp>.json")
 
-    print("\n" + "=" * 60)
-    print("Running Stress Tests...")
-    print("=" * 60 + "\n")
+    monitor_daemon, monitor_history = _start_background_monitor(
+        monitor, monitor_interval
+    )
 
-    # TODO: Add timestamp tracking for JSON export: start and end times from
-    # base class helper functions
+    try:
+        print("\n" + "=" * 60)
+        print("Running Stress Tests...")
+        print("=" * 60 + "\n")
 
-    # Run stress tests
-    for target in parsed_targets:
-        if target == "cpu":
-            print("=== CPU Compute Stress Test ===\n")
-            try:
-                from warpt.stress.cpu_compute import CPUMatMulTest
-            except ImportError:
-                print(
-                    "Error: numpy is required for CPU stress tests.\n"
-                    "Install with: pip install warpt[stress]"
-                )
-                sys.exit(1)
+        # TODO: Add timestamp tracking for JSON export: start and end times from
+        # base class helper functions
 
-            test = CPUMatMulTest(burnin_seconds=burnin_seconds)
-            results = test.run(duration=test_duration)
-
-            # Display results
-            print("\nResults:")
-            print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-            print(f"  Duration:           {results['duration']:.2f}s")
-            print(f"  Iterations:         {results['iterations']}")
-            print(
-                f"  Matrix Size:        "
-                f"{results['matrix_size']}x{results['matrix_size']}"
-            )
-            print(f"  Total Operations:   {results['total_operations']:,}")
-            print(
-                f"  CPU Cores:          {results['cpu_physical_cores']} "
-                f"physical, {results['cpu_logical_cores']} logical"
-            )
-            print()
-
-        elif target == "gpu":
-            from warpt.backends.factory import get_gpu_backend
-            from warpt.backends.nvidia import NvidiaBackend
-
-            try:
-                from warpt.stress.gpu_compute import GPUMatMulTest
-            except ImportError:
-                print(
-                    "Error: torch is required for GPU stress tests.\n"
-                    "Install with: pip install warpt[stress]"
-                )
-                sys.exit(1)
-
-            if not gpu_ids:
-                print("No GPUs available for testing.")
-                continue
-
-            # TODO MVP limitation: Only NVIDIA GPUs supported for stress tests
-            try:
-                backend = get_gpu_backend()
-                if not isinstance(backend, NvidiaBackend):
-                    raise click.ClickException(
-                        f"GPU stress tests currently only support NVIDIA GPUs.\n"
-                        f"Detected: {backend.__class__.__name__}\n"
-                        f"AMD and Intel GPU stress test support coming soon."
+        # Run stress tests
+        for target in parsed_targets:
+            if target == "cpu":
+                print("=== CPU Compute Stress Test ===\n")
+                try:
+                    from warpt.stress.cpu_compute import CPUMatMulTest
+                except ImportError:
+                    print(
+                        "Error: numpy is required for CPU stress tests.\n"
+                        "Install with: pip install warpt[stress]"
                     )
-            except RuntimeError as e:
-                raise click.ClickException(str(e)) from e
+                    sys.exit(1)
 
-            # Test each GPU individually
-            for gpu_index in gpu_ids:
-                print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
-
-                gpu_test = GPUMatMulTest(
-                    device_id=gpu_index, burnin_seconds=burnin_seconds
-                )
-                results = gpu_test.run(duration=test_duration)
+                test = CPUMatMulTest(burnin_seconds=burnin_seconds)
+                results = test.run(duration=test_duration)
 
                 # Display results
-                print(
-                    f"\nResults for GPU {gpu_index} "
-                    f"({results.get('gpu_name', 'Unknown')}):"
-                )
+                print("\nResults:")
                 print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
                 print(f"  Duration:           {results['duration']:.2f}s")
                 print(f"  Iterations:         {results['iterations']}")
                 print(
-                    "  Matrix Size:        "
+                    f"  Matrix Size:        "
                     f"{results['matrix_size']}x{results['matrix_size']}"
                 )
                 print(f"  Total Operations:   {results['total_operations']:,}")
-                print(f"  Precision:          {results['precision'].upper()}")
                 print(
-                    "  Memory Used:        "
-                    f"{results['memory_used_gb']:.2f} GB / "
-                    f"{results['memory_total_gb']:.2f} GB"
+                    f"  CPU Cores:          {results['cpu_physical_cores']} "
+                    f"physical, {results['cpu_logical_cores']} logical"
                 )
                 print()
 
-        elif target == "ram":
-            print("[TODO] RAM stress tests not yet implemented\n")
+            elif target == "gpu":
+                from warpt.backends.factory import get_gpu_backend
+                from warpt.backends.nvidia import NvidiaBackend
 
-    print("✓ Stress tests completed")
+                try:
+                    from warpt.stress.gpu_compute import GPUMatMulTest
+                except ImportError:
+                    print(
+                        "Error: torch is required for GPU stress tests.\n"
+                        "Install with: pip install warpt[stress]"
+                    )
+                    sys.exit(1)
+
+                if not gpu_ids:
+                    print("No GPUs available for testing.")
+                    continue
+
+                # TODO MVP limitation: Only NVIDIA GPUs supported for stress tests
+                try:
+                    backend = get_gpu_backend()
+                    if not isinstance(backend, NvidiaBackend):
+                        raise click.ClickException(
+                            f"GPU stress tests currently only support NVIDIA GPUs.\n"
+                            f"Detected: {backend.__class__.__name__}\n"
+                            f"AMD and Intel GPU stress test support coming soon."
+                        )
+                except RuntimeError as e:
+                    raise click.ClickException(str(e)) from e
+
+                # Test each GPU individually
+                for gpu_index in gpu_ids:
+                    print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
+
+                    gpu_test = GPUMatMulTest(
+                        device_id=gpu_index, burnin_seconds=burnin_seconds
+                    )
+                    results = gpu_test.run(duration=test_duration)
+
+                    # Display results
+                    print(
+                        f"\nResults for GPU {gpu_index} "
+                        f"({results.get('gpu_name', 'Unknown')}):"
+                    )
+                    print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
+                    print(f"  Duration:           {results['duration']:.2f}s")
+                    print(f"  Iterations:         {results['iterations']}")
+                    print(
+                        "  Matrix Size:        "
+                        f"{results['matrix_size']}x{results['matrix_size']}"
+                    )
+                    print(f"  Total Operations:   {results['total_operations']:,}")
+                    print(f"  Precision:          {results['precision'].upper()}")
+                    print(
+                        "  Memory Used:        "
+                        f"{results['memory_used_gb']:.2f} GB / "
+                        f"{results['memory_total_gb']:.2f} GB"
+                    )
+                    print()
+
+            elif target == "ram":
+                print("[TODO] RAM stress tests not yet implemented\n")
+
+        print("✓ Stress tests completed")
+    finally:
+        _shutdown_background_monitor(monitor_daemon, monitor_history, monitor_output)
+
+
+def _start_background_monitor(
+    enabled: bool, interval_seconds: float
+) -> tuple[SystemMonitorDaemon | None, list[ResourceSnapshot]]:
+    """Start the monitor daemon when requested."""
+    if not enabled:
+        return None, []
+    if interval_seconds <= 0:
+        raise ValueError("monitor-interval must be greater than zero")
+
+    history: list[ResourceSnapshot] = []
+    daemon = SystemMonitorDaemon(
+        interval_seconds=interval_seconds,
+        snapshot_listener=history.append,
+    )
+    daemon.start()
+    print(f"Background monitoring started (interval {interval_seconds:.2f}s)")
+    return daemon, history
+
+
+def _shutdown_background_monitor(
+    daemon: SystemMonitorDaemon | None,
+    history: list[ResourceSnapshot],
+    output_path: str | None,
+) -> None:
+    """Stop the monitor daemon and optionally persist collected snapshots."""
+    if not daemon:
+        return
+
+    daemon.stop()
+
+    if not history:
+        print("Background monitor did not collect samples.")
+        return
+
+    if output_path:
+        Path(output_path).write_text(
+            json.dumps([snapshot.to_dict() for snapshot in history], indent=2)
+        )
+        print(f"Background monitor history saved to {output_path}")
+    else:
+        print(
+            "Background monitor collected "
+            f"{len(history)} samples (use --monitor-output to persist)"
+        )

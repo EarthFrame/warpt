@@ -117,8 +117,8 @@ def _collect_storage_devices() -> list[StorageDeviceModel]:
 
 def run_list(export_format=None, export_filename=None) -> None:
     """Display comprehensive CPU and GPU information."""
-    if export_format:
-        raise NotImplementedError("Export format not implemented")
+    if export_format and export_format != "json":
+        raise NotImplementedError(f"Export format '{export_format}' not implemented")
 
     cpu = CPU()
     info = cpu.get_cpu_info()

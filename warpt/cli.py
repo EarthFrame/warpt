@@ -48,6 +48,19 @@ def list(export, export_file):
 
 
 @warpt.command()
+@click.option(
+    "--results-file",
+    default=None,
+    help="Path to a JSON results file from 'warpt list' command",
+)
+def recommend(results_file):
+    """Recommend models and configurations based on system specs."""
+    from warpt.commands.recommend_cmd import run_recommend
+
+    run_recommend(results_file=results_file)
+
+
+@warpt.command()
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed version information")
 def version(verbose):
     """Display warpt version information."""
@@ -57,9 +70,44 @@ def version(verbose):
 
 
 @warpt.command()
-def monitor():
+@click.option(
+    "--interval",
+    "-i",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds for live monitoring",
+)
+@click.option(
+    "--duration",
+    "-d",
+    type=float,
+    default=None,
+    help="Stop monitoring after this many seconds (default: run until interrupted)",
+)
+@click.option(
+    "--tui",
+    is_flag=True,
+    default=False,
+    help="Launch the curses-based monitor dashboard (press q to quit)",
+)
+def monitor(interval, duration, tui):
     """Monitor system performance in real-time."""
-    print("Live monitoring!")
+    if tui:
+        try:
+            from warpt.commands.monitor_tui import run_monitor_tui
+
+            run_monitor_tui(interval_seconds=interval)
+        except Exception as exc:
+            raise click.ClickException(f"Monitor TUI failed: {exc}") from exc
+        return
+
+    from warpt.commands.monitor_cmd import run_monitor
+
+    try:
+        run_monitor(interval_seconds=interval, duration_seconds=duration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @warpt.command()
@@ -138,8 +186,37 @@ def check():
     "--log-file", default=None, help="Write detailed execution logs to specified file"
 )
 # TODO - add --nic-id
+@click.option(
+    "--monitor",
+    is_flag=True,
+    default=False,
+    help="Run the background resource monitor during stress tests",
+)
+@click.option(
+    "--monitor-interval",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds for the background monitor",
+)
+@click.option(
+    "--monitor-output",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help="Path to write the monitor's collected samples as JSON",
+)
 def stress(
-    target, gpu_id, cpu_id, duration, burnin_seconds, export, export_file, log_file
+    target,
+    gpu_id,
+    cpu_id,
+    duration,
+    burnin_seconds,
+    export,
+    export_file,
+    log_file,
+    monitor,
+    monitor_interval,
+    monitor_output,
 ):
     """Run system stress tests."""
     from warpt.commands.stress_cmd import run_stress
@@ -164,6 +241,9 @@ def stress(
         export_format=export_format,
         export_filename=export_filename,
         log_file=log_file,
+        monitor=monitor,
+        monitor_interval=monitor_interval,
+        monitor_output=monitor_output,
     )
 
 
