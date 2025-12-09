@@ -3,7 +3,7 @@
 import time
 
 from warpt.backends.base import GPUBackend
-from warpt.models.constants import GPU_MEMORY_TEST
+from warpt.models.constants import GPU_MEMORY_TEST, MIN_MEMORY_TEST_DURATION
 from warpt.models.stress_models import GPUMemoryBandwidthResult
 from warpt.stress.base import StressTest
 
@@ -246,7 +246,7 @@ class GPUMemoryBandwidthTest(StressTest):
 
         # Calculate per-test duration
         num_tests = len(self.test_types)
-        per_test_duration = max(duration // num_tests, 5)  # Min 5s each
+        per_test_duration = max(duration // num_tests, MIN_MEMORY_TEST_DURATION)
 
         # Get GPU info
         gpu_props = torch.cuda.get_device_properties(device)
