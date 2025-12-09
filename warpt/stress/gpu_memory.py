@@ -32,6 +32,7 @@ class GPUMemoryBandwidthTest(StressTest):
             backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
                 If None, defaults to NVIDIA.
             data_size_gb: Size of data to transfer in GB (default 1.0).
+                Same size used for all test types (D2D, H2D, D2H).
             test_types: Which tests to run. Options: ["d2d", "h2d", "d2h"]
                 If None, runs all three by default.
             use_pinned_memory: Use pinned memory for H2D/D2H transfers
@@ -42,6 +43,11 @@ class GPUMemoryBandwidthTest(StressTest):
         self.backend = backend
         self.data_size_gb = data_size_gb
         self.use_pinned_memory = use_pinned_memory
+
+        # TODO: Consider adding different default sizes for D2D vs H2D/D2H
+        # D2D tests GPU memory bandwidth (could use larger sizes like 2GB)
+        # H2D/D2H test PCIe bandwidth (PCIe is bottleneck, smaller sizes OK)
+        # Also consider multi-size sweep mode (like NVIDIA bandwidthTest shmoo)
 
         # Default to all tests if not specified
         if test_types is None:
@@ -62,6 +68,134 @@ class GPUMemoryBandwidthTest(StressTest):
     def get_name(self) -> str:
         """Return test name."""
         return GPU_MEMORY_TEST
+
+    def _warmup_transfer(self, src_tensor, dst_tensor) -> None:
+        """Warmup the memory transfer to stabilize performance.
+
+        Args:
+            src_tensor: Source tensor
+            dst_tensor: Destination tensor
+        """
+        import torch
+
+        if self.burnin_seconds > 0:
+            burnin_start = time.time()
+            while (time.time() - burnin_start) < self.burnin_seconds:
+                dst_tensor.copy_(src_tensor)
+                torch.cuda.synchronize()
+        else:
+            # Default: 3 warmup iterations
+            for _ in range(3):
+                dst_tensor.copy_(src_tensor)
+                torch.cuda.synchronize()
+
+        torch.cuda.empty_cache()
+
+    def _benchmark_transfer(
+        self, src_tensor, dst_tensor, test_duration: int
+    ) -> tuple[float, int]:
+        """Run timed transfer benchmark with CUDA events.
+
+        Args:
+            src_tensor: Source tensor
+            dst_tensor: Destination tensor
+            test_duration: Test duration in seconds
+
+        Returns:
+            Tuple of (elapsed_seconds, iterations)
+        """
+        import torch
+
+        # Create CUDA events for precise GPU-side timing
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+
+        iterations = 0
+        start_event.record()
+        benchmark_start = time.time()
+
+        while (time.time() - benchmark_start) < test_duration:
+            dst_tensor.copy_(src_tensor)
+            iterations += 1
+
+        end_event.record()
+        torch.cuda.synchronize()
+
+        # Get elapsed time in milliseconds, convert to seconds
+        elapsed_ms = start_event.elapsed_time(end_event)
+        elapsed_seconds = elapsed_ms / 1000.0
+
+        return elapsed_seconds, iterations
+
+    def _calculate_bandwidth(
+        self, data_size_bytes: int, elapsed_seconds: float, iterations: int
+    ) -> float:
+        """Calculate bandwidth in GB/s from transfer metrics.
+
+        Args:
+            data_size_bytes: Size of data transferred per iteration
+            elapsed_seconds: Total elapsed time
+            iterations: Number of iterations completed
+
+        Returns:
+            Bandwidth in GB/s
+        """
+        total_bytes = data_size_bytes * iterations
+        bandwidth_gbps = (total_bytes / (1024**3)) / elapsed_seconds
+        return bandwidth_gbps
+
+    def _cleanup_tensors(self, *tensors) -> None:
+        """Clean up tensors and GPU cache.
+
+        Args:
+            *tensors: Variable number of tensors to clean up
+        """
+        import torch
+
+        for tensor in tensors:
+            del tensor
+        torch.cuda.empty_cache()
+
+    def _run_memory_transfer_benchmark(
+        self,
+        src_tensor,
+        dst_tensor,
+        data_size_bytes: int,
+        test_duration: int,
+    ) -> dict:
+        """Orchestrate the full memory transfer benchmark.
+
+        This is the core benchmark logic shared by all transfer types (D2D, H2D, D2H).
+        Each test type differs only in tensor allocation (which device, pinned or not).
+
+        Flow: warmup → benchmark → calculate → cleanup
+
+        Args:
+            src_tensor: Source tensor (already allocated on correct device)
+            dst_tensor: Destination tensor (already allocated on correct device)
+            data_size_bytes: Size of data being transferred per iteration
+            test_duration: Test duration in seconds
+
+        Returns:
+            Dict with bandwidth_gbps and iterations
+        """
+        # Step 1: Warmup to stabilize performance
+        self._warmup_transfer(src_tensor, dst_tensor)
+
+        # Step 2: Run benchmark and get timing
+        elapsed_seconds, iterations = self._benchmark_transfer(
+            src_tensor, dst_tensor, test_duration
+        )
+
+        # Step 3: Calculate bandwidth
+        bandwidth_gbps = self._calculate_bandwidth(
+            data_size_bytes, elapsed_seconds, iterations
+        )
+
+        # Step 4: Cleanup
+        self._cleanup_tensors(src_tensor, dst_tensor)
+
+        return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
 
     def run(self, duration: int) -> GPUMemoryBandwidthResult:
         """Run memory bandwidth tests.
@@ -185,7 +319,10 @@ class GPUMemoryBandwidthTest(StressTest):
     def _test_d2d_bandwidth(
         self, device, data_size_bytes: int, test_duration: int
     ) -> dict:
-        """Test device-to-device memory bandwidth.
+        """Test device-to-device memory bandwidth (GPU memory).
+
+        This measures GPU memory bandwidth (HBM2/HBM3), not PCIe.
+        Both source and destination tensors are on the GPU.
 
         Args:
             device: PyTorch device
@@ -202,60 +339,28 @@ class GPUMemoryBandwidthTest(StressTest):
         # Calculate tensor size (use float32 for 4 bytes per element)
         num_elements = data_size_bytes // 4
 
-        # Allocate 2 tensors on GPU
+        # Allocate tensors on GPU (both src and dst on same device)
         src = torch.randn(num_elements, dtype=torch.float32, device=device)
         dst = torch.empty_like(src)
 
-        # Warmup/burnin phase
-        if self.burnin_seconds > 0:
-            burnin_start = time.time()
-            while (time.time() - burnin_start) < self.burnin_seconds:
-                dst.copy_(src)
-                torch.cuda.synchronize()
-        else:
-            # Default: 3 warmup iterations
-            for _ in range(3):
-                dst.copy_(src)
-                torch.cuda.synchronize()
+        # Run benchmark using shared helper
+        result = self._run_memory_transfer_benchmark(
+            src, dst, data_size_bytes, test_duration
+        )
 
-        torch.cuda.empty_cache()
+        print(
+            f"{result['bandwidth_gbps']:.1f} GB/s ({result['iterations']} iterations)"
+        )
 
-        # Benchmark phase - use CUDA events for precise timing
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        iterations = 0
-        start_event.record()
-        benchmark_start = time.time()
-
-        while (time.time() - benchmark_start) < test_duration:
-            dst.copy_(src)
-            iterations += 1
-
-        end_event.record()
-        torch.cuda.synchronize()
-
-        # Get elapsed time in milliseconds, convert to seconds
-        elapsed_ms = start_event.elapsed_time(end_event)
-        elapsed = elapsed_ms / 1000.0
-
-        # Calculate bandwidth
-        # Total data transferred = data_size_bytes * iterations
-        total_bytes = data_size_bytes * iterations
-        bandwidth_gbps = (total_bytes / (1024**3)) / elapsed
-
-        print(f"{bandwidth_gbps:.1f} GB/s ({iterations} iterations)")
-
-        # Cleanup
-        del src, dst
-        torch.cuda.empty_cache()
-
-        return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
+        return result
 
     def _test_h2d_bandwidth(
         self, device, data_size_bytes: int, test_duration: int
     ) -> dict:
-        """Test host-to-device memory bandwidth.
+        """Test host-to-device memory bandwidth (PCIe upload).
+
+        This measures PCIe bandwidth (CPU → GPU), not GPU memory bandwidth.
+        The bottleneck is the PCIe/SXM bus, not the GPU memory itself.
 
         Args:
             device: PyTorch device
@@ -272,65 +377,34 @@ class GPUMemoryBandwidthTest(StressTest):
         # Calculate tensor size (use float32 for 4 bytes per element)
         num_elements = data_size_bytes // 4
 
-        # Allocate tensor on CPU (pinned if enabled)
+        # Allocate source on CPU (with optional pinned memory for faster DMA)
         src = torch.randn(num_elements, dtype=torch.float32, device="cpu")
         if self.use_pinned_memory:
             src = src.pin_memory()
 
-        # Allocate tensor on GPU
+        # Allocate destination on GPU
         dst = torch.empty(num_elements, dtype=torch.float32, device=device)
 
-        # Warmup/burnin phase
-        if self.burnin_seconds > 0:
-            burnin_start = time.time()
-            while (time.time() - burnin_start) < self.burnin_seconds:
-                dst.copy_(src)
-                torch.cuda.synchronize()
-        else:
-            # Default: 3 warmup iterations
-            for _ in range(3):
-                dst.copy_(src)
-                torch.cuda.synchronize()
-
-        torch.cuda.empty_cache()
-
-        # Benchmark phase - use CUDA events for precise timing
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        iterations = 0
-        start_event.record()
-        benchmark_start = time.time()
-
-        while (time.time() - benchmark_start) < test_duration:
-            dst.copy_(src)
-            iterations += 1
-
-        end_event.record()
-        torch.cuda.synchronize()
-
-        # Get elapsed time in milliseconds, convert to seconds
-        elapsed_ms = start_event.elapsed_time(end_event)
-        elapsed = elapsed_ms / 1000.0
-
-        # Calculate bandwidth
-        # Total data transferred = data_size_bytes * iterations
-        total_bytes = data_size_bytes * iterations
-        bandwidth_gbps = (total_bytes / (1024**3)) / elapsed
+        # Run benchmark using shared helper
+        result = self._run_memory_transfer_benchmark(
+            src, dst, data_size_bytes, test_duration
+        )
 
         pinned_str = "pinned" if self.use_pinned_memory else "non-pinned"
-        print(f"{bandwidth_gbps:.1f} GB/s ({iterations} iterations, {pinned_str})")
+        print(
+            f"{result['bandwidth_gbps']:.1f} GB/s "
+            f"({result['iterations']} iterations, {pinned_str})"
+        )
 
-        # Cleanup
-        del src, dst
-        torch.cuda.empty_cache()
-
-        return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
+        return result
 
     def _test_d2h_bandwidth(
         self, device, data_size_bytes: int, test_duration: int
     ) -> dict:
-        """Test device-to-host memory bandwidth.
+        """Test device-to-host memory bandwidth (PCIe download).
+
+        This measures PCIe bandwidth (GPU → CPU), not GPU memory bandwidth.
+        The bottleneck is the PCIe/SXM bus, not the GPU memory itself.
 
         Args:
             device: PyTorch device
@@ -347,57 +421,23 @@ class GPUMemoryBandwidthTest(StressTest):
         # Calculate tensor size (use float32 for 4 bytes per element)
         num_elements = data_size_bytes // 4
 
-        # Allocate tensor on GPU
+        # Allocate source on GPU
         src = torch.randn(num_elements, dtype=torch.float32, device=device)
 
-        # Allocate tensor on CPU (pinned if enabled)
+        # Allocate destination on CPU (with optional pinned memory for faster DMA)
         dst = torch.empty(num_elements, dtype=torch.float32, device="cpu")
         if self.use_pinned_memory:
             dst = dst.pin_memory()
 
-        # Warmup/burnin phase
-        if self.burnin_seconds > 0:
-            burnin_start = time.time()
-            while (time.time() - burnin_start) < self.burnin_seconds:
-                dst.copy_(src)
-                torch.cuda.synchronize()
-        else:
-            # Default: 3 warmup iterations
-            for _ in range(3):
-                dst.copy_(src)
-                torch.cuda.synchronize()
-
-        torch.cuda.empty_cache()
-
-        # Benchmark phase - use CUDA events for precise timing
-        start_event = torch.cuda.Event(enable_timing=True)
-        end_event = torch.cuda.Event(enable_timing=True)
-
-        iterations = 0
-        start_event.record()
-        benchmark_start = time.time()
-
-        while (time.time() - benchmark_start) < test_duration:
-            dst.copy_(src)
-            iterations += 1
-
-        end_event.record()
-        torch.cuda.synchronize()
-
-        # Get elapsed time in milliseconds, convert to seconds
-        elapsed_ms = start_event.elapsed_time(end_event)
-        elapsed = elapsed_ms / 1000.0
-
-        # Calculate bandwidth
-        # Total data transferred = data_size_bytes * iterations
-        total_bytes = data_size_bytes * iterations
-        bandwidth_gbps = (total_bytes / (1024**3)) / elapsed
+        # Run benchmark using shared helper
+        result = self._run_memory_transfer_benchmark(
+            src, dst, data_size_bytes, test_duration
+        )
 
         pinned_str = "pinned" if self.use_pinned_memory else "non-pinned"
-        print(f"{bandwidth_gbps:.1f} GB/s ({iterations} iterations, {pinned_str})")
+        print(
+            f"{result['bandwidth_gbps']:.1f} GB/s "
+            f"({result['iterations']} iterations, {pinned_str})"
+        )
 
-        # Cleanup
-        del src, dst
-        torch.cuda.empty_cache()
-
-        return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
+        return result

@@ -11,6 +11,19 @@ from warpt.models.constants import (
 )
 
 
+def print_field(label: str, value: str | int | float, indent: int = 2) -> None:
+    """Print a consistently formatted key-value pair.
+
+    Args:
+        label: Field label (e.g., "Performance", "Duration")
+        value: Field value (will be converted to string)
+        indent: Number of spaces for indentation (default: 2)
+    """
+    indent_str = " " * indent
+    # Use 20 character width for label to align values
+    print(f"{indent_str}{label:<20}{value}")
+
+
 def parse_targets(
     targets: tuple, valid_targets: tuple = VALID_STRESS_TARGETS
 ) -> list[str]:
@@ -308,11 +321,6 @@ def run_stress(
     # Expand 'all' target to individual targets
     if "all" in parsed_targets:
         parsed_targets = ["cpu", "gpu", "ram"]
-        # Track that these came from "all" expansion, not explicit request
-        explicitly_requested_targets = set()
-    else:
-        # User explicitly requested these targets
-        explicitly_requested_targets = set(parsed_targets)
 
     # Parse precision types if provided
     precision_list = None
@@ -341,29 +349,14 @@ def run_stress(
             if memory:
                 gpu_tests_to_run.append("memory")
 
-    # Determine which CPU tests to run
-    # CPU only has compute test currently
-    run_cpu_tests = False
-    if "cpu" in parsed_targets:
-        if not compute and precision_type is None and not memory:
-            # No flags specified - run CPU tests by default
-            run_cpu_tests = True
-        elif compute:
-            # Compute flag specified - run CPU compute
-            run_cpu_tests = True
-        # else: precision or memory specified - skip CPU (not applicable)
+    # Determine which tests to run based on flags (if no flags, run defaults)
+    no_test_flags = not compute and precision_type is None and not memory
 
-    # Determine which RAM tests to run
-    # RAM only has memory stress test TODO
-    run_ram_tests = False
-    if "ram" in parsed_targets:
-        if not compute and precision_type is None and not memory:
-            # No flags specified - run RAM tests by default
-            run_ram_tests = True
-        elif memory:
-            # Memory flag specified - run RAM memory test
-            run_ram_tests = True
-        # else: compute or precision specified - skip RAM (not applicable)
+    # CPU: supports compute test only
+    run_cpu_tests = "cpu" in parsed_targets and (no_test_flags or compute)
+
+    # RAM: supports memory test only
+    run_ram_tests = "ram" in parsed_targets and (no_test_flags or memory)
 
     # Validate device IDs match specified targets
     if cpu_ids and "cpu" not in parsed_targets:
@@ -424,39 +417,40 @@ def run_stress(
 
     # Display configuration
     print("Stress Test Configuration:")
-    print(f"  Targets:        {', '.join(parsed_targets)}")
-    print(f"  Duration:       {test_duration}s per test")
-    print(f"  Burnin:         {burnin_seconds}s")
+    print_field("Targets:", ", ".join(parsed_targets))
+    print_field("Duration:", f"{test_duration}s per test")
+    print_field("Burnin:", f"{burnin_seconds}s")
 
     if "gpu" in parsed_targets:
-        print(f"  GPU Tests:      {', '.join(gpu_tests_to_run)}")
+        print_field("GPU Tests:", ", ".join(gpu_tests_to_run))
         if default_to_all_gpus:
-            print(
-                f"  GPU IDs:        all (defaulting to all available GPUs: "
-                f"{', '.join(map(str, gpu_ids or []))})"
+            print_field(
+                "GPU IDs:",
+                f"all (defaulting to all available GPUs: "
+                f"{', '.join(map(str, gpu_ids or []))})",
             )
             print(
                 "                  Use 'warpt list' to view device IDs and "
                 "--gpu-id to specify"
             )
         else:
-            print(f"  GPU IDs:        {', '.join(map(str, gpu_ids or []))}")
+            print_field("GPU IDs:", ", ".join(map(str, gpu_ids or [])))
 
     if "cpu" in parsed_targets:
         if default_to_all_cpus:
-            print("  CPU IDs:        all (defaulting to all available CPUs)")
+            print_field("CPU IDs:", "all (defaulting to all available CPUs)")
             print(
                 "                  Use 'warpt list' to view device IDs and "
                 "--cpu-id to specify"
             )
         else:
-            print(f"  CPU IDs:        {', '.join(map(str, cpu_ids or []))}")
+            print_field("CPU IDs:", ", ".join(map(str, cpu_ids or [])))
 
     if log_file:
-        print(f"  Log file:       {log_file}")
+        print_field("Log file:", log_file)
     if export_format:
         if export_filename:
-            print(f"  Export to:      {export_filename}")
+            print_field("Export to:", export_filename)
         else:
             print("  Export to:      warpt_stress_<timestamp>.json")
 
@@ -478,12 +472,6 @@ def run_stress(
     # Run stress tests
     for target in parsed_targets:
         if target == "cpu":
-            if not run_cpu_tests:
-                # Only show skip message if explicitly requested
-                if "cpu" in explicitly_requested_targets:
-                    print("⊘ CPU tests skipped (test flags don't apply)\n")
-                continue
-
             print("=== CPU Compute Stress Test ===\n")
             try:
                 from warpt.stress.cpu_compute import CPUMatMulTest
@@ -499,17 +487,17 @@ def run_stress(
 
             # Display results
             print("\nResults:")
-            print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-            print(f"  Duration:           {results['duration']:.2f}s")
-            print(f"  Iterations:         {results['iterations']}")
-            print(
-                f"  Matrix Size:        "
-                f"{results['matrix_size']}x{results['matrix_size']}"
+            print_field("Performance:", f"{results['tflops']:.2f} TFLOPS")
+            print_field("Duration:", f"{results['duration']:.2f}s")
+            print_field("Iterations:", results["iterations"])
+            print_field(
+                "Matrix Size:", f"{results['matrix_size']}x{results['matrix_size']}"
             )
-            print(f"  Total Operations:   {results['total_operations']:,}")
-            print(
-                f"  CPU Cores:          {results['cpu_physical_cores']} "
-                f"physical, {results['cpu_logical_cores']} logical"
+            print_field("Total Operations:", f"{results['total_operations']:,}")
+            print_field(
+                "CPU Cores:",
+                f"{results['cpu_physical_cores']} physical, "
+                f"{results['cpu_logical_cores']} logical",
             )
             print()
 
@@ -618,19 +606,21 @@ def run_stress(
                             f"\nResults for GPU {gpu_index} "
                             f"({results.get('gpu_name', 'Unknown')}):"
                         )
-                        print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-                        print(f"  Duration:           {results['duration']:.2f}s")
-                        print(f"  Iterations:         {results['iterations']}")
-                        print(
-                            "  Matrix Size:        "
-                            f"{results['matrix_size']}x{results['matrix_size']}"
+                        print_field("Performance:", f"{results['tflops']:.2f} TFLOPS")
+                        print_field("Duration:", f"{results['duration']:.2f}s")
+                        print_field("Iterations:", results["iterations"])
+                        print_field(
+                            "Matrix Size:",
+                            f"{results['matrix_size']}x{results['matrix_size']}",
                         )
-                        print(f"  Total Operations:   {results['total_operations']:,}")
-                        print(f"  Precision:          {results['precision'].upper()}")
-                        print(
-                            "  Memory Used:        "
+                        print_field(
+                            "Total Operations:", f"{results['total_operations']:,}"
+                        )
+                        print_field("Precision:", results["precision"].upper())
+                        print_field(
+                            "Memory Used:",
                             f"{results['memory_used_gb']:.2f} GB / "
-                            f"{results['memory_total_gb']:.2f} GB"
+                            f"{results['memory_total_gb']:.2f} GB",
                         )
                         print()
 
@@ -674,28 +664,27 @@ def run_stress(
                             f"\nResults for GPU {gpu_index} "
                             f"({mem_results.gpu_name}):"
                         )
-                        print(
-                            f"  D2D Bandwidth:      "
-                            f"{mem_results.d2d_bandwidth_gbps:.1f} GB/s"
+                        print_field(
+                            "D2D Bandwidth:",
+                            f"{mem_results.d2d_bandwidth_gbps:.1f} GB/s",
                         )
                         if mem_results.h2d_bandwidth_gbps is not None:
-                            print(
-                                f"  H2D Bandwidth:      "
-                                f"{mem_results.h2d_bandwidth_gbps:.1f} GB/s"
+                            print_field(
+                                "H2D Bandwidth:",
+                                f"{mem_results.h2d_bandwidth_gbps:.1f} GB/s",
                             )
                         if mem_results.d2h_bandwidth_gbps is not None:
-                            print(
-                                f"  D2H Bandwidth:      "
-                                f"{mem_results.d2h_bandwidth_gbps:.1f} GB/s"
+                            print_field(
+                                "D2H Bandwidth:",
+                                f"{mem_results.d2h_bandwidth_gbps:.1f} GB/s",
                             )
-                        print(
-                            f"  Data Size:          "
-                            f"{mem_results.data_size_gb} GB per test"
+                        print_field(
+                            "Data Size:", f"{mem_results.data_size_gb} GB per test"
                         )
-                        print(f"  Duration:           " f"{mem_results.duration:.1f}s")
-                        print(
-                            f"  Pinned Memory:      "
-                            f"{'Yes' if mem_results.used_pinned_memory else 'No'}"
+                        print_field("Duration:", f"{mem_results.duration:.1f}s")
+                        print_field(
+                            "Pinned Memory:",
+                            "Yes" if mem_results.used_pinned_memory else "No",
                         )
                         print()
 
@@ -748,7 +737,7 @@ def run_stress(
                         tflops=compute_res["tflops"] if compute_res else None,
                         duration=compute_res["duration"] if compute_res else None,
                         iterations=compute_res["iterations"] if compute_res else None,
-                        total_operations=(
+                        cumulative_fp_operations=(
                             compute_res["total_operations"] if compute_res else None
                         ),
                         burnin_seconds=burnin,
@@ -781,12 +770,6 @@ def run_stress(
                 targets_tested.append("gpu")
 
         elif target == "ram":
-            if not run_ram_tests:
-                # Only show skip message if explicitly requested
-                if "ram" in explicitly_requested_targets:
-                    print("⊘ RAM tests skipped (test flags don't apply)\n")
-                continue
-
             print("[TODO] RAM stress tests not yet implemented\n")
 
     print("✓ Stress tests completed")

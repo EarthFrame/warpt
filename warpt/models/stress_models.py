@@ -185,7 +185,7 @@ class GPUDeviceResult(BaseModel):
     iterations: int | None = Field(
         None, ge=0, description="Iterations completed (if applicable)"
     )
-    total_operations: int | None = Field(
+    cumulative_fp_operations: int | None = Field(
         None, ge=0, description="Total floating point operations"
     )
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
@@ -295,12 +295,72 @@ class GPUTestResults(BaseModel):
     )
 
 
+class RAMMemoryStressResult(BaseModel):
+    """Results from RAM memory stress test."""
+
+    # System identifiers
+    total_ram_gb: float = Field(..., gt=0, description="Total system RAM in GB")
+    available_ram_gb: float = Field(
+        ..., gt=0, description="Available RAM at test start"
+    )
+    allocated_memory_gb: float = Field(
+        ..., gt=0, description="Memory allocated for stress test"
+    )
+
+    # Test metadata
+    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+
+    # Baseline metrics (before swap pressure)
+    baseline_read_gbps: float = Field(
+        ..., ge=0, description="Baseline read bandwidth in GB/s"
+    )
+    baseline_write_gbps: float = Field(
+        ..., ge=0, description="Baseline write bandwidth in GB/s"
+    )
+    baseline_latency_ms: float = Field(
+        ..., ge=0, description="Baseline memory access latency in ms"
+    )
+
+    # Pressure metrics (under swap)
+    pressure_read_gbps: float = Field(
+        ..., ge=0, description="Read bandwidth under swap pressure in GB/s"
+    )
+    pressure_write_gbps: float = Field(
+        ..., ge=0, description="Write bandwidth under swap pressure in GB/s"
+    )
+    pressure_latency_ms: float = Field(
+        ..., ge=0, description="Memory access latency under swap pressure in ms"
+    )
+
+    # Performance degradation metrics
+    read_slowdown_factor: float = Field(
+        ..., ge=1.0, description="Read performance degradation (≥1.0, higher is worse)"
+    )
+    write_slowdown_factor: float = Field(
+        ..., ge=1.0, description="Write performance degradation (≥1.0, higher is worse)"
+    )
+    latency_increase_factor: float = Field(
+        ..., ge=1.0, description="Latency increase factor (≥1.0, higher is worse)"
+    )
+
+    # Swap metrics
+    swap_occurred: bool = Field(..., description="Whether swapping was detected")
+    swap_in_mb: float | None = Field(None, description="Data swapped in from disk (MB)")
+    swap_out_mb: float | None = Field(None, description="Data swapped out to disk (MB)")
+    peak_swap_usage_mb: float | None = Field(
+        None, description="Peak swap space used during test (MB)"
+    )
+
+
 class RAMTestResults(BaseModel):
-    """RAM test results container (placeholder for future implementation)."""
+    """RAM test results container."""
 
     test_mode: Literal["system_level"] = "system_level"
     device_count: int = Field(1, description="System RAM (always 1)")
-    results: dict[str, dict] = Field(..., description="RAM test results")
+    results: dict[Literal["ram_system"], RAMMemoryStressResult] = Field(
+        ..., description="RAM system-level results"
+    )
 
 
 # ============================================================================
@@ -328,12 +388,21 @@ class GPUSummary(BaseModel):
 
 
 class RAMSummary(BaseModel):
-    """Summary of RAM test results (placeholder for future implementation)."""
+    """Summary of RAM test results."""
 
     status: Literal["pass", "fail", "warning"] = Field(
         ..., description="Overall test status"
     )
-    bandwidth_gbps: float | None = Field(None, description="Memory bandwidth in GB/s")
+    baseline_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Baseline memory bandwidth in GB/s"
+    )
+    pressure_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Memory bandwidth under swap pressure in GB/s"
+    )
+    slowdown_factor: float = Field(
+        ..., ge=1.0, description="Overall performance degradation factor"
+    )
+    swap_occurred: bool = Field(..., description="Whether swapping was detected")
 
 
 # ============================================================================
