@@ -18,6 +18,7 @@ class StorageUsage(TypedDict):
     percent: float
     used_gb: float
     total_gb: float
+    available_gb: float
 
 
 def run_monitor_tui(interval_seconds: float = 1.0) -> None:
@@ -146,24 +147,29 @@ def _render_cpu_section(
 def _render_memory_section(
     stdscr: curses._CursesWindow, row: int, snapshot: ResourceSnapshot
 ) -> int:
-    mem_used = snapshot.total_memory_bytes - snapshot.available_memory_bytes
+    total_gib = snapshot.total_memory_bytes / 1024**3
+    available_gib = snapshot.available_memory_bytes / 1024**3
+    mem_used = total_gib - available_gib
     mem_percent = snapshot.memory_utilization_percent or 0.0
     mem_suffix = (
-        f"{mem_used / 1024**3:.1f}GiB/"
-        f"{snapshot.total_memory_bytes / 1024**3:.1f}GiB ({mem_percent:.1f}%)"
+        f"{mem_used:.1f}GiB used / {total_gib:.1f}GiB total ({mem_percent:.1f}%)"
     )
     swap = psutil.swap_memory()
     _safe_addstr(stdscr, row, 0, "Memory:")
     _draw_bar(stdscr, row + 1, 2, "RAM", mem_percent, mem_suffix)
+    available_text = (
+        f"Available: {available_gib:.1f}GiB " f"({(100.0 - mem_percent):.1f}%)"
+    )
+    _safe_addstr(stdscr, row + 2, 2, available_text)
     _draw_bar(
         stdscr,
-        row + 2,
+        row + 3,
         2,
         "Swap",
         swap.percent,
         f"{swap.used / 1024**3:.1f}GiB/{swap.total / 1024**3:.1f}GiB",
     )
-    return row + 4
+    return row + 5
 
 
 def _render_gpu_section(
@@ -202,19 +208,29 @@ def _render_gpu_section(
 def _render_storage_section(stdscr: curses._CursesWindow, row: int) -> None:
     _safe_addstr(stdscr, row, 0, "Storage:")
     for idx, usage in enumerate(_collect_storage(), start=1):
+        storage_suffix = (
+            f"{usage['used_gb']:.1f}GiB/{usage['total_gb']:.1f}GiB "
+            f"(avail {usage['available_gb']:.1f}GiB)"
+        )
         _draw_bar(
             stdscr,
             row + idx,
             2,
             usage["mount"],
-            usage["percent"] or 0.0,
-            f"{usage['used_gb']:.1f}GiB/{usage['total_gb']:.1f}GiB",
+            usage["percent"],
+            storage_suffix,
         )
 
 
 def _collect_storage() -> list[StorageUsage]:
     partitions = []
+    seen_devices: set[str] = set()
     for partition in psutil.disk_partitions(all=False):
+        if partition.device in seen_devices:
+            continue
+        seen_devices.add(partition.device)
+        if partition.mountpoint.startswith("/System/Volumes/"):
+            continue
         try:
             usage = psutil.disk_usage(partition.mountpoint)
         except PermissionError:
@@ -225,6 +241,7 @@ def _collect_storage() -> list[StorageUsage]:
                 percent=float(usage.percent),
                 used_gb=usage.used / 1024**3,
                 total_gb=usage.total / 1024**3,
+                available_gb=(usage.total - usage.used) / 1024**3,
             )
         )
     return partitions[:4]
