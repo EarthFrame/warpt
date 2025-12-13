@@ -209,8 +209,8 @@ class GPUMatMulTest(StressTest):
     # Core Test
     # -------------------------------------------------------------------------
 
-    def run(self, duration: int, iterations: int = 1) -> dict[Any, Any]:
-        """Run GPU matrix multiplication test.
+    def execute_test(self, duration: int, iterations: int) -> dict[Any, Any]:
+        """Execute the GPU matrix multiplication test.
 
         Args:
             duration: Test duration in seconds.
@@ -219,71 +219,55 @@ class GPUMatMulTest(StressTest):
         Returns:
             Dictionary containing test results.
         """
-        # iterations parameter is unused for GPU tests
         del iterations
         import torch
 
-        self.duration_seconds = duration
-        self.validate_configuration()
-        self.setup()
+        torch.cuda.reset_peak_memory_stats(self._device)
+        start_time = time.time()
+        iter_count = 0
 
-        try:
-            # Warmup phase
-            self.log_warmup_start()
-            self.warmup(duration_seconds=self.burnin_seconds)
+        while (time.time() - start_time) < duration:
+            a = torch.randn(
+                self.matrix_size,
+                self.matrix_size,
+                dtype=torch.float32,
+                device=self._device,
+            )
+            b = torch.randn(
+                self.matrix_size,
+                self.matrix_size,
+                dtype=torch.float32,
+                device=self._device,
+            )
+            _ = torch.matmul(a, b)
+            torch.cuda.synchronize()
+            iter_count += 1
+            del a, b
 
-            # Test phase
-            self.log_test_start()
-            torch.cuda.reset_peak_memory_stats(self._device)
-            start_time = time.time()
-            iter_count = 0
+        elapsed = time.time() - start_time
 
-            while (time.time() - start_time) < duration:
-                a = torch.randn(
-                    self.matrix_size,
-                    self.matrix_size,
-                    dtype=torch.float32,
-                    device=self._device,
-                )
-                b = torch.randn(
-                    self.matrix_size,
-                    self.matrix_size,
-                    dtype=torch.float32,
-                    device=self._device,
-                )
-                _ = torch.matmul(a, b)
-                torch.cuda.synchronize()
-                iter_count += 1
-                del a, b
+        # Get memory stats
+        memory_used = torch.cuda.max_memory_allocated(self._device) / (1024**3)
 
-            elapsed = time.time() - start_time
+        # Calculate TFLOPS (2*N^3 - N^2 ops per matmul)
+        ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
+        total_ops = iter_count * ops_per_matmul
+        tflops = calculate_tflops(total_ops, elapsed)
 
-            # Get memory stats
-            memory_used = torch.cuda.max_memory_allocated(self._device) / (1024**3)
+        self.logger.info(f"Result: {tflops:.2f} TFLOPS ({iter_count} iterations)")
 
-            # Calculate TFLOPS (2*N^3 - N^2 ops per matmul)
-            ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
-            total_ops = iter_count * ops_per_matmul
-            tflops = calculate_tflops(total_ops, elapsed)
-
-            self.log_test_complete()
-            self.logger.info(f"Result: {tflops:.2f} TFLOPS ({iter_count} iterations)")
-
-            return {
-                "test_name": self.get_name(),
-                "device_id": self.device_id,
-                "gpu_name": self._gpu_name,
-                "tflops": tflops,
-                "duration": elapsed,
-                "iterations": iter_count,
-                "matrix_size": self.matrix_size,
-                "total_operations": total_ops,
-                "burnin_seconds": self.burnin_seconds,
-                "memory_used_gb": memory_used,
-                "memory_total_gb": self._gpu_memory_total,
-                "precision": "fp32",
-                "tf32_enabled": self.allow_tf32,
-            }
-
-        finally:
-            self.teardown()
+        return {
+            "test_name": self.get_name(),
+            "device_id": self.device_id,
+            "gpu_name": self._gpu_name,
+            "tflops": tflops,
+            "duration": elapsed,
+            "iterations": iter_count,
+            "matrix_size": self.matrix_size,
+            "total_operations": total_ops,
+            "burnin_seconds": self.burnin_seconds,
+            "memory_used_gb": memory_used,
+            "memory_total_gb": self._gpu_memory_total,
+            "precision": "fp32",
+            "tf32_enabled": self.allow_tf32,
+        }

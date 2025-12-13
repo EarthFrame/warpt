@@ -398,22 +398,72 @@ class StressTest(ABC):
     # Core Test Execution
     # -------------------------------------------------------------------------
 
-    @abstractmethod
     def run(self, duration: int, iterations: int = 1) -> Any:
         """Run the stress test and return results.
 
-        This is the main test method. Implementations should:
-        1. Call setup() if not already done
-        2. Run warmup if needed
-        3. Execute the timed test
-        4. Call teardown() in a finally block
-        5. Return results (dict or Pydantic model)
+        This method implements the Template Method pattern, handling the common
+        lifecycle (validate, setup, warmup, run, teardown). Child classes
+        override execute_test() instead of run().
 
         Args:
             duration: Test duration in seconds.
+            iterations: Number of iterations (passed to execute_test).
 
         Returns:
             Test results - typically a dict or Pydantic BaseModel.
+        """
+        self.duration_seconds = duration
+        self.validate_configuration()
+        self.setup()
+
+        try:
+            self.log_warmup_start()
+            self.warmup()
+
+            self.log_test_start()
+            results = self.execute_test(duration, iterations)
+            self.log_test_complete()
+
+            return results
+        finally:
+            self.teardown()
+
+    @abstractmethod
+    def execute_test(self, duration: int, iterations: int) -> Any:
+        """Execute the core test logic and return results.
+
+        This is the method child classes override instead of run().
+        The run() method handles all lifecycle management (validation, setup,
+        warmup, teardown), so your implementation only needs to focus on
+        the actual test measurements.
+
+        Args:
+            duration: Test duration in seconds.
+            iterations: Number of iterations (if applicable to your test).
+
+        Returns:
+            Test results - typically a dict or Pydantic BaseModel.
+
+        Example:
+            >>> def execute_test(self, duration: int, iterations: int) -> dict:
+            ...     import torch
+            ...
+            ...     start_time = time.time()
+            ...     iter_count = 0
+            ...
+            ...     while (time.time() - start_time) < duration:
+            ...         a = torch.randn(self.matrix_size, self.matrix_size,
+            ...                        device=self._device)
+            ...         b = torch.randn(self.matrix_size, self.matrix_size,
+            ...                        device=self._device)
+            ...         _ = torch.matmul(a, b)
+            ...         torch.cuda.synchronize()
+            ...         iter_count += 1
+            ...
+            ...     elapsed = time.time() - start_time
+            ...     tflops = self._calculate_tflops(iter_count, elapsed)
+            ...
+            ...     return {"tflops": tflops, "duration": elapsed, ...}
         """
         pass
 

@@ -130,6 +130,21 @@ class GPUMemoryBandwidthTest(StressTest):
         gpu_props = torch.cuda.get_device_properties(self._device)
         self._gpu_memory_total = gpu_props.total_memory / (1024**3)
 
+        # Check pinned memory availability for H2D/D2H tests
+        if self.use_pinned_memory and (
+            "h2d" in self.test_types or "d2h" in self.test_types
+        ):
+            import psutil
+
+            available_ram_gb = psutil.virtual_memory().available / (1024**3)
+            if self.data_size_gb > available_ram_gb * 0.5:
+                self.logger.warning(
+                    f"Low RAM ({available_ram_gb:.1f} GB available), "
+                    f"requested {self.data_size_gb} GB pinned memory. "
+                    "Falling back to non-pinned memory."
+                )
+                self.use_pinned_memory = False
+
         self.logger.info(f"GPU {self.device_id}: {self._gpu_name}")
 
     def teardown(self) -> None:
@@ -268,8 +283,8 @@ class GPUMemoryBandwidthTest(StressTest):
 
         return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
 
-    def run(self, duration: int, iterations: int = 1) -> GPUMemoryBandwidthResult:
-        """Run memory bandwidth tests.
+    def execute_test(self, duration: int, iterations: int) -> GPUMemoryBandwidthResult:
+        """Execute memory bandwidth tests.
 
         Args:
             duration: Total test duration - split across test types
@@ -279,58 +294,12 @@ class GPUMemoryBandwidthTest(StressTest):
         Returns:
             GPUMemoryBandwidthResult with all bandwidth measurements
         """
-        # iterations parameter is unused
         del iterations
-        # Import PyTorch (lazy import)
-        try:
-            import torch
-        except ImportError:
-            raise RuntimeError(
-                "PyTorch is not installed. Install with: pip install warpt[stress]"
-            ) from None
-
-        # Get PyTorch device string
-        if self.backend:
-            device_str: str | None = self.backend.get_pytorch_device_string(
-                self.device_id
-            )
-        else:
-            if not torch.cuda.is_available():
-                raise RuntimeError("CUDA is not available") from None
-            if self.device_id >= torch.cuda.device_count():
-                raise ValueError(
-                    f"GPU device {self.device_id} not found. "
-                    f"Available: 0-{torch.cuda.device_count() - 1}"
-                ) from None
-            device_str = f"cuda:{self.device_id}"
-
-        device = torch.device(device_str)
-        torch.cuda.set_device(device)
-
-        # Safety check for pinned memory
-        if self.use_pinned_memory and (
-            "h2d" in self.test_types or "d2h" in self.test_types
-        ):
-            import psutil
-
-            available_ram_gb = psutil.virtual_memory().available / (1024**3)
-            if self.data_size_gb > available_ram_gb * 0.5:
-                print(f"⚠️  Warning: Low RAM ({available_ram_gb:.1f} GB available)")
-                print(f"   Requested {self.data_size_gb} GB pinned memory")
-                print("   Falling back to non-pinned memory")
-                self.use_pinned_memory = False
-
-        # Calculate per-test duration
-        num_tests = len(self.test_types)
-        per_test_duration = max(duration // num_tests, MIN_MEMORY_TEST_DURATION)
-
-        # Get GPU info
-        gpu_props = torch.cuda.get_device_properties(device)
-        gpu_name = gpu_props.name
-
-        # Get GPU UUID
         import pynvml
 
+        device = self._device
+
+        # Get GPU UUID
         try:
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(self.device_id)
@@ -339,8 +308,12 @@ class GPUMemoryBandwidthTest(StressTest):
             gpu_uuid = f"gpu_{self.device_id}_unknown"
 
         print(f"\n=== GPU {self.device_id} Memory Bandwidth Test ===\n")
-        print(f"GPU: {gpu_name}")
+        print(f"GPU: {self._gpu_name}")
         print(f"Data Size: {self.data_size_gb} GB")
+
+        # Calculate per-test duration
+        num_tests = len(self.test_types)
+        per_test_duration = max(duration // num_tests, MIN_MEMORY_TEST_DURATION)
         print(f"Duration per test: {per_test_duration}s")
         print(f"Tests to run: {', '.join(t.upper() for t in self.test_types)}")
         print(f"Pinned Memory: {'Enabled' if self.use_pinned_memory else 'Disabled'}")
@@ -379,7 +352,7 @@ class GPUMemoryBandwidthTest(StressTest):
         return GPUMemoryBandwidthResult(
             device_id=f"gpu_{self.device_id}",
             gpu_uuid=gpu_uuid,
-            gpu_name=gpu_name,
+            gpu_name=self._gpu_name,
             duration=per_test_duration * num_tests,
             burnin_seconds=self.burnin_seconds,
             data_size_gb=self.data_size_gb,

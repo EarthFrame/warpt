@@ -121,8 +121,8 @@ class CPUMatMulTest(StressTest):
     # Core Test
     # -------------------------------------------------------------------------
 
-    def run(self, duration: int, iterations: int = 1) -> dict:
-        """Run CPU matrix multiplication test.
+    def execute_test(self, duration: int, iterations: int) -> dict:
+        """Execute the CPU matrix multiplication test.
 
         Args:
             duration: Test duration in seconds.
@@ -133,49 +133,34 @@ class CPUMatMulTest(StressTest):
         """
         import numpy as np
 
-        _ = iterations  # Unused; test runs for duration
-        self.duration_seconds = duration
-        self.validate_configuration()
-        self.setup()
+        del iterations  # Unused; test runs for duration
+        start_time = time.time()
+        iter_count = 0
 
-        try:
-            # Warmup phase
-            self.log_warmup_start()
-            self.warmup(duration_seconds=self.burnin_seconds)
+        while (time.time() - start_time) < duration:
+            a = np.random.rand(self.matrix_size, self.matrix_size)
+            b = np.random.rand(self.matrix_size, self.matrix_size)
+            _ = np.matmul(a, b)
+            iter_count += 1
+            del a, b
 
-            # Test phase
-            self.log_test_start()
-            start_time = time.time()
-            iter_count = 0
+        elapsed = time.time() - start_time
 
-            while (time.time() - start_time) < duration:
-                a = np.random.rand(self.matrix_size, self.matrix_size)
-                b = np.random.rand(self.matrix_size, self.matrix_size)
-                _ = np.matmul(a, b)
-                iter_count += 1
-                del a, b
+        # Calculate TFLOPS (2*N^3 - N^2 ops per matmul)
+        ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
+        total_ops = iter_count * ops_per_matmul
+        tflops = calculate_tflops(total_ops, elapsed)
 
-            elapsed = time.time() - start_time
+        self.logger.info(f"Result: {tflops:.2f} TFLOPS ({iter_count} iterations)")
 
-            # Calculate TFLOPS (2*N^3 - N^2 ops per matmul)
-            ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
-            total_ops = iter_count * ops_per_matmul
-            tflops = calculate_tflops(total_ops, elapsed)
-
-            self.log_test_complete()
-            self.logger.info(f"Result: {tflops:.2f} TFLOPS ({iter_count} iterations)")
-
-            return {
-                "test_name": self.get_name(),
-                "tflops": tflops,
-                "duration": elapsed,
-                "iterations": iter_count,
-                "matrix_size": self.matrix_size,
-                "total_operations": total_ops,
-                "burnin_seconds": self.burnin_seconds,
-                "cpu_physical_cores": self._cpu_info.total_physical_cores,
-                "cpu_logical_cores": self._cpu_info.total_logical_cores,
-            }
-
-        finally:
-            self.teardown()
+        return {
+            "test_name": self.get_name(),
+            "tflops": tflops,
+            "duration": elapsed,
+            "iterations": iter_count,
+            "matrix_size": self.matrix_size,
+            "total_operations": total_ops,
+            "burnin_seconds": self.burnin_seconds,
+            "cpu_physical_cores": self._cpu_info.total_physical_cores,
+            "cpu_logical_cores": self._cpu_info.total_logical_cores,
+        }

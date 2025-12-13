@@ -59,14 +59,9 @@ class MySimpleTest(StressTest):
     def teardown(self) -> None:
         pass  # Nothing to clean up
 
-    def run(self, duration: int, iterations: int = 1) -> dict:
-        self.validate_configuration()
-        self.setup()
-        try:
-            # Do your test work here
-            return {"test_name": self.get_name(), "duration": duration}
-        finally:
-            self.teardown()
+    def execute_test(self, duration: int, iterations: int) -> dict:
+        # Do your test work here
+        return {"test_name": self.get_name(), "duration": duration}
 ```
 
 That's it. Save this file, and `warpt stress --list` will show your test.
@@ -102,31 +97,28 @@ TestCategory.NETWORK      # Network throughput tests
 
 ## Lifecycle: How a Test Runs
 
-When the runner executes your test, this happens:
+The `run()` method is implemented by the base class and handles the full lifecycle automatically. Your job is to implement `execute_test()` with just the core test logic.
 
 ```
-1. is_available()           # Check if test can run
-2. validate_configuration() # Validate config
-3. setup()                  # Allocate resources
-4. warmup()                 # Optional warmup phase
-5. [Your test logic]        # Measure performance
-6. teardown()               # Clean up (always runs via finally)
-7. Return results           # Dict or Pydantic model
+1. run() [base class]       # Template method (automatic)
+2. is_available()           # Check if test can run
+3. validate_configuration() # Validate config
+4. setup()                  # Allocate resources
+5. warmup()                 # Optional warmup phase
+6. execute_test()           # Your test logic (implement this!)
+7. teardown()               # Clean up (always runs via finally)
+8. Return results           # Dict or Pydantic model
 ```
 
-The `run()` method should call these in order:
+The `execute_test()` method is called by the base class `run()` after all setup/warmup. Just focus on your core test logic:
 
 ```python
-def run(self, duration: int, iterations: int = 1) -> dict:
-    self.validate_configuration()
-    self.setup()
-    try:
-        self.warmup(duration_seconds=self.burnin_seconds)
-        # ... timed test logic ...
-        return {"tflops": 12.5, "duration": elapsed}
-    finally:
-        self.teardown()  # Always clean up
+def execute_test(self, duration: int, iterations: int) -> dict:
+    # ... timed test logic ...
+    return {"tflops": 12.5, "duration": elapsed}
 ```
+
+The base class `run()` handles validation, setup, warmup, and teardown automatically.
 
 ## Configuration with \_PARAM_FIELDS
 
@@ -181,7 +173,7 @@ Your `run()` method can return either:
 ### Option 1: Plain Dict
 
 ```python
-def run(self, duration: int, iterations: int = 1) -> dict:
+def execute_test(self, duration: int, iterations: int) -> dict:
     # ... test logic ...
     return {
         "test_name": self.get_name(),
@@ -215,7 +207,7 @@ Then return an instance from your test:
 from warpt.models.stress_models import MyTestResult
 
 
-def run(self, duration: int, iterations: int = 1) -> MyTestResult:
+def execute_test(self, duration: int, iterations: int) -> MyTestResult:
     # ... test logic ...
     return MyTestResult(
         tflops=12.5,
@@ -405,58 +397,44 @@ class GPUExampleTest(StressTest):
     # Core Test
     # -------------------------------------------------------------------------
 
-    def run(self, duration: int, iterations: int = 1) -> dict:
-        """Run the GPU stress test."""
+    def execute_test(self, duration: int, iterations: int) -> dict:
+        """Execute the GPU stress test."""
         import torch
 
         del iterations  # Unused; we run for duration
-        self.validate_configuration()
-        self.setup()
+        start_time = time.time()
+        iter_count = 0
 
-        try:
-            # Warmup
-            self.log_warmup_start()
-            self.warmup(duration_seconds=self.burnin_seconds)
+        while (time.time() - start_time) < duration:
+            a = torch.randn(self.matrix_size, self.matrix_size,
+                           device=self._device, dtype=torch.float32)
+            b = torch.randn(self.matrix_size, self.matrix_size,
+                           device=self._device, dtype=torch.float32)
+            _ = torch.matmul(a, b)
+            torch.cuda.synchronize()
+            iter_count += 1
+            del a, b
 
-            # Timed test
-            self.log_test_start()
-            start_time = time.time()
-            iter_count = 0
+        elapsed = time.time() - start_time
 
-            while (time.time() - start_time) < duration:
-                a = torch.randn(self.matrix_size, self.matrix_size,
-                               device=self._device, dtype=torch.float32)
-                b = torch.randn(self.matrix_size, self.matrix_size,
-                               device=self._device, dtype=torch.float32)
-                _ = torch.matmul(a, b)
-                torch.cuda.synchronize()
-                iter_count += 1
-                del a, b
+        # Calculate TFLOPS
+        ops_per_matmul = 2 * (self.matrix_size ** 3)
+        total_ops = iter_count * ops_per_matmul
+        tflops = total_ops / elapsed / 1e12
 
-            elapsed = time.time() - start_time
+        self.logger.info(f"Result: {tflops:.2f} TFLOPS")
 
-            # Calculate TFLOPS
-            ops_per_matmul = 2 * (self.matrix_size ** 3)
-            total_ops = iter_count * ops_per_matmul
-            tflops = total_ops / elapsed / 1e12
-
-            self.log_test_complete()
-            self.logger.info(f"Result: {tflops:.2f} TFLOPS")
-
-            return {
-                "test_name": self.get_name(),
-                "device_id": f"gpu_{self.device_id}",
-                "gpu_name": self._gpu_name,
-                "tflops": tflops,
-                "duration": elapsed,
-                "iterations": iter_count,
-                "matrix_size": self.matrix_size,
-                "total_operations": total_ops,
-                "burnin_seconds": self.burnin_seconds,
-            }
-
-        finally:
-            self.teardown()
+        return {
+            "test_name": self.get_name(),
+            "device_id": f"gpu_{self.device_id}",
+            "gpu_name": self._gpu_name,
+            "tflops": tflops,
+            "duration": elapsed,
+            "iterations": iter_count,
+            "matrix_size": self.matrix_size,
+            "total_operations": total_ops,
+            "burnin_seconds": self.burnin_seconds,
+        }
 ```
 
 ## Running Your Test
@@ -491,8 +469,9 @@ Before submitting a new test, verify:
 - [ ] `__init__` sets all parameters as instance attributes
 - [ ] `is_available()` never raises exceptions
 - [ ] `validate_configuration()` raises `ValueError` or `RuntimeError` on bad config
-- [ ] `run()` calls `setup()` and `teardown()` properly (teardown in finally block)
-- [ ] `run()` returns a dict or Pydantic model with meaningful metrics
+- [ ] `setup()` and `teardown()` methods are implemented (base class `run()` calls them)
+- [ ] `execute_test()` contains only core test logic (no setup/teardown/validation)
+- [ ] `execute_test()` returns a dict or Pydantic model with meaningful metrics
 - [ ] Linting passes (`make lint`)
 - [ ] Test appears in `warpt stress --list`
 
@@ -539,20 +518,20 @@ self.logger.warning("GPU throttling detected")
 
 ### Helper Methods
 
-Use `log_warmup_start()`, `log_test_start()`, and `log_test_complete()` for consistent logging:
+The base class `run()` method automatically calls logging helpers. You can use them in your `execute_test()` if needed:
 
 ```python
-def run(self, duration: int, iterations: int = 1) -> dict:
-    # ...
-    self.log_warmup_start()
-    self.warmup(duration_seconds=self.burnin_seconds)
-
-    self.log_test_start()
+def execute_test(self, duration: int, iterations: int) -> dict:
     # ... test logic ...
-
-    self.log_test_complete()
+    self.logger.info(f"Completed {iter_count} iterations")
     return results
 ```
+
+Logging hooks are provided by the base class:
+
+- `log_warmup_start()` — Called before warmup
+- `log_test_start()` — Called before execute_test()
+- `log_test_complete()` — Called after execute_test()
 
 ## Troubleshooting
 

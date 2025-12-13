@@ -319,8 +319,8 @@ class GPUPrecisionTest(StressTest):
     # Core Test
     # -------------------------------------------------------------------------
 
-    def run(self, duration: int, iterations: int = 1) -> MixedPrecisionResults:
-        """Run mixed precision profiling.
+    def execute_test(self, duration: int, iterations: int) -> MixedPrecisionResults:
+        """Execute mixed precision profiling.
 
         Args:
             duration: Total test duration - split across precisions.
@@ -329,93 +329,78 @@ class GPUPrecisionTest(StressTest):
         Returns:
             MixedPrecisionResults with all precision results and speedups.
         """
-        # iterations parameter is unused for precision tests
         del iterations
         import torch
 
-        self.duration_seconds = duration
-        self.validate_configuration()
-        self.setup()
+        # Precision to dtype mapping
+        dtype_map = {
+            Precision.FP32: torch.float32,
+            Precision.FP16: torch.float16,
+            Precision.BF16: torch.bfloat16,
+        }
 
-        try:
-            # Precision to dtype mapping
-            dtype_map = {
-                Precision.FP32: torch.float32,
-                Precision.FP16: torch.float16,
-                Precision.BF16: torch.bfloat16,
-            }
+        # Calculate per-precision duration
+        per_precision_duration = max(
+            duration // len(self.precisions), self.test_duration
+        )
 
-            # Calculate per-precision duration
-            per_precision_duration = max(
-                duration // len(self.precisions), self.test_duration
-            )
-
-            self.log_test_start()
-
-            # Test each precision
-            precision_results: dict[Precision, PrecisionResult] = {}
-            for precision in self.precisions:
-                if precision not in dtype_map:
-                    self.logger.info(
-                        f"Skipping {precision.value.upper()}: Not yet implemented"
-                    )
-                    continue
-
-                torch_dtype = dtype_map[precision]
-                precision_results[precision] = self._test_precision(
-                    torch_dtype,
-                    precision.value.upper(),
-                    f"torch.{torch_dtype}",
-                    per_precision_duration,
+        # Test each precision
+        precision_results: dict[Precision, PrecisionResult] = {}
+        for precision in self.precisions:
+            if precision not in dtype_map:
+                self.logger.info(
+                    f"Skipping {precision.value.upper()}: Not yet implemented"
                 )
+                continue
 
-            # Calculate speedups vs FP32
-            fp32_baseline = precision_results.get(Precision.FP32)
-            fp32_tflops = fp32_baseline.tflops if fp32_baseline else 0.0
-
-            speedups: dict[Precision, float | None] = {}
-            for precision, result in precision_results.items():
-                if precision != Precision.FP32:
-                    if result.tflops and fp32_tflops:
-                        speedups[precision] = result.tflops / fp32_tflops
-                    else:
-                        speedups[precision] = None
-
-            # Check if mixed precision ready (>1.5x speedup)
-            mixed_precision_ready = any(s and s > 1.5 for s in speedups.values())
-
-            # Log summary
-            self.logger.info("--- Speedup Summary ---")
-            for precision, speedup in speedups.items():
-                if speedup:
-                    self.logger.info(
-                        f"{precision.value.upper()} vs FP32: {speedup:.2f}x"
-                    )
-
-            hw_info = (
-                "Tensor Cores detected" if mixed_precision_ready else "No acceleration"
-            )
-            ready_str = "Yes" if mixed_precision_ready else "No"
-            self.logger.info(f"Mixed Precision Ready: {ready_str} ({hw_info})")
-
-            self.log_test_complete()
-
-            # Build result
-            fp32_result = precision_results.get(Precision.FP32)
-            if not fp32_result:
-                raise RuntimeError("FP32 baseline test failed")
-
-            return MixedPrecisionResults(
-                fp32=fp32_result,
-                fp16=precision_results.get(Precision.FP16),
-                bf16=precision_results.get(Precision.BF16),
-                int8=precision_results.get(Precision.INT8),
-                fp16_speedup=speedups.get(Precision.FP16),
-                bf16_speedup=speedups.get(Precision.BF16),
-                int8_speedup=speedups.get(Precision.INT8),
-                mixed_precision_ready=mixed_precision_ready,
-                tf32_enabled=self.allow_tf32,
+            torch_dtype = dtype_map[precision]
+            precision_results[precision] = self._test_precision(
+                torch_dtype,
+                precision.value.upper(),
+                f"torch.{torch_dtype}",
+                per_precision_duration,
             )
 
-        finally:
-            self.teardown()
+        # Calculate speedups vs FP32
+        fp32_baseline = precision_results.get(Precision.FP32)
+        fp32_tflops = fp32_baseline.tflops if fp32_baseline else 0.0
+
+        speedups: dict[Precision, float | None] = {}
+        for precision, result in precision_results.items():
+            if precision != Precision.FP32:
+                if result.tflops and fp32_tflops:
+                    speedups[precision] = result.tflops / fp32_tflops
+                else:
+                    speedups[precision] = None
+
+        # Check if mixed precision ready (>1.5x speedup)
+        mixed_precision_ready = any(s and s > 1.5 for s in speedups.values())
+
+        # Log summary
+        self.logger.info("--- Speedup Summary ---")
+        for precision, speedup in speedups.items():
+            if speedup:
+                self.logger.info(f"{precision.value.upper()} vs FP32: {speedup:.2f}x")
+
+        hw_info = (
+            "Tensor Cores detected" if mixed_precision_ready else "No acceleration"
+        )
+        ready_str = "Yes" if mixed_precision_ready else "No"
+        self.logger.info(f"Mixed Precision Ready: {ready_str} ({hw_info})")
+
+        # Build result
+        fp32_result = precision_results.get(Precision.FP32)
+        if not fp32_result:
+            raise RuntimeError("FP32 baseline test failed")
+
+        return MixedPrecisionResults(
+            fp32=fp32_result,
+            fp16=precision_results.get(Precision.FP16),
+            bf16=precision_results.get(Precision.BF16),
+            int8=precision_results.get(Precision.INT8),
+            fp16_speedup=speedups.get(Precision.FP16),
+            bf16_speedup=speedups.get(Precision.BF16),
+            int8_speedup=speedups.get(Precision.INT8),
+            mixed_precision_ready=mixed_precision_ready,
+            tf32_enabled=self.allow_tf32,
+        )
