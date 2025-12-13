@@ -1,93 +1,179 @@
 """CPU compute stress tests."""
 
 import time
+from typing import Any
 
 import numpy as np
 
 from warpt.backends.system import CPU
-from warpt.models.constants import (
-    CPU_STRESS_TEST,
-    DEFAULT_BURNIN_SECONDS,
-)
-from warpt.stress.base import StressTest
+from warpt.models.constants import DEFAULT_BURNIN_SECONDS
+from warpt.stress.base import StressTest, TestCategory
 from warpt.stress.utils import calculate_tflops
 
 
 class CPUMatMulTest(StressTest):
-    """Matrix multiplication stress test for CPU."""
+    """Matrix multiplication stress test for CPU.
+
+    Uses NumPy's BLAS-backed matmul to stress all CPU cores. On macOS,
+    this uses the Accelerate framework; on Linux, typically OpenBLAS or MKL.
+    """
+
+    _PARAM_FIELDS = ("matrix_size", "burnin_seconds")
 
     def __init__(
-        self, matrix_size: int = 4096, burnin_seconds: int = DEFAULT_BURNIN_SECONDS
+        self,
+        matrix_size: int = 4096,
+        burnin_seconds: int = DEFAULT_BURNIN_SECONDS,
     ):
         """Initialize CPU matmul test.
 
         Args:
-            matrix_size: Size of square matrices (NxN)
-            burnin_seconds: Warmup duration before measurement
+            matrix_size: Size of square matrices (NxN). Default 4096.
+            burnin_seconds: Warmup duration before measurement.
         """
         self.matrix_size = matrix_size
         self.burnin_seconds = burnin_seconds
+        self._cpu: CPU | None = None
+        self._cpu_info: Any = None
 
-    def run(self, duration: int) -> dict:
+    # -------------------------------------------------------------------------
+    # Identity & Metadata
+    # -------------------------------------------------------------------------
+
+    def get_pretty_name(self) -> str:
+        """Return human-readable test name."""
+        return "CPU Matrix Multiplication"
+
+    def get_description(self) -> str:
+        """Return one-line description."""
+        return "Measures CPU compute throughput via FP64 matrix multiplication"
+
+    def get_category(self) -> TestCategory:
+        """Return test category."""
+        return TestCategory.CPU
+
+    # -------------------------------------------------------------------------
+    # Configuration & Parameters
+    # -------------------------------------------------------------------------
+    # Configuration is managed by _PARAM_FIELDS. get_parameters() and
+    # set_parameters() are inherited from StressTest base class.
+
+    # -------------------------------------------------------------------------
+    # Hardware & Availability
+    # -------------------------------------------------------------------------
+
+    def is_available(self) -> bool:
+        """Check if NumPy is available."""
+        try:
+            import numpy  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
+
+    def validate_configuration(self) -> None:
+        """Validate test configuration."""
+        if not self.is_available():
+            raise RuntimeError("NumPy is not installed")
+        if self.matrix_size < 64:
+            raise ValueError("matrix_size must be >= 64")
+        if self.burnin_seconds < 0:
+            raise ValueError("burnin_seconds must be >= 0")
+
+    # -------------------------------------------------------------------------
+    # Lifecycle
+    # -------------------------------------------------------------------------
+
+    def setup(self) -> None:
+        """Initialize CPU info."""
+        self._cpu = CPU()
+        self._cpu_info = self._cpu.get_cpu_info()
+
+    def teardown(self) -> None:
+        """Clean up resources."""
+        self._cpu = None
+        self._cpu_info = None
+
+    def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
+        """Run warmup iterations to let CPU/cache warm up.
+
+        Args:
+            duration_seconds: Warmup duration. If > 0, run for this long.
+            iterations: Number of iterations if duration_seconds is 0.
+        """
+        if duration_seconds > 0:
+            self.logger.debug(f"Warming up for {duration_seconds}s...")
+            start = time.time()
+            while (time.time() - start) < duration_seconds:
+                a = np.random.rand(self.matrix_size, self.matrix_size)
+                b = np.random.rand(self.matrix_size, self.matrix_size)
+                _ = np.matmul(a, b)
+                del a, b
+        else:
+            self.logger.debug(f"Warming up for {iterations} iterations...")
+            for _ in range(iterations):
+                a = np.random.rand(self.matrix_size, self.matrix_size)
+                b = np.random.rand(self.matrix_size, self.matrix_size)
+                _ = np.matmul(a, b)
+                del a, b
+
+    # -------------------------------------------------------------------------
+    # Core Test
+    # -------------------------------------------------------------------------
+
+    def run(self, duration: int, iterations: int = 1) -> dict:
         """Run CPU matrix multiplication test.
 
         Args:
-            duration: Test duration in seconds
+            duration: Test duration in seconds.
+            iterations: Ignored for CPU test (runs for duration).
 
-        Returns
-        -------
+        Returns:
             Dictionary containing test results (TFLOPS, etc.)
         """
-        # TODO: Monitor CPU utilization during test to verify all cores are
-        #       being used. Use psutil.cpu_percent(percpu=True) to check
-        #       per-core utilization. NumPy's BLAS (Accelerate on macOS) should
-        #       auto-parallelize, but we should verify
+        _ = iterations  # Unused; test runs for duration
+        self.duration_seconds = duration
+        self.validate_configuration()
+        self.setup()
 
-        # Get CPU info for core count
-        cpu = CPU()
-        cpu_info = cpu.get_cpu_info()
+        try:
+            # Warmup phase
+            self.log_warmup_start()
+            self.warmup(duration_seconds=self.burnin_seconds)
 
-        # Burnin/warmup phase - let CPU/cache warm up
-        print(f"  Warming up for {self.burnin_seconds}s...")
-        burnin_start = time.time()
-        while (time.time() - burnin_start) < self.burnin_seconds:
-            a = np.random.rand(self.matrix_size, self.matrix_size)
-            b = np.random.rand(self.matrix_size, self.matrix_size)
-            c = np.matmul(a, b)
-            del a, b, c  # Free memory
+            # Test phase
+            self.log_test_start()
+            start_time = time.time()
+            iter_count = 0
 
-        # Actual test phase - measured performance
-        print(f"  Running test for {duration}s...")
-        start_time = time.time()
-        iterations = 0
+            while (time.time() - start_time) < duration:
+                a = np.random.rand(self.matrix_size, self.matrix_size)
+                b = np.random.rand(self.matrix_size, self.matrix_size)
+                _ = np.matmul(a, b)
+                iter_count += 1
+                del a, b
 
-        while (time.time() - start_time) < duration:
-            a = np.random.rand(self.matrix_size, self.matrix_size)
-            b = np.random.rand(self.matrix_size, self.matrix_size)
-            c = np.matmul(a, b)
-            iterations += 1
-            del a, b, c  # Free memory
+            elapsed = time.time() - start_time
 
-        elapsed = time.time() - start_time
+            # Calculate TFLOPS (2*N^3 - N^2 ops per matmul)
+            ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
+            total_ops = iter_count * ops_per_matmul
+            tflops = calculate_tflops(total_ops, elapsed)
 
-        # Calculate TFLOPS
-        # Matrix multiplication: 2*N^3 - N^2 operations
-        ops_per_matmul = 2 * (self.matrix_size**3) - (self.matrix_size**2)
-        total_ops = iterations * ops_per_matmul
-        tflops = calculate_tflops(total_ops, elapsed)
+            self.log_test_complete()
+            self.logger.info(f"Result: {tflops:.2f} TFLOPS ({iter_count} iterations)")
 
-        return {
-            "test_name": self.get_name(),
-            "tflops": tflops,
-            "duration": elapsed,
-            "iterations": iterations,
-            "matrix_size": self.matrix_size,
-            "total_operations": total_ops,
-            "burnin_seconds": self.burnin_seconds,
-            "cpu_physical_cores": cpu_info.total_physical_cores,
-            "cpu_logical_cores": cpu_info.total_logical_cores,
-        }
+            return {
+                "test_name": self.get_name(),
+                "tflops": tflops,
+                "duration": elapsed,
+                "iterations": iter_count,
+                "matrix_size": self.matrix_size,
+                "total_operations": total_ops,
+                "burnin_seconds": self.burnin_seconds,
+                "cpu_physical_cores": self._cpu_info.total_physical_cores,
+                "cpu_logical_cores": self._cpu_info.total_logical_cores,
+            }
 
-    def get_name(self) -> str:
-        """Get test name."""
-        return CPU_STRESS_TEST
+        finally:
+            self.teardown()

@@ -15,6 +15,8 @@ class GPUMemoryBandwidthTest(StressTest):
     and device-to-host (PCIe download) bandwidth.
     """
 
+    _PARAM_FIELDS = ("device_id", "burnin_seconds", "data_size_gb", "use_pinned_memory")
+
     def __init__(
         self,
         device_id: int,
@@ -197,16 +199,19 @@ class GPUMemoryBandwidthTest(StressTest):
 
         return {"bandwidth_gbps": bandwidth_gbps, "iterations": iterations}
 
-    def run(self, duration: int) -> GPUMemoryBandwidthResult:
+    def run(self, duration: int, iterations: int = 1) -> GPUMemoryBandwidthResult:
         """Run memory bandwidth tests.
 
         Args:
             duration: Total test duration - split across test types
                 (min 5s per test type)
+            iterations: Ignored (uses duration for each test type).
 
         Returns:
             GPUMemoryBandwidthResult with all bandwidth measurements
         """
+        # iterations parameter is unused
+        del iterations
         # Import PyTorch (lazy import)
         try:
             import torch
