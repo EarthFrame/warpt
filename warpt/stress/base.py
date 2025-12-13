@@ -484,10 +484,10 @@ class StressTest(ABC):
     def log_warmup_start(self) -> None:
         """Log that warmup phase is starting.
 
-        Args:
-            duration: Warmup duration in seconds.
+        Logs the burnin_seconds value if available, otherwise nothing.
         """
-        self.logger.info(f"Warming up for {self.duration_seconds}s...")
+        if hasattr(self, "burnin_seconds"):
+            self.logger.info(f"Warming up for {self.burnin_seconds}s...")
 
     def log_test_start(self) -> None:
         """Log that test phase is starting.

@@ -5,7 +5,7 @@ import time
 from warpt.backends.base import GPUBackend
 from warpt.models.constants import GPU_MEMORY_TEST, MIN_MEMORY_TEST_DURATION
 from warpt.models.stress_models import GPUMemoryBandwidthResult
-from warpt.stress.base import StressTest
+from warpt.stress.base import StressTest, TestCategory
 
 
 class GPUMemoryBandwidthTest(StressTest):
@@ -45,6 +45,7 @@ class GPUMemoryBandwidthTest(StressTest):
         self.backend = backend
         self.data_size_gb = data_size_gb
         self.use_pinned_memory = use_pinned_memory
+        self._device_str: str | None = None
 
         # TODO: Consider adding different default sizes for D2D vs H2D/D2H
         # D2D tests GPU memory bandwidth (could use larger sizes like 2GB)
@@ -70,6 +71,74 @@ class GPUMemoryBandwidthTest(StressTest):
     def get_name(self) -> str:
         """Return test name."""
         return GPU_MEMORY_TEST
+
+    def get_pretty_name(self) -> str:
+        """Return human-readable test name."""
+        return "GPU Memory Bandwidth Test"
+
+    def get_description(self) -> str:
+        """Return test description."""
+        return (
+            "Measures GPU memory bandwidth via device-to-device transfers, "
+            "and optionally PCIe bandwidth via host-to-device and "
+            "device-to-host transfers"
+        )
+
+    def get_category(self) -> TestCategory:
+        """Return test category."""
+        return TestCategory.ACCELERATOR
+
+    def is_available(self) -> bool:
+        """Check if PyTorch and CUDA are available."""
+        try:
+            import torch
+
+            return bool(torch.cuda.is_available())
+        except ImportError:
+            return False
+
+    def validate_configuration(self) -> None:
+        """Validate test configuration."""
+        if not self.is_available():
+            raise RuntimeError("CUDA is not available")
+
+        import torch
+
+        if self.device_id >= torch.cuda.device_count():
+            raise ValueError(
+                f"GPU device {self.device_id} not found. "
+                f"Available: 0-{torch.cuda.device_count() - 1}"
+            )
+        if self.data_size_gb <= 0:
+            raise ValueError("data_size_gb must be > 0")
+        if self.burnin_seconds < 0:
+            raise ValueError("burnin_seconds must be >= 0")
+
+    def setup(self) -> None:
+        """Initialize GPU device."""
+        import torch
+
+        if self.backend:
+            self._device_str = self.backend.get_pytorch_device_string(self.device_id)
+        else:
+            self._device_str = f"cuda:{self.device_id}"
+
+        self._device = torch.device(self._device_str)
+        torch.cuda.set_device(self._device)
+
+        self._gpu_name = torch.cuda.get_device_name(self._device)
+        gpu_props = torch.cuda.get_device_properties(self._device)
+        self._gpu_memory_total = gpu_props.total_memory / (1024**3)
+
+        self.logger.info(f"GPU {self.device_id}: {self._gpu_name}")
+
+    def teardown(self) -> None:
+        """Clean up GPU resources."""
+        import torch
+
+        torch.cuda.empty_cache()
+        self._device = None
+        self._device_str = None
 
     def _warmup_transfer(self, src_tensor, dst_tensor) -> None:
         """Warmup the memory transfer to stabilize performance.
@@ -222,7 +291,9 @@ class GPUMemoryBandwidthTest(StressTest):
 
         # Get PyTorch device string
         if self.backend:
-            device_str = self.backend.get_pytorch_device_string(self.device_id)
+            device_str: str | None = self.backend.get_pytorch_device_string(
+                self.device_id
+            )
         else:
             if not torch.cuda.is_available():
                 raise RuntimeError("CUDA is not available") from None

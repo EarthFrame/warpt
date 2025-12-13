@@ -3,8 +3,6 @@
 import time
 from typing import Any
 
-import numpy as np
-
 from warpt.backends.system import CPU
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
@@ -101,6 +99,8 @@ class CPUMatMulTest(StressTest):
             duration_seconds: Warmup duration. If > 0, run for this long.
             iterations: Number of iterations if duration_seconds is 0.
         """
+        import numpy as np
+
         if duration_seconds > 0:
             self.logger.debug(f"Warming up for {duration_seconds}s...")
             start = time.time()
@@ -131,6 +131,8 @@ class CPUMatMulTest(StressTest):
         Returns:
             Dictionary containing test results (TFLOPS, etc.)
         """
+        import numpy as np
+
         _ = iterations  # Unused; test runs for duration
         self.duration_seconds = duration
         self.validate_configuration()
