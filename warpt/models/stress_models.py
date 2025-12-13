@@ -122,6 +122,51 @@ class MixedPrecisionResults(BaseModel):
     )
 
 
+class GPUMemoryBandwidthResult(BaseModel):
+    """Results from GPU memory bandwidth test."""
+
+    # Device identifiers
+    device_id: str = Field(..., description="Logical device ID (e.g., 'gpu_0')")
+    gpu_uuid: str = Field(
+        ..., description="Persistent GPU UUID for tracking across systems"
+    )
+    gpu_name: str = Field(..., description="GPU model name")
+
+    # Test metadata
+    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+    data_size_gb: float = Field(
+        ..., gt=0, description="Size of data transferred per test in GB"
+    )
+    used_pinned_memory: bool = Field(
+        ..., description="Whether pinned memory was used for H2D/D2H transfers"
+    )
+
+    # Device-to-Device (GPU memory bandwidth)
+    d2d_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Device-to-device memory bandwidth in GB/s"
+    )
+    d2d_iterations: int = Field(
+        ..., ge=0, description="Number of D2D iterations completed"
+    )
+
+    # Host-to-Device (PCIe upload bandwidth)
+    h2d_bandwidth_gbps: float | None = Field(
+        None, ge=0, description="Host-to-device memory bandwidth in GB/s"
+    )
+    h2d_iterations: int | None = Field(
+        None, ge=0, description="Number of H2D iterations completed"
+    )
+
+    # Device-to-Host (PCIe download bandwidth)
+    d2h_bandwidth_gbps: float | None = Field(
+        None, ge=0, description="Device-to-host memory bandwidth in GB/s"
+    )
+    d2h_iterations: int | None = Field(
+        None, ge=0, description="Number of D2H iterations completed"
+    )
+
+
 class GPUDeviceResult(BaseModel):
     """Results from individual GPU stress test."""
 
@@ -132,16 +177,16 @@ class GPUDeviceResult(BaseModel):
     )
     gpu_name: str = Field(..., description="GPU model name")
 
-    # Performance metrics
-    tflops: float = Field(
-        ..., ge=0, description="GPU computational throughput in TFLOPS"
+    # Performance metrics (from compute test - optional if only other tests run)
+    tflops: float | None = Field(
+        None, ge=0, description="GPU computational throughput in TFLOPS"
     )
-    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    duration: float | None = Field(None, ge=0, description="Test duration in seconds")
     iterations: int | None = Field(
         None, ge=0, description="Iterations completed (if applicable)"
     )
-    total_operations: int = Field(
-        ..., ge=0, description="Total floating point operations"
+    cumulative_fp_operations: int | None = Field(
+        None, ge=0, description="Total floating point operations"
     )
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
 
@@ -154,7 +199,9 @@ class GPUDeviceResult(BaseModel):
     )
 
     # GPU-specific monitoring
-    memory_used_gb: float = Field(..., ge=0, description="GPU memory used in GB")
+    memory_used_gb: float | None = Field(
+        None, ge=0, description="GPU memory used in GB"
+    )
     max_temp: float | None = Field(None, description="Peak temperature in Celsius")
     avg_power: float | None = Field(None, description="Average power in Watts")
     throttle_events: list[ThrottleEvent] = Field(
@@ -164,6 +211,11 @@ class GPUDeviceResult(BaseModel):
     # Mixed precision results
     mixed_precision: MixedPrecisionResults | None = Field(
         None, description="Mixed precision test results"
+    )
+
+    # Memory bandwidth results
+    memory_bandwidth: GPUMemoryBandwidthResult | None = Field(
+        None, description="Memory bandwidth test results"
     )
 
 
@@ -243,12 +295,72 @@ class GPUTestResults(BaseModel):
     )
 
 
+class RAMMemoryStressResult(BaseModel):
+    """Results from RAM memory stress test."""
+
+    # System identifiers
+    total_ram_gb: float = Field(..., gt=0, description="Total system RAM in GB")
+    available_ram_gb: float = Field(
+        ..., gt=0, description="Available RAM at test start"
+    )
+    allocated_memory_gb: float = Field(
+        ..., gt=0, description="Memory allocated for stress test"
+    )
+
+    # Test metadata
+    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+
+    # Baseline metrics (before swap pressure)
+    baseline_read_gbps: float = Field(
+        ..., ge=0, description="Baseline read bandwidth in GB/s"
+    )
+    baseline_write_gbps: float = Field(
+        ..., ge=0, description="Baseline write bandwidth in GB/s"
+    )
+    baseline_latency_ms: float = Field(
+        ..., ge=0, description="Baseline memory access latency in ms"
+    )
+
+    # Pressure metrics (under swap)
+    pressure_read_gbps: float = Field(
+        ..., ge=0, description="Read bandwidth under swap pressure in GB/s"
+    )
+    pressure_write_gbps: float = Field(
+        ..., ge=0, description="Write bandwidth under swap pressure in GB/s"
+    )
+    pressure_latency_ms: float = Field(
+        ..., ge=0, description="Memory access latency under swap pressure in ms"
+    )
+
+    # Performance degradation metrics
+    read_slowdown_factor: float = Field(
+        ..., ge=1.0, description="Read performance degradation (≥1.0, higher is worse)"
+    )
+    write_slowdown_factor: float = Field(
+        ..., ge=1.0, description="Write performance degradation (≥1.0, higher is worse)"
+    )
+    latency_increase_factor: float = Field(
+        ..., ge=1.0, description="Latency increase factor (≥1.0, higher is worse)"
+    )
+
+    # Swap metrics
+    swap_occurred: bool = Field(..., description="Whether swapping was detected")
+    swap_in_mb: float | None = Field(None, description="Data swapped in from disk (MB)")
+    swap_out_mb: float | None = Field(None, description="Data swapped out to disk (MB)")
+    peak_swap_usage_mb: float | None = Field(
+        None, description="Peak swap space used during test (MB)"
+    )
+
+
 class RAMTestResults(BaseModel):
-    """RAM test results container (placeholder for future implementation)."""
+    """RAM test results container."""
 
     test_mode: Literal["system_level"] = "system_level"
     device_count: int = Field(1, description="System RAM (always 1)")
-    results: dict[str, dict] = Field(..., description="RAM test results")
+    results: dict[Literal["ram_system"], RAMMemoryStressResult] = Field(
+        ..., description="RAM system-level results"
+    )
 
 
 # ============================================================================
@@ -276,12 +388,21 @@ class GPUSummary(BaseModel):
 
 
 class RAMSummary(BaseModel):
-    """Summary of RAM test results (placeholder for future implementation)."""
+    """Summary of RAM test results."""
 
     status: Literal["pass", "fail", "warning"] = Field(
         ..., description="Overall test status"
     )
-    bandwidth_gbps: float | None = Field(None, description="Memory bandwidth in GB/s")
+    baseline_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Baseline memory bandwidth in GB/s"
+    )
+    pressure_bandwidth_gbps: float = Field(
+        ..., ge=0, description="Memory bandwidth under swap pressure in GB/s"
+    )
+    slowdown_factor: float = Field(
+        ..., ge=1.0, description="Overall performance degradation factor"
+    )
+    swap_occurred: bool = Field(..., description="Whether swapping was detected")
 
 
 # ============================================================================
