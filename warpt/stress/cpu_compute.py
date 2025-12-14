@@ -96,10 +96,15 @@ class CPUMatMulTest(StressTest):
         """Run warmup iterations to let CPU/cache warm up.
 
         Args:
-            duration_seconds: Warmup duration. If > 0, run for this long.
-            iterations: Number of iterations if duration_seconds is 0.
+            duration_seconds: Warmup duration. If 0, uses self.burnin_seconds.
+            iterations: Number of iterations if both duration_seconds and
+                burnin_seconds are 0.
         """
         import numpy as np
+
+        # Use burnin_seconds if no duration specified
+        if duration_seconds == 0:
+            duration_seconds = self.burnin_seconds
 
         if duration_seconds > 0:
             self.logger.debug(f"Warming up for {duration_seconds}s...")
