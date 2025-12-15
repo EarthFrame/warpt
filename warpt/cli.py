@@ -48,19 +48,6 @@ def list(export, export_file):
 
 
 @warpt.command()
-@click.option(
-    "--results-file",
-    default=None,
-    help="Path to a JSON results file from 'warpt list' command",
-)
-def recommend(results_file):
-    """Recommend models and configurations based on system specs."""
-    from warpt.commands.recommend_cmd import run_recommend
-
-    run_recommend(results_file=results_file)
-
-
-@warpt.command()
 @click.option("--verbose", "-v", is_flag=True, help="Show detailed version information")
 def version(verbose):
     """Display warpt version information."""
