@@ -322,6 +322,9 @@ class RAMMemoryStressResult(BaseModel):
         ..., ge=0, description="Baseline memory access latency in ms"
     )
 
+    # Swap detection
+    swap_occurred: bool = Field(..., description="Whether swapping was detected")
+
     # Pressure metrics (under swap)
     pressure_read_gbps: float = Field(
         ..., ge=0, description="Read bandwidth under swap pressure in GB/s"
@@ -344,8 +347,7 @@ class RAMMemoryStressResult(BaseModel):
         ..., ge=1.0, description="Latency increase factor (≥1.0, higher is worse)"
     )
 
-    # Swap metrics
-    swap_occurred: bool = Field(..., description="Whether swapping was detected")
+    # Additional swap metrics
     swap_in_mb: float | None = Field(None, description="Data swapped in from disk (MB)")
     swap_out_mb: float | None = Field(None, description="Data swapped out to disk (MB)")
     peak_swap_usage_mb: float | None = Field(
