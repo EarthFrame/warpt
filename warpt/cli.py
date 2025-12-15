@@ -66,9 +66,44 @@ def version(verbose):
 
 
 @warpt.command()
-def monitor():
+@click.option(
+    "--interval",
+    "-i",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds for live monitoring",
+)
+@click.option(
+    "--duration",
+    "-d",
+    type=float,
+    default=None,
+    help="Stop monitoring after this many seconds (default: run until interrupted)",
+)
+@click.option(
+    "--no-tui",
+    is_flag=True,
+    default=False,
+    help="Run the CLI monitor output instead of the curses dashboard",
+)
+def monitor(interval, duration, no_tui):
     """Monitor system performance in real-time."""
-    print("Live monitoring!")
+    if not no_tui:
+        try:
+            from warpt.commands.monitor_tui import run_monitor_tui
+
+            run_monitor_tui(interval_seconds=interval)
+        except Exception as exc:
+            raise click.ClickException(f"Monitor TUI failed: {exc}") from exc
+        return
+
+    from warpt.commands.monitor_cmd import run_monitor
+
+    try:
+        run_monitor(interval_seconds=interval, duration_seconds=duration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @warpt.command()
