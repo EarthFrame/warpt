@@ -86,14 +86,14 @@ def version(verbose):
     help="Stop monitoring after this many seconds (default: run until interrupted)",
 )
 @click.option(
-    "--tui",
+    "--no-tui",
     is_flag=True,
     default=False,
-    help="Launch the curses-based monitor dashboard (press q to quit)",
+    help="Run the CLI monitor output instead of the curses dashboard",
 )
-def monitor(interval, duration, tui):
+def monitor(interval, duration, no_tui):
     """Monitor system performance in real-time."""
-    if tui:
+    if not no_tui:
         try:
             from warpt.commands.monitor_tui import run_monitor_tui
 
