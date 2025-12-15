@@ -1,6 +1,12 @@
 """Constants for warpt models and commands."""
 
-from enum import StrEnum, auto
+import sys
+from enum import auto
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from enum import StrEnum
+else:
+    from backports.strenum import StrEnum  # noqa: UP035
 
 
 class Target(StrEnum):
@@ -48,9 +54,19 @@ class MemoryType(StrEnum):
     HBM2 = "hbm2"
 
 
+class Precision(StrEnum):
+    """Precision types for GPU testing."""
+
+    FP32 = "fp32"
+    FP16 = "fp16"
+    BF16 = "bf16"
+    INT8 = "int8"
+
+
 # Stress test timing defaults (in seconds)
 DEFAULT_STRESS_SECONDS = 30  # Duration when --duration not specified
 DEFAULT_BURNIN_SECONDS = 5  # Warmup period before measurements
+MIN_MEMORY_TEST_DURATION = 5  # Minimum duration per memory bandwidth test
 
 # Valid stress test targets
 VALID_STRESS_TARGETS = ("cpu", "gpu", "ram", "all")
@@ -58,3 +74,8 @@ VALID_STRESS_TARGETS = ("cpu", "gpu", "ram", "all")
 # Names for stress tests
 CPU_STRESS_TEST = "CPU Matrix Multiplication"
 GPU_STRESS_TEST = "GPU Matrix Multiplication"
+MIXED_PRECISION_TEST = "GPU Mixed Precision Profile"
+GPU_MEMORY_TEST = "GPU Memory Bandwidth"
+
+# Docker
+DOCKER_NAME = "docker"

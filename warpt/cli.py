@@ -4,13 +4,19 @@
 import click
 
 from warpt.commands.list_cmd import run_list
-from warpt.models.constants import DEFAULT_BURNIN_SECONDS
+from warpt.utils.env import get_env
+from warpt.utils.logger import Logger
 
 
 @click.group()
 def warpt():
     """Warpt command-line tool for system monitoring and utilities."""
-    pass
+    # Configure logger at startup if not already configured
+    if not Logger.is_configured():
+        # Default to INFO level; subcommands can adjust via set_level()
+        Logger.configure(
+            level=get_env("WARPT_LOG_LEVEL", default="INFO"), timestamps=True
+        )
 
 
 @warpt.command()
@@ -52,6 +58,9 @@ def list(export, export_file):
 def version(verbose):
     """Display warpt version information."""
     from warpt.commands.version_cmd import run_version
+
+    if verbose:
+        Logger.set_level("DEBUG")
 
     run_version(verbose=verbose)
 
@@ -117,120 +126,113 @@ def check():
 
 @warpt.command()
 @click.option(
-    "--target",
+    "--list",
+    "-l",
+    "list_only",
+    is_flag=True,
+    help="List available stress tests",
+)
+@click.option(
+    "--category",
+    "-c",
     multiple=True,
-    help=(
-        "Targets to stress test (cpu, gpu, ram, all). Can be comma-separated "
-        "or repeated multiple times."
-    ),
+    help="Filter by category: cpu, accelerator, ram, storage, network, all",
 )
 @click.option(
-    "--gpu-id",
-    default=None,
-    help=(
-        "Specific GPU ID(s) to test (comma-separated, e.g., '0' or '0,1'). "
-        "Use with --target gpu."
-    ),
-)
-@click.option(
-    "--cpu-id",
-    default=None,
-    help=(
-        "Specific CPU socket/core ID(s) to test (comma-separated). "
-        "Use with --target cpu."
-    ),
+    "--test",
+    "-t",
+    "tests",
+    multiple=True,
+    help="Run specific test(s) by name (e.g., GPUMatMulTest)",
 )
 @click.option(
     "--duration",
+    "-d",
     type=int,
-    default=None,
-    help="Duration in seconds for each stress test (default: 30s)",
+    default=30,
+    help="Duration in seconds per test (default: 30)",
 )
 @click.option(
-    "--burnin-seconds",
+    "--warmup",
+    "-w",
     type=int,
-    default=DEFAULT_BURNIN_SECONDS,
-    help=(
-        f"Warmup period in seconds before measurements "
-        f"(default: {DEFAULT_BURNIN_SECONDS}s)"
-    ),
+    default=5,
+    help="Warmup period in seconds (default: 5)",
 )
 @click.option(
-    "--export",
-    is_flag=True,
-    default=False,
-    help=(
-        "Export results to JSON file with default filename "
-        "(warpt_stress_<TIMESTAMP>_<RANDOM>.json)"
-    ),
-)
-@click.option(
-    "--export-file",
+    "--device-id",
     default=None,
-    help="Export results to JSON file with custom filename",
+    help="Device ID(s) for accelerator tests (comma-separated, e.g., '0,1')",
 )
 @click.option(
-    "--log-file", default=None, help="Write detailed execution logs to specified file"
-)
-# TODO - add --nic-id
-@click.option(
-    "--monitor",
-    is_flag=True,
-    default=False,
-    help="Run the background resource monitor during stress tests",
+    "--output",
+    "-o",
+    "outputs",
+    multiple=True,
+    help="Output file(s) - format auto-detected (.json/.yaml). Repeatable.",
 )
 @click.option(
-    "--monitor-interval",
-    type=float,
-    default=1.0,
-    show_default=True,
-    help="Sampling interval in seconds for the background monitor",
-)
-@click.option(
-    "--monitor-output",
-    type=click.Path(dir_okay=False, writable=True),
+    "--format",
+    "-f",
+    "fmt",
+    type=click.Choice(["json", "yaml", "text"], case_sensitive=False),
     default=None,
-    help="Path to write the monitor's collected samples as JSON",
+    help="Stdout format when no --output specified",
+)
+@click.option(
+    "--config",
+    type=click.Path(exists=True),
+    default=None,
+    help="YAML config file with per-test settings",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Verbose output",
 )
 def stress(
-    target,
-    gpu_id,
-    cpu_id,
+    list_only,
+    category,
+    tests,
     duration,
-    burnin_seconds,
-    export,
-    export_file,
-    log_file,
-    monitor,
-    monitor_interval,
-    monitor_output,
+    warmup,
+    device_id,
+    outputs,
+    fmt,
+    config,
+    verbose,
 ):
-    """Run system stress tests."""
+    r"""Run hardware stress tests.
+
+    \b
+    Examples:
+      warpt stress --list                  # List available tests
+      warpt stress --list -c cpu           # List CPU tests only
+      warpt stress -c all                  # Run all available tests
+      warpt stress -c cpu                  # Run CPU category
+      warpt stress -c accelerator          # Run accelerator tests
+      warpt stress -t GPUMatMulTest        # Run specific test
+      warpt stress -o results.json         # Save to JSON
+      warpt stress -o a.json -o b.yaml     # Multiple outputs
+      warpt stress --config tests.yaml     # Use config file
+    """
     from warpt.commands.stress_cmd import run_stress
 
-    # Determine export format and filename (matches list command pattern)
-    if export_file:
-        export_format = "json"
-        export_filename = export_file
-    elif export:
-        export_format = "json"
-        export_filename = None  # Will use default timestamp
-    else:
-        export_format = None
-        export_filename = None
+    if verbose:
+        Logger.set_level("DEBUG")
 
     run_stress(
-        targets=target,
-        gpu_id=gpu_id,
-        cpu_id=cpu_id,
-        duration_seconds=duration,
-        burnin_seconds=burnin_seconds,
-        export_format=export_format,
-        export_filename=export_filename,
-        log_file=log_file,
-        monitor=monitor,
-        monitor_interval=monitor_interval,
-        monitor_output=monitor_output,
+        categories=category,
+        tests=tests,
+        duration=duration,
+        warmup=warmup,
+        device_id=device_id,
+        outputs=outputs,
+        fmt=fmt,
+        config=config,
+        list_only=list_only,
+        verbose=verbose,
     )
 
 

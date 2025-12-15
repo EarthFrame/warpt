@@ -1,492 +1,431 @@
-"""Stress test command - runs comprehensive hardware stress tests."""
+"""Stress test command - runs hardware stress tests via registry.
 
-import json
+CLI Examples:
+    warpt stress --list                  # List available tests
+    warpt stress --list -c cpu           # List CPU tests only
+    warpt stress                         # Run all available tests
+    warpt stress -c cpu                  # Run CPU category
+    warpt stress -c accelerator          # Run accelerator tests
+    warpt stress -t GPUMatMulTest        # Run specific test
+    warpt stress -o results.json         # Save to JSON
+    warpt stress -o a.json -o b.yaml     # Multiple outputs
+    warpt stress --config tests.yaml     # Use config file
+"""
+
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 
-from warpt.models.constants import (
-    DEFAULT_STRESS_SECONDS,
-    VALID_STRESS_TARGETS,
+from warpt.stress import (
+    OutputFormat,
+    TestCategory,
+    TestRegistry,
+    TestRunner,
 )
-from warpt.monitoring import ResourceSnapshot, SystemMonitorDaemon
+
+# Map CLI strings to TestCategory enum
+CATEGORY_MAP: dict[str, TestCategory | str] = {
+    "cpu": TestCategory.CPU,
+    "accelerator": TestCategory.ACCELERATOR,
+    "ram": TestCategory.RAM,
+    "storage": TestCategory.STORAGE,
+    "network": TestCategory.NETWORK,
+    "all": "all",  # Special case: run all available tests
+}
 
 
-def parse_targets(
-    targets: tuple, valid_targets: tuple = VALID_STRESS_TARGETS
-) -> list[str]:
-    """Parse, validate, and deduplicate target specifications.
-
-    Supports both comma-separated and repeated flags:
-    - ('cpu', 'gpu') -> ['cpu', 'gpu']
-    - ('cpu,gpu', 'ram') -> ['cpu', 'gpu', 'ram']
-    - ('cpu', 'cpu', 'gpu') -> ['cpu', 'gpu'] (deduplicated)
-
-    Args:
-        targets: Tuple of target strings from Click
-        valid_targets: Tuple of valid target strings
-
-    Returns
-    -------
-        List of deduplicated and validated target strings
-
-    Raises
-    ------
-        ValueError: If any target is invalid
-    """
-    parsed_targets = []
-
-    for target_spec in targets:
-        # Split by comma and strip whitespace
-        for target in target_spec.split(","):
-            target = target.strip().lower()
-            if target:
-                # Validate target
-                if target not in valid_targets:
-                    raise ValueError(
-                        f"Invalid target '{target}'. Valid targets: "
-                        f"{', '.join(sorted(valid_targets))}"
-                    )
-                # Add to list if not duplicate
-                if target not in parsed_targets:
-                    parsed_targets.append(target)
-
-    return parsed_targets
+def _resolve_category_enum(name: str) -> TestCategory | None:
+    """Return the TestCategory enum for the CLI name if available."""
+    value = CATEGORY_MAP.get(name)
+    if isinstance(value, TestCategory):
+        return value
+    return None
 
 
-def parse_device_ids(device_id_str: str | None) -> list[int] | None:
-    """Parse comma-separated device IDs into list of integers.
+def load_config(config_path: str) -> dict[str, Any]:
+    """Load test configuration from YAML file.
+
+    Config format:
+        defaults:
+          duration: 60
+          warmup: 10
+
+        tests:
+          - name: GPUMatMulTest
+            duration: 120
+            device_id: 0
+
+          - name: CPUMatMulTest
+
+          - category: accelerator
+            duration: 90
 
     Args:
-        device_id_str: Comma-separated device IDs (e.g., '0' or '0,1,2')
+        config_path: Path to YAML config file.
 
-    Returns
-    -------
-        List of device IDs or None if not provided
+    Returns:
+        Parsed config dictionary.
 
-    Raises
-    ------
-        SystemExit: If device IDs are invalid
+    Raises:
+        click.ClickException: If file not found or invalid YAML.
     """
-    if not device_id_str:
-        return None
+    path = Path(config_path)
+    if not path.exists():
+        raise click.ClickException(f"Config file not found: {config_path}")
 
     try:
-        # Split and filter out empty strings (handles cases like "0,," or "0,,2")
-        id_strings = [s.strip() for s in device_id_str.split(",") if s.strip()]
+        import yaml  # type: ignore[import-untyped]
+    except ImportError:
+        raise click.ClickException(
+            "YAML config requires pyyaml. Install with: pip install pyyaml"
+        ) from None
 
-        if not id_strings:
-            print("Error: No valid device IDs provided.")
-            print("Run 'warpt list' to see available devices.")
+    try:
+        with open(path) as f:
+            config = yaml.safe_load(f)
+    except Exception as e:
+        raise click.ClickException(f"Error parsing config: {e}") from e
+
+    if not isinstance(config, dict):
+        raise click.ClickException("Config must be a YAML dictionary")
+
+    return config
+
+
+def get_output_format(output: str | None, fmt: str | None) -> OutputFormat:
+    """Determine output format from filename or explicit format."""
+    if fmt:
+        return OutputFormat(fmt.lower())
+
+    if output:
+        suffix = Path(output).suffix.lower()
+        if suffix == ".json":
+            return OutputFormat.JSON
+        elif suffix in (".yaml", ".yml"):
+            return OutputFormat.YAML
+
+    return OutputFormat.TEXT
+
+
+def list_tests(
+    registry: TestRegistry,
+    category: str | None = None,
+    verbose: bool = False,
+) -> None:
+    """List available stress tests."""
+    if category:
+        if category not in CATEGORY_MAP:
+            valid = ", ".join(sorted(CATEGORY_MAP.keys()))
+            click.echo(f"Error: Unknown category '{category}'. Valid: {valid}")
             sys.exit(1)
-
-        device_ids = [int(id_str) for id_str in id_strings]
-        return device_ids
-    except ValueError:
-        print(
-            f"Error: Invalid device ID format '{device_id_str}'. "
-            f"Must be comma-separated integers (e.g., '0' or '0,1')."
-        )
-        print("Run 'warpt list' to see available devices.")
-        sys.exit(1)
-
-
-def get_available_gpus() -> list[int]:
-    """Get list of available GPU IDs.
-
-    Returns
-    -------
-        List of GPU IDs or empty list if no GPUs available
-    """
-    try:
-        from warpt.backends.factory import get_gpu_backend
-
-        backend = get_gpu_backend()
-        gpus = backend.list_devices()
-        return [gpu.index for gpu in gpus]
-    except Exception:
-        return []
-
-
-def get_available_cpus() -> list[int]:
-    """Get list of available CPU IDs (socket IDs).
-
-    Returns
-    -------
-        List of CPU socket IDs
-    """
-    try:
-        from warpt.backends.system import CPU
-
-        cpu = CPU()
-        info = cpu.get_cpu_info()
-        # Return list of socket IDs (0 to total_sockets-1)
-        return list(range(info.total_sockets))
-    except Exception:
-        # Fallback: assume at least 1 CPU socket
-        return [0]
-
-
-def validate_device_availability(
-    parsed_targets: list[str],
-    gpu_ids: list[int] | None,
-    cpu_ids: list[int] | None,
-    explicit_gpu_request: bool = False,
-) -> list[str]:
-    """Validate that requested devices are available.
-
-    Unavailable targets are removed with warnings.
-
-    Args:
-        parsed_targets: List of target strings
-        gpu_ids: List of requested GPU IDs or None
-        cpu_ids: List of requested CPU IDs or None
-        explicit_gpu_request: True if user explicitly specified --target gpu
-            (not via 'all')
-
-    Returns
-    -------
-        List of valid targets (unavailable targets removed)
-
-    Raises
-    ------
-        SystemExit: If specific device IDs not found or no valid targets remain
-    """
-    valid_targets = parsed_targets.copy()
-
-    # Validate GPU IDs if GPU is a target
-    if "gpu" in parsed_targets:
-        available_gpus = get_available_gpus()
-
-        if not available_gpus:
-            # No GPUs available - error if explicitly requested, warn otherwise
-            if explicit_gpu_request:
-                raise click.ClickException(
-                    "No GPUs detected but --target gpu was specified. "
-                    "Run 'warpt list' to see available hardware."
-                )
+        if category == "all":
+            tests = registry.get_all_tests()
+            click.echo("\nStress Tests (ALL)\n")
+        else:
+            cat_enum = _resolve_category_enum(category)
+            if cat_enum is None:
+                tests = []
             else:
-                print("⚠️  Warning: No GPUs detected. Skipping GPU tests.")
-                print("    Run 'warpt list' to see available hardware.")
-                valid_targets.remove("gpu")
-        elif gpu_ids:
-            # User specified GPU IDs - validate they exist
-            for gpu_id in gpu_ids:
-                if gpu_id not in available_gpus:
-                    print(
-                        f"Error: GPU ID {gpu_id} not found. Available GPUs: "
-                        f"{', '.join(map(str, available_gpus))}"
+                tests = registry.get_tests_by_category(cat_enum)
+            click.echo(f"\nStress Tests ({category.upper()})\n")
+    else:
+        tests = registry.get_all_tests()
+        click.echo("\nStress Tests\n")
+
+    if not tests:
+        click.echo("  No tests registered.")
+        return
+
+    # Group tests by category
+    from collections import defaultdict
+
+    tests_by_cat: dict[str, list[Any]] = defaultdict(list)
+    for test_cls in tests:
+        try:
+            try:
+                instance = test_cls()
+            except TypeError:
+                instance = test_cls(**{"device_id": 0})
+
+            cat = instance.get_category().value
+            tests_by_cat[cat].append((test_cls, instance))
+        except Exception as e:
+            click.echo(f"Error instantiating {test_cls.__name__}: {e}")
+
+    # Get all categories in defined order
+    all_categories = [cat.value for cat in TestCategory]
+
+    click.echo("-" * 60)
+
+    # Display tests grouped by category
+    for cat_value in all_categories:
+        if cat_value not in tests_by_cat:
+            click.echo(f"\n[{cat_value.upper()}]")
+            click.echo("  No tests registered")
+            continue
+
+        click.echo(f"\n[{cat_value.upper()}]")
+
+        # Sort tests within category by name
+        sorted_tests = sorted(tests_by_cat[cat_value], key=lambda x: x[0].__name__)
+
+        for test_cls, instance in sorted_tests:
+            try:
+                available = instance.is_available()
+                status = "Available" if available else "Not Available"
+
+                click.echo(f"  {test_cls.__name__:<35} {status}")
+                if verbose:
+                    click.echo(f"      {instance.get_pretty_name()}")
+                    # Wrap description at 70 chars
+                    import textwrap
+
+                    wrapped = textwrap.fill(
+                        instance.get_description(),
+                        width=70,
+                        initial_indent="      ",
+                        subsequent_indent="      ",
                     )
-                    print("Run 'warpt list' for detailed GPU information.")
-                    sys.exit(1)
+                    click.echo(wrapped)
+                    click.echo()
 
-    # Validate CPU IDs if CPU is a target
-    if "cpu" in parsed_targets:
-        available_cpus = get_available_cpus()
+            except Exception as e:
+                click.echo(f"  {test_cls.__name__:<35} Error: {e}")
 
-        if cpu_ids:
-            for cpu_id in cpu_ids:
-                if cpu_id not in available_cpus:
-                    print(
-                        f"Error: CPU ID {cpu_id} not found. Available CPUs: "
-                        f"{', '.join(map(str, available_cpus))}"
-                    )
-                    print("Run 'warpt list' for detailed CPU information.")
-                    sys.exit(1)
+    click.echo("\n" + "-" * 60)
+    click.echo(f"\nTotal: {len(tests)} tests registered")
+    if not verbose:
+        click.echo("Use --verbose for detailed info")
 
-    # Check if any valid targets remain
-    if not valid_targets:
-        print("Error: No valid targets available to test.")
-        print("Run 'warpt list' to see available hardware.")
-        sys.exit(1)
 
-    return valid_targets
+def _parse_test_spec_config(
+    test_spec: dict[str, Any],
+    skip_key: str,
+) -> dict[str, Any]:
+    """Parse a test spec dict into config, mapping warmup -> burnin_seconds."""
+    test_config: dict[str, Any] = {}
+    for key, value in test_spec.items():
+        if key == skip_key:
+            continue
+        elif key == "warmup":
+            test_config["burnin_seconds"] = value
+        else:
+            test_config[key] = value
+    return test_config
 
 
 def run_stress(
-    targets: tuple,
-    gpu_id: str | None,
-    cpu_id: str | None,
-    duration_seconds: int | None,
-    burnin_seconds: int,
-    export_format: str | None,
-    export_filename: str | None,
-    log_file: str | None,
-    monitor: bool,
-    monitor_interval: float,
-    monitor_output: str | None,
+    categories: tuple[str, ...],
+    tests: tuple[str, ...],
+    duration: int,
+    warmup: int,
+    device_id: str | None,
+    outputs: tuple[str, ...],
+    fmt: str | None,
+    config: str | None,
+    list_only: bool,
+    verbose: bool,
 ) -> None:
-    """Run stress tests based on user specifications.
+    """Run stress tests based on CLI arguments."""
+    registry = TestRegistry()
 
-    Args:
-        targets: Tuple of target specifications from CLI
-        gpu_id: Comma-separated GPU IDs or None
-        cpu_id: Comma-separated CPU IDs or None
-        duration_seconds: Test duration in seconds or None (use defaults)
-        burnin_seconds: Warmup period in seconds
-        export_format: Export format ('json' or None)
-        export_filename: Custom export filename or None
-        log_file: Log file path or None
-        monitor: Whether to enable the background monitor while tests run.
-        monitor_interval: Sampling interval in seconds for the monitor.
-        monitor_output: Optional path to write monitor samples as JSON.
-    """
-    # Parse and validate targets
-    try:
-        parsed_targets = parse_targets(targets)
-    except ValueError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+    # Handle --list
+    if list_only:
+        cat = categories[0] if categories else None
+        list_tests(registry, cat, verbose)
+        return
 
-    # Parse device IDs early to infer targets if needed
-    gpu_ids = parse_device_ids(gpu_id)
-    cpu_ids = parse_device_ids(cpu_id)
+    # Load config file if provided
+    config_data: dict[str, Any] = {}
+    if config:
+        config_data = load_config(config)
 
-    # Infer targets from device IDs if no targets specified
-    if not parsed_targets:
-        if gpu_ids and cpu_ids:
-            parsed_targets = ["cpu", "gpu"]
-        elif gpu_ids:
-            parsed_targets = ["gpu"]
-        elif cpu_ids:
-            parsed_targets = ["cpu"]
-        else:
-            parsed_targets = ["all"]
+    # Get defaults from config
+    defaults = config_data.get("defaults", {})
+    cfg_duration = defaults.get("duration", duration)
+    cfg_warmup = defaults.get("warmup", warmup)
 
-    # Track if user explicitly requested GPU (vs. GPU being part of "all")
-    explicit_gpu_request = "gpu" in parsed_targets and "all" not in parsed_targets
+    # Collect tests to run
+    tests_to_run: list[type] = []
+    configs: dict[str, dict[str, Any]] = {}
 
-    # Expand 'all' target to individual targets
-    if "all" in parsed_targets:
-        parsed_targets = ["cpu", "gpu", "ram"]
+    # Parse device IDs from CLI
+    device_ids: list[int] | None = None
+    if device_id:
+        try:
+            device_ids = [int(x.strip()) for x in device_id.split(",") if x.strip()]
+        except ValueError:
+            click.echo(f"Error: Invalid device ID '{device_id}'. Must be integers.")
+            sys.exit(1)
 
-    # Validate device IDs match specified targets
-    if cpu_ids and "cpu" not in parsed_targets:
-        print("Error: --cpu-id can only be used with --target cpu")
-        print(
-            f"You specified --target {','.join(parsed_targets)} but provided --cpu-id"
-        )
-        sys.exit(1)
+    # If config file has tests section, use that
+    if config_data.get("tests"):
+        for test_spec in config_data["tests"]:
+            if not isinstance(test_spec, dict):
+                continue
 
-    if gpu_ids and "gpu" not in parsed_targets:
-        print("Error: --gpu-id can only be used with --target gpu")
-        print(
-            f"You specified --target {','.join(parsed_targets)} but provided --gpu-id"
-        )
-        sys.exit(1)
-
-    # Determine test duration - user-specified always takes priority
-    test_duration = (
-        duration_seconds if duration_seconds is not None else DEFAULT_STRESS_SECONDS
-    )
-
-    # Validate device availability (returns filtered list of valid targets)
-    parsed_targets = validate_device_availability(
-        parsed_targets, gpu_ids, cpu_ids, explicit_gpu_request
-    )
-
-    # Handle defaulting to all devices when target specified but no device IDs
-    default_to_all_gpus = False
-    default_to_all_cpus = False
-
-    if "gpu" in parsed_targets and not gpu_ids:
-        default_to_all_gpus = True
-        gpu_ids = get_available_gpus()
-
-    if "cpu" in parsed_targets and not cpu_ids:
-        default_to_all_cpus = True
-        cpu_ids = get_available_cpus()
-
-    # Display configuration
-    print("Stress Test Configuration:")
-    print(f"  Targets:        {', '.join(parsed_targets)}")
-    print(f"  Duration:       {test_duration}s per test")
-    print(f"  Burnin:         {burnin_seconds}s")
-
-    if "gpu" in parsed_targets:
-        if default_to_all_gpus:
-            print(
-                f"  GPU IDs:        all (defaulting to all available GPUs: "
-                f"{', '.join(map(str, gpu_ids or []))})"
-            )
-            print(
-                "                  Use 'warpt list' to view device IDs and "
-                "--gpu-id to specify"
-            )
-        else:
-            print(f"  GPU IDs:        {', '.join(map(str, gpu_ids or []))}")
-
-    if "cpu" in parsed_targets:
-        if default_to_all_cpus:
-            print("  CPU IDs:        all (defaulting to all available CPUs)")
-            print(
-                "                  Use 'warpt list' to view device IDs and "
-                "--cpu-id to specify"
-            )
-        else:
-            print(f"  CPU IDs:        {', '.join(map(str, cpu_ids or []))}")
-
-    if log_file:
-        print(f"  Log file:       {log_file}")
-    if export_format:
-        if export_filename:
-            print(f"  Export to:      {export_filename}")
-        else:
-            print("  Export to:      warpt_stress_<timestamp>.json")
-
-    monitor_daemon, monitor_history = _start_background_monitor(
-        monitor, monitor_interval
-    )
-
-    try:
-        print("\n" + "=" * 60)
-        print("Running Stress Tests...")
-        print("=" * 60 + "\n")
-
-        # TODO: Add timestamp tracking for JSON export: start and end times from
-        # base class helper functions
-
-        # Run stress tests
-        for target in parsed_targets:
-            if target == "cpu":
-                print("=== CPU Compute Stress Test ===\n")
+            # Test by name
+            if "name" in test_spec:
+                test_name = test_spec["name"]
                 try:
-                    from warpt.stress.cpu_compute import CPUMatMulTest
-                except ImportError:
-                    print(
-                        "Error: numpy is required for CPU stress tests.\n"
-                        "Install with: pip install warpt[stress]"
-                    )
-                    sys.exit(1)
+                    test_cls = registry.get_test(test_name)
+                    tests_to_run.append(test_cls)
 
-                test = CPUMatMulTest(burnin_seconds=burnin_seconds)
-                results = test.run(duration=test_duration)
+                    test_config = _parse_test_spec_config(test_spec, "name")
+                    if "duration" not in test_config:
+                        test_config["duration"] = cfg_duration
+                    if "burnin_seconds" not in test_config:
+                        test_config["burnin_seconds"] = cfg_warmup
 
-                # Display results
-                print("\nResults:")
-                print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-                print(f"  Duration:           {results['duration']:.2f}s")
-                print(f"  Iterations:         {results['iterations']}")
-                print(
-                    f"  Matrix Size:        "
-                    f"{results['matrix_size']}x{results['matrix_size']}"
-                )
-                print(f"  Total Operations:   {results['total_operations']:,}")
-                print(
-                    f"  CPU Cores:          {results['cpu_physical_cores']} "
-                    f"physical, {results['cpu_logical_cores']} logical"
-                )
-                print()
+                    configs[test_name] = test_config
 
-            elif target == "gpu":
-                from warpt.backends.factory import get_gpu_backend
-                from warpt.backends.nvidia import NvidiaBackend
+                except Exception:
+                    click.echo(f"Warning: Test '{test_name}' not found, skipping.")
 
-                try:
-                    from warpt.stress.gpu_compute import GPUMatMulTest
-                except ImportError:
-                    print(
-                        "Error: torch is required for GPU stress tests.\n"
-                        "Install with: pip install warpt[stress]"
-                    )
-                    sys.exit(1)
-
-                if not gpu_ids:
-                    print("No GPUs available for testing.")
+            # Test by category
+            elif "category" in test_spec:
+                cat_name = test_spec["category"]
+                if cat_name not in CATEGORY_MAP:
+                    click.echo(f"Warning: Unknown category '{cat_name}', skipping.")
                     continue
 
-                # TODO MVP limitation: Only NVIDIA GPUs supported for stress tests
-                try:
-                    backend = get_gpu_backend()
-                    if not isinstance(backend, NvidiaBackend):
-                        raise click.ClickException(
-                            f"GPU stress tests currently only support NVIDIA GPUs.\n"
-                            f"Detected: {backend.__class__.__name__}\n"
-                            f"AMD and Intel GPU stress test support coming soon."
-                        )
-                except RuntimeError as e:
-                    raise click.ClickException(str(e)) from e
+                if cat_name == "all":
+                    cat_tests = registry.get_available_tests()
+                else:
+                    cat_enum = _resolve_category_enum(cat_name)
+                    if cat_enum is None:
+                        continue
+                    cat_tests = registry.get_tests_by_category(cat_enum)
+                for test_cls in cat_tests:
+                    tests_to_run.append(test_cls)
 
-                # Test each GPU individually
-                for gpu_index in gpu_ids:
-                    print(f"=== GPU {gpu_index} Compute Stress Test ===\n")
+                    test_config = _parse_test_spec_config(test_spec, "category")
+                    if "duration" not in test_config:
+                        test_config["duration"] = cfg_duration
+                    if "burnin_seconds" not in test_config:
+                        test_config["burnin_seconds"] = cfg_warmup
 
-                    gpu_test = GPUMatMulTest(
-                        device_id=gpu_index, burnin_seconds=burnin_seconds
-                    )
-                    results = gpu_test.run(duration=test_duration)
+                    configs[test_cls.__name__] = test_config
 
-                    # Display results
-                    print(
-                        f"\nResults for GPU {gpu_index} "
-                        f"({results.get('gpu_name', 'Unknown')}):"
-                    )
-                    print(f"  Performance:        {results['tflops']:.2f} TFLOPS")
-                    print(f"  Duration:           {results['duration']:.2f}s")
-                    print(f"  Iterations:         {results['iterations']}")
-                    print(
-                        "  Matrix Size:        "
-                        f"{results['matrix_size']}x{results['matrix_size']}"
-                    )
-                    print(f"  Total Operations:   {results['total_operations']:,}")
-                    print(f"  Precision:          {results['precision'].upper()}")
-                    print(
-                        "  Memory Used:        "
-                        f"{results['memory_used_gb']:.2f} GB / "
-                        f"{results['memory_total_gb']:.2f} GB"
-                    )
-                    print()
+    # CLI arguments (used if no config tests)
+    elif tests:
+        for test_name in tests:
+            try:
+                test_cls = registry.get_test(test_name)
+                tests_to_run.append(test_cls)
+            except Exception:
+                click.echo(f"Error: Test '{test_name}' not found.")
+                click.echo("Use 'warpt stress --list' to see available tests.")
+                sys.exit(1)
 
-            elif target == "ram":
-                print("[TODO] RAM stress tests not yet implemented\n")
+    elif categories:
+        for cat in categories:
+            if cat not in CATEGORY_MAP:
+                valid = ", ".join(sorted(CATEGORY_MAP.keys()))
+                click.echo(f"Error: Unknown category '{cat}'. Valid: {valid}")
+                sys.exit(1)
 
-        print("✓ Stress tests completed")
-    finally:
-        _shutdown_background_monitor(monitor_daemon, monitor_history, monitor_output)
+            if cat == "all":
+                # Special case: get all available tests
+                tests_to_run.extend(registry.get_available_tests())
+            else:
+                cat_enum = _resolve_category_enum(cat)
+                if cat_enum:
+                    cat_tests = registry.get_tests_by_category(cat_enum)
+                    tests_to_run.extend(cat_tests)
 
-
-def _start_background_monitor(
-    enabled: bool, interval_seconds: float
-) -> tuple[SystemMonitorDaemon | None, list[ResourceSnapshot]]:
-    """Start the monitor daemon when requested."""
-    if not enabled:
-        return None, []
-    if interval_seconds <= 0:
-        raise ValueError("monitor-interval must be greater than zero")
-
-    history: list[ResourceSnapshot] = []
-    daemon = SystemMonitorDaemon(
-        interval_seconds=interval_seconds,
-        snapshot_listener=history.append,
-    )
-    daemon.start()
-    print(f"Background monitoring started (interval {interval_seconds:.2f}s)")
-    return daemon, history
-
-
-def _shutdown_background_monitor(
-    daemon: SystemMonitorDaemon | None,
-    history: list[ResourceSnapshot],
-    output_path: str | None,
-) -> None:
-    """Stop the monitor daemon and optionally persist collected snapshots."""
-    if not daemon:
-        return
-
-    daemon.stop()
-
-    if not history:
-        print("Background monitor did not collect samples.")
-        return
-
-    if output_path:
-        Path(output_path).write_text(
-            json.dumps([snapshot.to_dict() for snapshot in history], indent=2)
-        )
-        print(f"Background monitor history saved to {output_path}")
+    # Default: show helpful message instead of discovering all tests
     else:
-        print(
-            "Background monitor collected "
-            f"{len(history)} samples (use --monitor-output to persist)"
-        )
+        click.echo("No tests or categories specified.")
+        click.echo("\nQuick start:")
+        click.echo("  warpt stress --list           # List available tests")
+        click.echo("  warpt stress -c cpu           # Run CPU tests")
+        click.echo("  warpt stress -c accelerator   # Run accelerator tests")
+        click.echo("  warpt stress -c all           # Run all tests")
+        click.echo("  warpt stress -t TestName      # Run specific test")
+        click.echo("\nRun 'warpt stress --help' for more options.")
+        sys.exit(0)
+
+    if not tests_to_run:
+        click.echo("No tests available to run.")
+        click.echo("Use 'warpt stress --list' to see available tests.")
+        sys.exit(1)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_tests = []
+    for t in tests_to_run:
+        if t.__name__ not in seen:
+            seen.add(t.__name__)
+            unique_tests.append(t)
+    tests_to_run = unique_tests
+
+    # Apply CLI device_id to tests without config
+    if device_ids:
+        for test_cls in tests_to_run:
+            name = test_cls.__name__
+            if name not in configs:
+                configs[name] = {}
+            if "device_id" not in configs[name]:
+                configs[name]["device_id"] = device_ids[0]
+
+    # Apply CLI warmup to tests without config
+    for test_cls in tests_to_run:
+        name = test_cls.__name__
+        if name not in configs:
+            configs[name] = {}
+        if "burnin_seconds" not in configs[name]:
+            configs[name]["burnin_seconds"] = cfg_warmup
+
+    # Display what we're running
+    click.echo("\n" + "=" * 60)
+    click.echo("  WARPT STRESS TEST")
+    click.echo("=" * 60)
+    if config:
+        click.echo(f"\nConfig: {config}")
+    click.echo(f"\nTests to run: {len(tests_to_run)}")
+    for t in tests_to_run:
+        test_cfg = configs.get(t.__name__, {})
+        dur = test_cfg.get("duration", cfg_duration)
+        click.echo(f"  • {t.__name__} ({dur}s)")
+    click.echo(f"\nDefault duration: {cfg_duration}s")
+    click.echo(f"Default warmup: {cfg_warmup}s")
+    if device_ids:
+        click.echo(f"Device IDs: {', '.join(map(str, device_ids))}")
+    click.echo("\n" + "-" * 60 + "\n")
+
+    # Run tests
+    runner = TestRunner()
+    for test_cls in tests_to_run:
+        test_config = configs.get(test_cls.__name__, {})
+        runner.add_test(test_cls, test_config)
+
+    results = runner.run(duration=cfg_duration, skip_unavailable=True)
+
+    # Emit results to multiple outputs
+    if outputs:
+        for out_path in outputs:
+            out_format = get_output_format(out_path, None)
+            results.emit(out_path, out_format)
+            click.echo(f"✓ Results saved to: {out_path}")
+
+    # Emit to stdout if no outputs or explicit format requested
+    if not outputs or fmt:
+        out_format = OutputFormat(fmt) if fmt else OutputFormat.TEXT
+        if out_format == OutputFormat.TEXT:
+            results.emit_stdout()
+        else:
+            import sys as _sys
+
+            results.emit(_sys.stdout, out_format)
+
+    # Summary
+    summary = results.to_dict()["summary"]
+    click.echo(f"\n✓ Completed: {summary['passed']}/{summary['total_tests']} passed")
+
+    if results.errors:
+        click.echo("\n⚠️  Errors:")
+        for name, error in results.errors.items():
+            click.echo(f"  • {name}: {error}")
