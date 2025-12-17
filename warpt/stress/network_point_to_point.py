@@ -179,7 +179,14 @@ class NetworkPointToPointTest(StressTest):
         self._results = {}
 
     def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
-        """Run warmup iterations.
+        """Run warmup by sending test messages to prime TCP connection.
+
+        Sends actual network messages during warmup to:
+        - Get past TCP slow start
+        - Prime network buffers and routing
+        - Establish steady-state connection
+
+        Results from warmup are discarded. Only post-warmup measurements count.
 
         Args:
             duration_seconds: Warmup duration in seconds.
@@ -191,9 +198,46 @@ class NetworkPointToPointTest(StressTest):
 
         if duration_seconds > 0:
             self.logger.debug(f"Warming up for {duration_seconds}s...")
-            start = time.time()
-            while (time.time() - start) < duration_seconds:
-                time.sleep(0.01)
+            self._warmup_network(duration_seconds)
+
+    def _warmup_network(self, duration_seconds: int) -> None:
+        """Send warmup messages to each target to prime TCP connection.
+
+        Sends a fixed number of packets (~10-20) to get past TCP slow start
+        and establish steady-state connection. This is more efficient than
+        time-based warmup and achieves the same goal.
+
+        Args:
+            duration_seconds: Ignored. Kept for compatibility with base class.
+        """
+        _ = duration_seconds  # Unused - we send fixed packet count instead
+
+        # Send 4KB warmup messages to each target
+        warmup_payload = b"\x00" * 4096
+        num_warmup_packets = 10  # Enough to get past TCP slow start
+
+        for target_ip in self.target_ips:
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(self.timeout_seconds)
+                sock.connect((target_ip, self.port))
+
+                # Send fixed number of warmup packets
+                for _ in range(num_warmup_packets):
+                    try:
+                        sock.sendall(warmup_payload)
+                        # Try to receive echo (ignore if server doesn't echo)
+                        sock.recv(len(warmup_payload))
+                    except (socket.timeout, OSError):
+                        # Server might not echo during warmup, that's ok
+                        break
+
+                sock.close()
+                self.logger.debug(f"Warmup complete for {target_ip}")
+
+            except (socket.timeout, ConnectionRefusedError, OSError) as e:
+                # If warmup fails, that's ok - real test will handle connection errors
+                self.logger.debug(f"Warmup to {target_ip} failed: {e}")
 
     # -------------------------------------------------------------------------
     # Core Test
@@ -208,6 +252,9 @@ class NetworkPointToPointTest(StressTest):
 
         Returns:
             Dictionary containing results for all targets.
+
+        Raises:
+            RuntimeError: If all targets fail to connect.
         """
         # TODO: Consider Pydantic models for network results
         # (NetworkTestResults in stress_models.py)
@@ -224,6 +271,15 @@ class NetworkPointToPointTest(StressTest):
                 lat_results = self._test_latency(target_ip, iterations)
                 bw_results = self._test_bandwidth(target_ip, duration)
                 results[target_ip] = {**lat_results, **bw_results}
+
+        # Check if all targets failed
+        all_failed = all("error" in results[ip] for ip in results)
+        if all_failed:
+            failed_targets = ", ".join(self.target_ips)
+            raise RuntimeError(
+                f"All network targets failed to connect: {failed_targets}. "
+                f"Is a server running on port {self.port}?"
+            )
 
         return {
             "test_name": self.get_name(),
@@ -293,6 +349,7 @@ class NetworkPointToPointTest(StressTest):
                 "avg_latency_ms": None,
                 "min_latency_ms": None,
                 "max_latency_ms": None,
+                "median_latency_ms": None,
                 "std_dev_ms": None,
                 "error": f"Connection failed - no server at {target_ip}:{self.port}",
             }
@@ -301,11 +358,13 @@ class NetworkPointToPointTest(StressTest):
         avg_latency = statistics.mean(latencies)
         min_latency = min(latencies)
         max_latency = max(latencies)
+        median_latency = statistics.median(latencies)
         std_dev = statistics.stdev(latencies) if len(latencies) > 1 else 0.0
 
         self.logger.info(
             f"Latency to {target_ip}: "
-            f"avg={avg_latency:.2f}ms min={min_latency:.2f}ms max={max_latency:.2f}ms"
+            f"avg={avg_latency:.2f}ms median={median_latency:.2f}ms "
+            f"min={min_latency:.2f}ms max={max_latency:.2f}ms"
         )
 
         return {
@@ -316,6 +375,7 @@ class NetworkPointToPointTest(StressTest):
             "avg_latency_ms": avg_latency,
             "min_latency_ms": min_latency,
             "max_latency_ms": max_latency,
+            "median_latency_ms": median_latency,
             "std_dev_ms": std_dev,
         }
 
