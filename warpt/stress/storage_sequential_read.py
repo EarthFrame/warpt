@@ -193,7 +193,12 @@ class StorageSequentialReadTest(StressTest):
         self._temp_dir = None
 
     def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
-        """Run warmup iterations.
+        """Run warmup by performing small disk writes.
+
+        Writes small amounts of data to prime the disk and OS cache:
+        - Wakes up disk if in power-saving mode (HDDs)
+        - Primes disk controller and OS cache layers
+        - Establishes steady-state before measurement
 
         Args:
             duration_seconds: Warmup duration in seconds.
@@ -205,9 +210,44 @@ class StorageSequentialReadTest(StressTest):
 
         if duration_seconds > 0:
             self.logger.debug(f"Warming up for {duration_seconds}s...")
+            self._warmup_disk(duration_seconds)
+
+    def _warmup_disk(self, duration_seconds: int) -> None:
+        """Perform warmup disk writes.
+
+        Writes small 4KB payloads to a warmup file to prime the disk.
+
+        Args:
+            duration_seconds: Duration to perform warmup writes.
+        """
+        if not self._test_file:
+            # If no test file yet, just sleep
+            time.sleep(duration_seconds)
+            return
+
+        # Create warmup file in same directory as test file
+        test_dir = os.path.dirname(self._test_file)
+        warmup_file = os.path.join(test_dir, "warpt_warmup.dat")
+
+        # Small 4KB payload for warmup writes
+        warmup_payload = b"\x00" * 4096
+
+        try:
             start = time.time()
             while (time.time() - start) < duration_seconds:
-                time.sleep(0.01)
+                # Write small amount to disk
+                with open(warmup_file, "wb") as f:
+                    f.write(warmup_payload)
+                    f.flush()
+                    os.fsync(f.fileno())  # Ensure data reaches disk
+                time.sleep(0.1)  # Small delay between writes
+
+            # Clean up warmup file
+            if os.path.exists(warmup_file):
+                os.remove(warmup_file)
+
+        except Exception as e:
+            self.logger.debug(f"Warmup write failed: {e}")
 
     # -------------------------------------------------------------------------
     # Core Test
@@ -300,6 +340,10 @@ class StorageSequentialReadTest(StressTest):
         else:
             steady_state_bandwidth_mbps = 0
 
+        # Calculate min/max bandwidth across all iterations
+        min_bandwidth_mbps = min(iteration_speeds) if iteration_speeds else 0
+        max_bandwidth_mbps = max(iteration_speeds) if iteration_speeds else 0
+
         self.logger.info(
             f"Read {total_mb:.2f} MB in {elapsed:.2f}s "
             f"({iteration_count} iterations)"
@@ -308,6 +352,10 @@ class StorageSequentialReadTest(StressTest):
         self.logger.info(
             f"Steady-state bandwidth (last {steady_state_count}): "
             f"{steady_state_bandwidth_mbps:.2f} MB/s"
+        )
+        self.logger.info(
+            f"Bandwidth range: min={min_bandwidth_mbps:.2f} MB/s, "
+            f"max={max_bandwidth_mbps:.2f} MB/s"
         )
 
         return {
@@ -319,6 +367,8 @@ class StorageSequentialReadTest(StressTest):
             "total_mb_read": total_mb,
             "iteration_count": iteration_count,
             "overall_bandwidth_mbps": overall_bandwidth_mbps,
+            "min_bandwidth_mbps": min_bandwidth_mbps,
+            "max_bandwidth_mbps": max_bandwidth_mbps,
             "steady_state_bandwidth_mbps": steady_state_bandwidth_mbps,
             "direct_io_enabled": direct_io_enabled,
         }
