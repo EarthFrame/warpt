@@ -191,6 +191,29 @@ def check():
     is_flag=True,
     help="Verbose output",
 )
+@click.option(
+    "--target",
+    default=None,
+    help=(
+        "Target IP(s) for network tests "
+        "(comma-separated, e.g., '192.168.1.11,192.168.1.76')"
+    ),
+)
+@click.option(
+    "--payload",
+    type=int,
+    default=None,
+    help=(
+        "Payload size in bytes for network tests "
+        "(e.g., 4096 for latency, 1048576 for bandwidth)"
+    ),
+)
+@click.option(
+    "--network-mode",
+    type=click.Choice(["latency", "bandwidth", "both"], case_sensitive=False),
+    default=None,
+    help="Network test mode: latency, bandwidth, or both",
+)
 def stress(
     list_only,
     category,
@@ -202,6 +225,9 @@ def stress(
     fmt,
     config,
     verbose,
+    target,
+    payload,
+    network_mode,
 ):
     r"""Run hardware stress tests.
 
@@ -233,6 +259,9 @@ def stress(
         config=config,
         list_only=list_only,
         verbose=verbose,
+        target=target,
+        payload=payload,
+        network_mode=network_mode,
     )
 
 
