@@ -45,6 +45,9 @@ class GPUInfo(BaseModel):
     index: int = Field(..., description="GPU index", ge=0)
     model: str = Field(..., description="GPU model name")
     memory_gb: int = Field(..., description="Total GPU memory in GB", ge=0)
+    uuid: str | None = Field(
+        None, description="Persistent GPU UUID for tracking across systems"
+    )
     compute_capability: str | None = Field(
         None, description="CUDA compute capability (e.g., '8.9')"
     )

@@ -77,6 +77,13 @@ class NvidiaBackend(GPUBackend):
 
         for i in range(device_count):
             device_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+
+            # Get GPU UUID (persistent identifier across reboots)
+            try:
+                gpu_uuid = pynvml.nvmlDeviceGetUUID(device_handle)
+            except pynvml.NVMLError:
+                gpu_uuid = None
+
             device_info.append(
                 GPUInfo(
                     index=i,
@@ -84,6 +91,7 @@ class NvidiaBackend(GPUBackend):
                     memory_gb=self._bytes_to_gb(
                         pynvml.nvmlDeviceGetMemoryInfo(device_handle).total
                     ),
+                    uuid=gpu_uuid,
                     compute_capability=self._get_compute_capability(device_handle),
                     pcie_gen=self._get_pcie_generation(device_handle),
                     driver_version=driver_version,
