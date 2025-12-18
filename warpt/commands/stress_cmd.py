@@ -230,6 +230,7 @@ def run_stress(
     target: str | None,
     payload: int | None,
     network_mode: str | None,
+    read_ratio: float | None,
 ) -> None:
     """Run stress tests based on CLI arguments."""
     registry = TestRegistry()
@@ -418,6 +419,27 @@ def run_stress(
             if network_mode:
                 if "test_mode" in test_params and "test_mode" not in configs[name]:
                     configs[name]["test_mode"] = network_mode.lower()
+
+    # Apply storage-specific CLI parameters to storage tests
+    if read_ratio is not None:
+        # Validate read_ratio
+        if not (0.0 <= read_ratio <= 1.0):
+            click.echo(
+                f"Error: --read-ratio must be between 0.0 and 1.0, got {read_ratio}"
+            )
+            sys.exit(1)
+
+        for test_cls in tests_to_run:
+            name = test_cls.__name__
+            if name not in configs:
+                configs[name] = {}
+
+            # Check if this test supports read_ratio
+            test_params = getattr(test_cls, "_PARAM_FIELDS", ())
+
+            # Apply read_ratio if test supports it
+            if "read_ratio" in test_params and "read_ratio" not in configs[name]:
+                configs[name]["read_ratio"] = read_ratio
 
     # Display what we're running
     click.echo("\n" + "=" * 60)
