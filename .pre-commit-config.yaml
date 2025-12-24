@@ -21,7 +21,7 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
-        additional_dependencies: ['types-psutil', 'pydantic']
+        additional_dependencies: ['types-psutil', 'pydantic', 'types-PyYAML']
         args: [warpt/]
         types: [python]
         pass_filenames: false

@@ -106,6 +106,106 @@ def monitor(interval, duration, no_tui):
         raise click.ClickException(str(exc)) from exc
 
 
+@warpt.command(hidden=not get_env("WARPT_ENABLE_POWER", default=False, as_type=bool))
+@click.option(
+    "--interval",
+    "-i",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds",
+)
+@click.option(
+    "--duration",
+    "-d",
+    type=float,
+    default=None,
+    help="Stop after this many seconds (default: run until interrupted)",
+)
+@click.option(
+    "--no-processes",
+    is_flag=True,
+    default=False,
+    help="Don't show per-process power attribution",
+)
+@click.option(
+    "--top",
+    "-n",
+    type=int,
+    default=10,
+    show_default=True,
+    help="Number of top processes to display",
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    default=False,
+    help="Output in JSON format",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=str,
+    default=None,
+    help="Write results to JSON file",
+)
+@click.option(
+    "--continuous",
+    "-c",
+    is_flag=True,
+    default=False,
+    help="Run continuously (vs single snapshot)",
+)
+@click.option(
+    "--sources",
+    is_flag=True,
+    default=False,
+    help="Show available power sources and exit",
+)
+def power(
+    interval, duration, no_processes, top, output_json, output, continuous, sources
+):
+    r"""Monitor system power consumption.
+
+    Displays power usage in watts for CPU, GPU, and other components.
+    Can attribute power consumption to individual processes.
+
+    \b
+    Examples:
+      warpt power                    # Single snapshot
+      warpt power -c                 # Continuous monitoring
+      warpt power -c -d 60           # Monitor for 60 seconds
+      warpt power --json             # JSON output
+      warpt power -o power.json      # Save to file
+      warpt power --sources          # Show available power sources
+
+    \b
+    Platform support:
+      Linux: Intel/AMD RAPL via /sys/class/powercap/
+      macOS: powermetrics (requires sudo)
+      All: NVIDIA GPUs via NVML
+    """
+    from warpt.commands.power_cmd import run_power, show_power_sources
+
+    if sources:
+        show_power_sources()
+        return
+
+    try:
+        run_power(
+            interval_seconds=interval,
+            duration_seconds=duration,
+            show_processes=not no_processes,
+            top_n_processes=top,
+            output_format="json" if output_json else "text",
+            output_file=output,
+            continuous=continuous,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 @warpt.command()
 def benchmark():
     """Run system benchmarks."""
