@@ -264,6 +264,15 @@ class StorageSequentialWriteTest(StressTest):
                 # Fallback to standard open
                 f = open(self._test_file, "wb")
 
+            # Hint to kernel about sequential access pattern
+            if hasattr(os, "posix_fadvise"):
+                try:
+                    posix_fadvise = getattr(os, "posix_fadvise")  # noqa: B009
+                    fadv_sequential = getattr(os, "POSIX_FADV_SEQUENTIAL")  # noqa: B009
+                    posix_fadvise(f.fileno(), 0, 0, fadv_sequential)
+                except (OSError, AttributeError):
+                    pass  # Advisory hint failed; non-critical, continue without it
+
             try:
                 bytes_written = 0
                 while bytes_written < file_size_bytes:
