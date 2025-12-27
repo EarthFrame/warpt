@@ -1,6 +1,6 @@
-"""CPU compression stress test.
+"""CPU zlib compression stress test.
 
-This test measures single-core CPU performance using data compression,
+This test measures single-core CPU performance using zlib compression,
 which represents real-world workloads like backups, log processing,
 and data transfers.
 """
@@ -15,8 +15,8 @@ from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
 
 
-class CPUCompressionTest(StressTest):
-    """CPU compression stress test.
+class CPUZlibTest(StressTest):
+    """CPU zlib compression stress test.
 
     Measures single-core CPU performance using zlib compression/decompression.
     This represents real-world workloads like:
@@ -27,6 +27,9 @@ class CPUCompressionTest(StressTest):
 
     Unlike multi-threaded NumPy tests, this runs on a single thread and
     provides practical metrics (MB/s) directly applicable to real tasks.
+
+    Note: This tests zlib specifically. Other compression algorithms
+    (lz4, zstd, brotli, etc.) will have separate test classes.
     """
 
     _PARAM_FIELDS = ("data_size_mb", "compression_level", "burnin_seconds")
@@ -58,11 +61,11 @@ class CPUCompressionTest(StressTest):
 
     def get_pretty_name(self) -> str:
         """Return human-readable test name."""
-        return "CPU Compression Test"
+        return "CPU Zlib Compression Test"
 
     def get_description(self) -> str:
         """Return one-line description."""
-        return "Measures single-core CPU performance via data compression (zlib)"
+        return "Measures single-core CPU performance via zlib compression"
 
     def get_category(self) -> TestCategory:
         """Return test category."""
