@@ -214,6 +214,15 @@ def check():
     default=None,
     help="Network test mode: latency, bandwidth, or both",
 )
+@click.option(
+    "--read-ratio",
+    type=float,
+    default=None,
+    help=(
+        "Read ratio for StorageMixedTest (0.0-1.0). "
+        "E.g., 0.7 = 70%% reads, 30%% writes"
+    ),
+)
 def stress(
     list_only,
     category,
@@ -228,6 +237,7 @@ def stress(
     target,
     payload,
     network_mode,
+    read_ratio,
 ):
     r"""Run hardware stress tests.
 
@@ -262,6 +272,7 @@ def stress(
         target=target,
         payload=payload,
         network_mode=network_mode,
+        read_ratio=read_ratio,
     )
 
 
