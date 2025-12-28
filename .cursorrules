@@ -1,0 +1,64 @@
+# Cursor AI Rules for warpt
+
+## Communication Style
+- Keep code and documentation clean, clear, and concise
+- Focus on clarity; if something clever is needed, explain it clearly
+- Summarize work directly in chat, not in separate summary files
+- Don't create post-task summary documents (no `*_SUMMARY.md` files)
+
+## Documentation
+- Only create documentation files (*.md) when explicitly requested
+- Don't proactively create README files unless asked
+- Keep documentation in existing docs/ directory when needed
+- Prefer inline docstrings and comments over separate docs
+
+## Code Style
+- Follow existing project patterns and conventions
+- Use type hints throughout
+- Use `X | None` instead of `Optional[X]` for type annotations
+- Keep lines under 88 characters (black/ruff defaults)
+- No blank lines with whitespace
+- Comprehensive docstrings with Args/Returns sections
+
+## Project Structure
+- Models go in `warpt/models/`
+- Backend implementations go in `warpt/backends/`
+- CLI commands go in `warpt/commands/`
+- Use Pydantic models for structured data
+- Integrate with existing models when possible
+
+## Testing and Examples
+- Examples go in `examples/` directory
+- Write clear, runnable examples
+- Include tests when appropriate
+- Verify linting passes before finishing
+
+## What NOT to Do
+- ❌ Don't create task summary files after completing work
+- ❌ Don't create unsolicited documentation files
+- ❌ Don't use echo or command-line tools for communication
+- ❌ Don't use Optional[] (use `X | None` instead)
+- ❌ Don't create helper scripts unless necessary
+
+## Summary Format
+When summarizing completed work, do it in the chat using this format:
+
+```
+## Completed: [Task Name]
+
+### What Was Created/Modified
+- file1.py - Brief description
+- file2.py - Brief description
+
+### Key Features
+- Feature 1
+- Feature 2
+
+### Usage Example
+[Brief code example]
+
+### Try It
+[Command to run/test]
+```
+
+Keep it concise and conversational, not formal documentation.

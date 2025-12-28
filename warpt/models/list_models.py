@@ -150,6 +150,18 @@ class FrameworkInfo(BaseModel):
     cuda_support: bool = Field(False, description="Whether CUDA support is enabled")
 
 
+class LibraryInfo(BaseModel):
+    """Library information (MKL, cuBLAS, cuDNN, etc.)."""
+
+    installed: bool = Field(..., description="Whether the library is installed")
+    version: str | None = Field(
+        None, description="Library version (None if not detected)"
+    )
+    path: str | None = Field(
+        None, description="Path to library file or root directory (if detected)"
+    )
+
+
 class CompilerInfo(BaseModel):
     """Compiler information."""
 
@@ -169,6 +181,10 @@ class SoftwareInfo(BaseModel):
     frameworks: dict[str, FrameworkInfo] | None = Field(
         None,
         description="ML frameworks (pytorch, tensorflow, jax, etc.)",
+    )
+    libraries: dict[str, LibraryInfo] | None = Field(
+        None,
+        description="Core libraries (mkl, openblas, cublas, cudnn, etc.)",
     )
     compilers: dict[str, CompilerInfo] | None = Field(
         None,

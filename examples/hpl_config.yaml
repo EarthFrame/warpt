@@ -1,0 +1,20 @@
+# Optimized HPL Benchmark Configuration for Apple Silicon
+benchmarks:
+  - name: hpl
+    description: "Tuned HPL Benchmark using Docker"
+    parameters:
+      # Problem size (N): N*N*8 bytes.
+      # 20480 ~ 3.2GB
+      # 30000 ~ 7.2GB
+      # 40960 ~ 13.4GB (Recommended for 16GB+ RAM)
+      problem_size: 40960
+      block_size: 256
+      execution_mode: "docker"
+      docker_image: "warpt-hpl:arm64"
+      # HPL Tuning
+      bcast: 1      # 1rM broadcast often best for small clusters/single nodes
+      pfact: 2      # Right-looking panel factorization
+      depth: 1      # Lookahead depth
+      # Grid (P x Q): Leave unset to auto-tune based on physical cores
+      # p_grid: 2
+      # q_grid: 5

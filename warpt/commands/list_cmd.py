@@ -19,6 +19,7 @@ from warpt.backends.software import (
     DockerDetector,
     NvidiaContainerToolkitDetector,
     detect_all_frameworks,
+    detect_all_libraries,
 )
 from warpt.backends.system import CPU
 from warpt.models.list_models import (
@@ -309,6 +310,39 @@ def run_list(export_format=None, export_filename=None) -> None:
     else:
         print("  No ML frameworks configured")
 
+    # Library Detection
+    print("\nCore Libraries:")
+    detected_libraries = detect_all_libraries()
+    if detected_libraries:
+        # Map internal names to display names
+        lib_display_names = {
+            "mkl": "MKL",
+            "openblas": "OpenBLAS",
+            "cublas": "cuBLAS",
+            "cudnn": "cuDNN",
+            "accelerate": "Accelerate",
+            "nccl": "NCCL",
+            "rccl": "RCCL",
+            "mpi": "MPI",
+            "onednn": "oneDNN",
+            "tbb": "TBB",
+            "cufft": "cuFFT",
+            "cusparse": "cuSPARSE",
+            "cusolver": "cuSOLVER",
+            "magma": "MAGMA",
+            "blis": "BLIS",
+        }
+
+        for name, lib_info in sorted(detected_libraries.items()):
+            display_name = lib_display_names.get(name.lower(), name.capitalize())
+            if lib_info.installed:
+                version_str = f" {lib_info.version}" if lib_info.version else ""
+                print(f"  {display_name}:{version_str} (found at {lib_info.path})")
+            else:
+                print(f"  {display_name}: not installed")
+    else:
+        print("  No core libraries detected")
+
     # RAM Detection
     print("\nMemory Information:")
     ram_backend = RAM()
@@ -363,6 +397,7 @@ def run_list(export_format=None, export_filename=None) -> None:
         python=None,
         cuda=cuda_info,
         frameworks=detected_frameworks or None,
+        libraries=detected_libraries or None,
         compilers=None,
         nvidia_container_toolkit=toolkit_info,
         docker=docker_info,

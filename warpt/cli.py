@@ -72,9 +72,131 @@ def monitor():
 
 
 @warpt.command()
-def benchmark():
-    """Run system benchmarks."""
-    print("Benchmarking!")
+@click.option(
+    "--benchmark",
+    "-b",
+    help="Benchmark name (e.g. hpl)",
+)
+@click.option(
+    "--system",
+    type=click.Path(exists=True),
+    help="System configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--benchmark-config",
+    type=click.Path(exists=True),
+    help="Benchmark configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--cluster",
+    type=click.Path(exists=True),
+    help="Cluster configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--set",
+    "overrides",
+    multiple=True,
+    help="Override configuration value (KEY=VALUE format, repeatable)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Validate and print actions without executing",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug output and stack traces",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Write structured benchmark results to file",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force rebuild even if cached image exists",
+)
+@click.argument(
+    "subcommand",
+    type=click.Choice(["list", "validate", "build", "run"]),
+    required=False,
+)
+def benchmark(
+    subcommand,
+    benchmark,
+    system,
+    benchmark_config,
+    cluster,
+    overrides,
+    dry_run,
+    debug,
+    output,
+    force,
+):
+    r"""Run and manage performance benchmarks.
+
+    \b
+    Examples:
+      warpt benchmark                          # List available benchmarks
+      warpt benchmark list                     # List supported benchmarks
+      warpt benchmark validate                 # Validate configuration files
+      warpt benchmark build -b hpl             # Build benchmark container
+      warpt benchmark run -b hpl               # Run HPL benchmark
+      warpt benchmark run -b hpl --output results.json  # Run with output file
+    """
+    from warpt.benchmarks.registry import BenchmarkRegistry
+    from warpt.commands.benchmark_cmd import (
+        build_benchmark,
+        list_benchmarks,
+        run_benchmark,
+        validate_configs,
+    )
+
+    if debug:
+        Logger.set_level("DEBUG")
+
+    # Create registry for benchmark discovery
+    registry = BenchmarkRegistry()
+
+    # If no subcommand provided, show available benchmarks
+    if subcommand is None:
+        list_benchmarks(registry)
+        return
+
+    # Dispatch to appropriate function based on subcommand
+    if subcommand == "list":
+        list_benchmarks(registry)
+    elif subcommand == "validate":
+        validate_configs(
+            benchmark, system, benchmark_config, cluster, overrides, registry
+        )
+    elif subcommand == "build":
+        build_benchmark(
+            benchmark,
+            system,
+            benchmark_config,
+            cluster,
+            overrides,
+            force,
+            dry_run,
+            debug,
+            registry,
+        )
+    elif subcommand == "run":
+        run_benchmark(
+            benchmark,
+            system,
+            benchmark_config,
+            cluster,
+            overrides,
+            output,
+            dry_run,
+            debug,
+            registry,
+        )
 
 
 @warpt.command()
