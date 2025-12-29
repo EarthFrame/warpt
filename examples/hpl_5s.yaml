@@ -1,0 +1,10 @@
+# 5-second HPL measurement for power efficiency
+benchmarks:
+  - name: hpl
+    description: "Short run to measure power efficiency (Perf-per-Watt)"
+    parameters:
+      # N=5120 targets ~5-8 seconds on M2/M3
+      problem_size: 5120
+      block_size: 128
+      execution_mode: "docker"
+      docker_image: "warpt-hpl:arm64"
