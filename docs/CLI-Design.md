@@ -268,7 +268,7 @@ warpt monitor --live           # Live dashboard
 
 # Options
 warpt monitor --interval 1s    # Update interval
-warpt monitor --dashboard      # TUI dashboard
+warpt monitor --tui            # Curses dashboard (press q to quit)
 warpt monitor --duration 5m    # Monitor for duration
 warpt monitor --alert cpu:80   # Alert when CPU > 80%
 ```

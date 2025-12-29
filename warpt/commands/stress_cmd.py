@@ -227,6 +227,10 @@ def run_stress(
     config: str | None,
     list_only: bool,
     verbose: bool,
+    target: str | None,
+    payload: int | None,
+    network_mode: str | None,
+    read_ratio: float | None,
 ) -> None:
     """Run stress tests based on CLI arguments."""
     registry = TestRegistry()
@@ -378,6 +382,64 @@ def run_stress(
             configs[name] = {}
         if "burnin_seconds" not in configs[name]:
             configs[name]["burnin_seconds"] = cfg_warmup
+
+    # Apply network-specific CLI parameters to network tests
+    if target or payload or network_mode:
+        # Parse target IPs
+        target_ips: list[str] | None = None
+        if target:
+            target_ips = [ip.strip() for ip in target.split(",") if ip.strip()]
+
+        for test_cls in tests_to_run:
+            name = test_cls.__name__
+            if name not in configs:
+                configs[name] = {}
+
+            # Check if this is a network test by examining _PARAM_FIELDS
+            test_params = getattr(test_cls, "_PARAM_FIELDS", ())
+
+            # Apply target IPs
+            if target_ips:
+                if "target_ips" in test_params and "target_ips" not in configs[name]:
+                    # NetworkPointToPointTest uses target_ips (list)
+                    configs[name]["target_ips"] = target_ips
+                elif "target_ip" in test_params and "target_ip" not in configs[name]:
+                    # NetworkLoopbackTest uses target_ip (single string)
+                    configs[name]["target_ip"] = target_ips[0]
+
+            # Apply payload size
+            if payload is not None:
+                if (
+                    "payload_size" in test_params
+                    and "payload_size" not in configs[name]
+                ):
+                    configs[name]["payload_size"] = payload
+
+            # Apply network mode
+            if network_mode:
+                if "test_mode" in test_params and "test_mode" not in configs[name]:
+                    configs[name]["test_mode"] = network_mode.lower()
+
+    # Apply storage-specific CLI parameters to storage tests
+    if read_ratio is not None:
+        # Validate read_ratio
+        if not (0.0 <= read_ratio <= 1.0):
+            click.echo(
+                f"Error: --read-ratio must be between 0.0 and 1.0, got {read_ratio}"
+            )
+            sys.exit(1)
+
+        for test_cls in tests_to_run:
+            name = test_cls.__name__
+            if name not in configs:
+                configs[name] = {}
+
+            # Check if this test supports read_ratio
+            test_params = getattr(test_cls, "_PARAM_FIELDS", ())
+
+            # Apply read_ratio if test supports it
+            if "read_ratio" in test_params and "read_ratio" not in configs[name]:
+                configs[name]["read_ratio"] = read_ratio
 
     # Display what we're running
     click.echo("\n" + "=" * 60)

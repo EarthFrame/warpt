@@ -66,9 +66,44 @@ def version(verbose):
 
 
 @warpt.command()
-def monitor():
+@click.option(
+    "--interval",
+    "-i",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds for live monitoring",
+)
+@click.option(
+    "--duration",
+    "-d",
+    type=float,
+    default=None,
+    help="Stop monitoring after this many seconds (default: run until interrupted)",
+)
+@click.option(
+    "--no-tui",
+    is_flag=True,
+    default=False,
+    help="Run the CLI monitor output instead of the curses dashboard",
+)
+def monitor(interval, duration, no_tui):
     """Monitor system performance in real-time."""
-    print("Live monitoring!")
+    if not no_tui:
+        try:
+            from warpt.commands.monitor_tui import run_monitor_tui
+
+            run_monitor_tui(interval_seconds=interval)
+        except Exception as exc:
+            raise click.ClickException(f"Monitor TUI failed: {exc}") from exc
+        return
+
+    from warpt.commands.monitor_cmd import run_monitor
+
+    try:
+        run_monitor(interval_seconds=interval, duration_seconds=duration)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @warpt.command()
@@ -286,6 +321,38 @@ def check():
     is_flag=True,
     help="Verbose output",
 )
+@click.option(
+    "--target",
+    default=None,
+    help=(
+        "Target IP(s) for network tests "
+        "(comma-separated, e.g., '192.168.1.11,192.168.1.76')"
+    ),
+)
+@click.option(
+    "--payload",
+    type=int,
+    default=None,
+    help=(
+        "Payload size in bytes for network tests "
+        "(e.g., 4096 for latency, 1048576 for bandwidth)"
+    ),
+)
+@click.option(
+    "--network-mode",
+    type=click.Choice(["latency", "bandwidth", "both"], case_sensitive=False),
+    default=None,
+    help="Network test mode: latency, bandwidth, or both",
+)
+@click.option(
+    "--read-ratio",
+    type=float,
+    default=None,
+    help=(
+        "Read ratio for StorageMixedTest (0.0-1.0). "
+        "E.g., 0.7 = 70%% reads, 30%% writes"
+    ),
+)
 def stress(
     list_only,
     category,
@@ -297,6 +364,10 @@ def stress(
     fmt,
     config,
     verbose,
+    target,
+    payload,
+    network_mode,
+    read_ratio,
 ):
     r"""Run hardware stress tests.
 
@@ -328,6 +399,10 @@ def stress(
         config=config,
         list_only=list_only,
         verbose=verbose,
+        target=target,
+        payload=payload,
+        network_mode=network_mode,
+        read_ratio=read_ratio,
     )
 
 
