@@ -119,6 +119,12 @@ def monitor():
     is_flag=True,
     help="Force rebuild even if cached image exists",
 )
+@click.option(
+    "--no-monitor",
+    is_flag=True,
+    default=False,
+    help="Disable power and resource monitoring during benchmark",
+)
 @click.argument(
     "subcommand",
     type=click.Choice(["list", "validate", "build", "run"]),
@@ -135,6 +141,7 @@ def benchmark(
     debug,
     output,
     force,
+    no_monitor,
 ):
     r"""Run and manage performance benchmarks.
 
@@ -196,6 +203,7 @@ def benchmark(
             dry_run,
             debug,
             registry,
+            no_monitor,
         )
 
 

@@ -29,6 +29,7 @@ class BenchmarkResult:
         metadata: dict[str, Any] | None = None,
         timing: dict[str, float] | None = None,
         validation: dict[str, Any] | None = None,
+        power: dict[str, Any] | None = None,
         raw_data: Any | None = None,
     ):
         """Initialize benchmark result.
@@ -38,12 +39,14 @@ class BenchmarkResult:
             metadata: Benchmark configuration and system info
             timing: Timing breakdown (setup, warmup, execution, etc.)
             validation: Validation results (residuals, accuracy, etc.)
+            power: Power monitoring results (energy, avg power, etc.)
             raw_data: Raw measurement data for detailed analysis
         """
         self.metrics = metrics
         self.metadata = metadata or {}
         self.timing = timing or {}
         self.validation = validation or {}
+        self.power = power or {}
         self.raw_data = raw_data
         self.timestamp = datetime.now(UTC).isoformat()
 
@@ -54,6 +57,7 @@ class BenchmarkResult:
             "metadata": self.metadata,
             "timing": self.timing,
             "validation": self.validation,
+            "power": self.power,
             "timestamp": self.timestamp,
         }
 
@@ -324,6 +328,7 @@ class Benchmark(ABC):
         duration: int | None = None,
         iterations: int | None = None,
         warmup_iterations: int = 3,
+        no_monitor: bool = False,
     ) -> BenchmarkResult | dict[str, Any]:
         """Run the complete benchmark lifecycle and return results.
 
@@ -333,6 +338,7 @@ class Benchmark(ABC):
             duration: Duration in seconds (for TIME_BOUND mode).
             iterations: Number of iterations (for ITERATION_BOUND mode).
             warmup_iterations: Number of warmup iterations.
+            no_monitor: If True, disable power and resource monitoring.
 
         Returns:
             BenchmarkResult or dict with benchmark results.
@@ -374,26 +380,65 @@ class Benchmark(ABC):
         self.setup()
         timing["setup"] = time.time() - start_time
 
+        # Initialize power monitor
+        power_monitor = None
+        if not no_monitor:
+            from warpt.backends.power.daemon import PowerMonitorDaemon
+
+            power_monitor = PowerMonitorDaemon()
+            # Perform early permission check
+            if not power_monitor.check_permissions():
+                self.logger.error(
+                    "Power monitoring permissions check failed. "
+                    "Run with sudo or use --no-monitor to skip."
+                )
+                raise RuntimeError("Insufficient permissions for power monitoring")
+
         try:
             self.log_warmup_start()
             start_time = time.time()
             self.warmup(warmup_iterations)
             timing["warmup"] = time.time() - start_time
 
+            # Start power monitoring just before benchmark execution
+            if power_monitor:
+                power_monitor.start()
+
             self.log_benchmark_start()
             start_time = time.time()
             results = self.execute_benchmark(duration, iterations)
             timing["execution"] = time.time() - start_time
+
+            # Stop power monitoring immediately after execution
+            power_results = {}
+            if power_monitor:
+                power_monitor.stop()
+                power_results = power_monitor.get_results()
+
             self.log_benchmark_complete()
 
-            # Add timing info if result is BenchmarkResult
+            # Add timing and power info if result is BenchmarkResult
             if isinstance(results, BenchmarkResult):
                 results.timing.update(timing)
+                results.power = power_results
+
+                # Calculate efficiency if metrics and power are available
+                if (
+                    "gflops" in results.metrics
+                    and power_results.get("avg_power_w", 0) > 0
+                ):
+                    gflops = results.metrics["gflops"]
+                    avg_w = power_results["avg_power_w"]
+                    results.metrics["gflops_per_watt"] = gflops / avg_w
+
                 return results
 
             return results
 
         finally:
+            # Ensure power monitor is stopped even if benchmark fails
+            if power_monitor:
+                power_monitor.stop()
             start_time = time.time()
             self.teardown()
             timing["teardown"] = time.time() - start_time

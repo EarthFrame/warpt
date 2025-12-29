@@ -244,6 +244,7 @@ def run_benchmark(
     dry_run: bool,
     _debug: bool,
     registry: BenchmarkRegistry,
+    no_monitor: bool = False,
 ) -> None:
     """Build (if needed) and execute a benchmark."""
     # Load configuration if provided
@@ -299,14 +300,25 @@ def run_benchmark(
                 sys.exit(1)
 
             # Execute benchmark
-            result = benchmark_instance.run()
+            result = benchmark_instance.run(no_monitor=no_monitor)
 
             # Handle results
             if isinstance(result, BenchmarkResult):
                 res_dict = result.to_dict()
                 click.echo("\nBenchmark Results:")
-                for k, v in res_dict["metrics"].items():
-                    click.echo(f"  {k}: {v}")
+                for k, val in res_dict["metrics"].items():
+                    if isinstance(val, int | float):
+                        click.echo(f"  {k}: {float(val):.3f}")
+                    else:
+                        click.echo(f"  {k}: {val}")
+
+                # Display power summary if available
+                p_res = res_dict.get("power", {})
+                if p_res and p_res.get("avg_power_w", 0) > 0:
+                    click.echo("\nPower & Energy Summary:")
+                    click.echo(f"  Avg Power: {p_res['avg_power_w']:.2f} W")
+                    click.echo(f"  Total Energy: {p_res['total_energy_j']:.2f} J")
+                    click.echo(f"  Duration: {p_res['duration_s']:.2f} s")
 
                 if output:
                     with open(output, "w") as f:
