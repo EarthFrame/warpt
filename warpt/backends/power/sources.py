@@ -10,12 +10,23 @@ from warpt.backends.power.base import PowerSource
 
 
 class AppleSiliconPowerSource(PowerSource):
-    """Power source for Apple Silicon using powermetrics."""
+    """Power source for Apple Silicon using powermetrics.
+
+    Uses the macOS 'powermetrics' tool to measure combined CPU+GPU+ANE power.
+    Requires sudo access. Works on Apple Silicon (M1/M2/M3) and Intel Macs.
+
+    Patterns matched (in priority order):
+    1. "Combined Power (CPU + GPU + ANE): XXX mW" (M-series Macs)
+    2. "CPU Power: XXX mW" (fallback for older/Intel Macs)
+    """
 
     def __init__(self) -> None:
         """Initialize Apple Silicon power source."""
         self._name = "apple_silicon"
+        # Pattern for M-series Macs with separate GPU/ANE
         self._pattern = re.compile(r"Combined Power \(CPU \+ GPU \+ ANE\): (\d+) mW")
+        # Fallback pattern for older/Intel Macs
+        self._cpu_pattern = re.compile(r"CPU Power: (\d+) mW")
 
     @property
     def name(self) -> str:
@@ -25,7 +36,13 @@ class AppleSiliconPowerSource(PowerSource):
     def get_power_w(self) -> float | None:
         """Get current power in Watts using powermetrics.
 
-        Note: Requires sudo or appropriate permissions.
+        Note:
+            Requires sudo access. Prompts for password if not cached in sudo.
+            Uses a 100ms sample window for consistent measurement.
+
+        Returns
+        -------
+            Power in Watts, or None if unavailable/failed
         """
         if platform.system() != "Darwin":
             return None
@@ -53,15 +70,14 @@ class AppleSiliconPowerSource(PowerSource):
             if result.returncode != 0:
                 return None
 
-            # Look for "Combined Power (CPU + GPU + ANE): XXX mW"
+            # Try primary pattern first (M-series Macs)
             match = self._pattern.search(result.stdout)
             if match:
                 mw = float(match.group(1))
                 return mw / 1000.0
 
-            # Fallback for older macOS/non-M-series or different powermetrics versions
-            # Look for "CPU Power: XXX mW"
-            cpu_match = re.search(r"CPU Power: (\d+) mW", result.stdout)
+            # Fallback for older macOS versions or Intel Macs
+            cpu_match = self._cpu_pattern.search(result.stdout)
             if cpu_match:
                 return float(cpu_match.group(1)) / 1000.0
 
@@ -71,16 +87,22 @@ class AppleSiliconPowerSource(PowerSource):
         return None
 
     def check_permissions(self) -> bool:
-        """Check if we can run powermetrics with sudo."""
+        """Check if we can run powermetrics with sudo.
+
+        First tries non-interactive check with `sudo -n`. If that fails,
+        prompts user for sudo password (cached for future use).
+
+        Returns
+        -------
+            True if powermetrics can be executed, False otherwise
+        """
         if platform.system() != "Darwin":
             return False
 
         try:
-            # Try a simple sudo command that doesn't do much but verify access
-            # We use -v to validate credentials, but it might prompt for password
-            # if they aren't cached.
-            # Using 'sudo -n' (non-interactive) to check if we HAVE permission
-            # without prompting.
+            # Try non-interactive check first
+            # Uses 'sudo -n' (non-interactive) to check if we HAVE permission
+            # without prompting
             result = subprocess.run(
                 ["sudo", "-n", "true"],
                 capture_output=True,
@@ -89,13 +111,11 @@ class AppleSiliconPowerSource(PowerSource):
             if result.returncode == 0:
                 return True
 
-            # If 'sudo -n' failed, it means we might need a password.
-            # We should probably let the user know and let them try a normal sudo.
-            # For the early check, we'll try a very fast powermetrics run
-            # which will prompt the user for a password if needed.
+            # If 'sudo -n' failed, try interactive sudo
+            # This will prompt for password if not cached
             print(
-                "\nPower monitoring on macOS requires sudo permissions "
-                "for 'powermetrics'."
+                "\nPower monitoring on macOS requires sudo access "
+                "for the 'powermetrics' tool.\n"
             )
             result = subprocess.run(
                 ["sudo", "true"],
@@ -140,10 +160,28 @@ class NvidiaPowerSource(PowerSource):
 
 
 class RAPLPowerSource(PowerSource):
-    """Power source for Intel/AMD CPUs using RAPL (Linux only)."""
+    """Power source for Intel/AMD CPUs using RAPL (Linux only).
+
+    RAPL (Running Average Power Limit) provides hardware-based power measurement
+    via the Linux kernel's powercap interface. Works on:
+    - Intel: Sandy Bridge and later
+    - AMD: Ryzen and EPYC with support
+
+    Reads energy counters from /sys/class/powercap/intel-rapl:*/energy_uj
+    and calculates instantaneous power by measuring counter deltas.
+
+    Note on counter behavior:
+    - Counter is 64-bit and wraps (~500 years of continuous operation)
+    - Reads are non-blocking and take microseconds
+    - Requires no special privileges if readable (often via user groups)
+    - Energy values are cumulative since system boot or counter reset
+    """
 
     def __init__(self) -> None:
-        """Initialize RAPL power source."""
+        """Initialize RAPL power source.
+
+        Discovers all RAPL energy files available on the system.
+        """
         self._name = "rapl"
         self._last_energy: int | None = None
         self._last_time: float | None = None
@@ -157,7 +195,21 @@ class RAPLPowerSource(PowerSource):
         return self._name
 
     def get_power_w(self) -> float | None:
-        """Calculate power in Watts from RAPL energy counters."""
+        """Calculate power in Watts from RAPL energy counters.
+
+        Uses delta-encoding: power = (energy_now - energy_last) / time_elapsed
+
+        Returns
+        -------
+            Instantaneous power in Watts, or None if:
+            - No RAPL files available
+            - First sample (need baseline)
+            - Read error occurs
+
+        Note:
+            Counter wrapping is handled by checking for large negative deltas
+            and treating them as 0 (wrap is extremely rare in practice).
+        """
         if not self._energy_files:
             return None
 
@@ -172,6 +224,7 @@ class RAPLPowerSource(PowerSource):
                 delta_t = current_time - self._last_time
 
                 # Handle counter rollover (energy_uj is typically 64-bit)
+                # Negative delta indicates wrap occurred; treat as no power
                 if delta_e < 0:
                     delta_e = 0
 
@@ -181,6 +234,7 @@ class RAPLPowerSource(PowerSource):
                     self._last_time = current_time
                     return power_w
 
+            # First sample: initialize baseline
             self._last_energy = total_uj
             self._last_time = current_time
         except (OSError, ValueError):
@@ -189,7 +243,16 @@ class RAPLPowerSource(PowerSource):
         return None
 
     def check_permissions(self) -> bool:
-        """Check if RAPL energy files are readable."""
+        """Check if RAPL energy files are readable.
+
+        Returns
+        -------
+            True if RAPL files exist and are readable, False otherwise
+
+        Note:
+            On most systems, RAPL files require membership in the 'root'
+            or special group, or can be read as regular user on recent kernels.
+        """
         if not self._energy_files:
             return False
 

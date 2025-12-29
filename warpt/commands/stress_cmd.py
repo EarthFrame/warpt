@@ -76,7 +76,7 @@ def load_config(config_path: str) -> dict[str, Any]:
         raise click.ClickException(f"Config file not found: {config_path}")
 
     try:
-        import yaml  # type: ignore[import-untyped]
+        import yaml  # type: ignore[import-untyped, unused-ignore]
     except ImportError:
         raise click.ClickException(
             "YAML config requires pyyaml. Install with: pip install pyyaml"

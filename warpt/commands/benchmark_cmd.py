@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import click
-import yaml  # type: ignore[import-untyped]
+import yaml  # type: ignore[import-untyped, unused-ignore]
 
 from warpt.benchmarks.base import BenchmarkResult
 from warpt.benchmarks.registry import BenchmarkRegistry

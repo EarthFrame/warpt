@@ -34,26 +34,45 @@ class PowerMonitorDaemon:
         self._discover_sources()
 
     def _discover_sources(self) -> None:
-        """Discover available local power sources."""
+        """Discover available local power sources.
+
+        Attempts to discover power sources for the current platform.
+        On macOS: Apple Silicon power metrics
+        On Linux: Intel/AMD RAPL counters
+        On any platform: NVIDIA GPU power via NVML
+        """
         src: PowerSource
 
-        # Apple Silicon
+        # Apple Silicon (macOS)
         if platform.system() == "Darwin":
             from warpt.backends.power.sources import AppleSiliconPowerSource
 
             src = AppleSiliconPowerSource()
-            self._sources.append(src)
+            if src.check_permissions():
+                self._sources.append(src)
+                self._logger.info(f"Discovered power source: {src.name}")
+            else:
+                self._logger.debug(
+                    "Apple Silicon power source unavailable "
+                    "(requires sudo or permissions)"
+                )
 
-        # Intel/AMD RAPL (Linux)
+        # Intel/AMD RAPL (Linux only)
         if platform.system() == "Linux":
             from warpt.backends.power.sources import RAPLPowerSource
 
             rapl_src = RAPLPowerSource()
             # Verify we can actually read the counters (requires kernel support)
-            if rapl_src._energy_files:
+            if rapl_src._energy_files and rapl_src.check_permissions():
                 self._sources.append(rapl_src)
+                self._logger.info(f"Discovered power source: {rapl_src.name}")
+            else:
+                self._logger.debug(
+                    "RAPL power source unavailable "
+                    "(requires kernel support or permissions)"
+                )
 
-        # NVIDIA GPUs
+        # NVIDIA GPUs (cross-platform)
         try:
             from warpt.backends.nvidia import NvidiaBackend
 
@@ -63,12 +82,20 @@ class PowerMonitorDaemon:
 
                 for i in range(nv.get_device_count()):
                     src = NvidiaPowerSource(i)
-                    self._sources.append(src)
-        except Exception:
-            pass
+                    if src.check_permissions():
+                        self._sources.append(src)
+                        self._logger.info(f"Discovered power source: {src.name}")
+        except Exception as e:
+            self._logger.debug(f"NVIDIA power source unavailable: {e}")
 
+        # Initialize sample storage for all discovered sources
         for src in self._sources:
             self._samples[src.name] = []
+
+        if not self._sources:
+            self._logger.warning(
+                "No power sources discovered. " "Power monitoring will be unavailable."
+            )
 
     def start(self) -> None:
         """Start the monitoring thread."""
