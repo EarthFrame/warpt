@@ -58,7 +58,13 @@ class NetworkBidirectionalTest(StressTest):
         Args:
             target_ip: Target IP address to test.
             test_mode: Test mode - "sequential" or "simultaneous".
-            duration: Test duration in seconds.
+                - "sequential": Runs upload first, then download (one at a time).
+                  Total test time = 2x duration. Tests half-duplex performance.
+                - "simultaneous": Runs upload and download concurrently in
+                  separate threads. Total test time = duration. Tests full-duplex
+                  performance and how the link handles contention.
+            duration: Test duration in seconds (per direction for sequential,
+                total for simultaneous).
             chunk_size: Data chunk size in bytes.
             port: Port number for connection.
             burnin_seconds: Warmup duration before measurement.
@@ -104,7 +110,15 @@ class NetworkBidirectionalTest(StressTest):
     # -------------------------------------------------------------------------
 
     def set_parameters(self, params: dict[Any, Any]) -> None:
-        """Override to handle non-integer parameters."""
+        """Override to handle non-integer parameters.
+
+        The base class converts all values to int, but this test has:
+        - target_ip: str
+        - test_mode: str
+        - timeout_seconds: float
+
+        Without this override, int("192.168.1.1") would raise ValueError.
+        """
         for field in self._PARAM_FIELDS:
             if field in params:
                 setattr(self, field, params[field])
@@ -130,6 +144,14 @@ class NetworkBidirectionalTest(StressTest):
         resolved_ip = Network.resolve_hostname(self.target_ip)
         if resolved_ip is None:
             raise ValueError(f"Cannot resolve target IP: {self.target_ip}")
+
+        # Reject localhost - no utility in network test to self
+        localhost_addresses = {"127.0.0.1", "::1", "localhost"}
+        if resolved_ip in localhost_addresses or resolved_ip.startswith("127."):
+            raise ValueError(
+                f"Cannot test to localhost ({self.target_ip}). "
+                "Bidirectional test requires a remote target."
+            )
         self.target_ip = resolved_ip
 
         # Validate duration
@@ -169,8 +191,8 @@ class NetworkBidirectionalTest(StressTest):
 
     def teardown(self) -> None:
         """Clean up test resources."""
-        self._upload_results = {}
-        self._download_results = {}
+        del self._upload_results
+        del self._download_results
 
     def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
         """Run warmup to prime TCP connection.
