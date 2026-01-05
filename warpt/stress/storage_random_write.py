@@ -174,7 +174,7 @@ class StorageRandomWriteTest(StressTest):
 
         # Pre-allocate write buffer
         write_block_size = self.block_size_kb * 1024
-        self._write_buffer = b"\xFF" * write_block_size  # Use 0xFF instead of 0x00
+        self._write_buffer = b"\xff" * write_block_size  # Use 0xFF instead of 0x00
 
         self.logger.info(f"Test file created: {self.file_size_mb} MB")
 

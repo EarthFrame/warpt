@@ -1,10 +1,44 @@
-"""Base class for power monitoring backends."""
+"""Base classes for power monitoring sources and backends.
+
+This module provides the abstract interfaces for both individual power sources
+(like a specific GPU or CPU package) and complete power backends (like RAPL
+or NVML).
+"""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
 from warpt.models.power_models import DomainPower, PowerSource
+
+
+class BasePowerSource(ABC):
+    """Abstract base class for a power monitoring source."""
+
+    @abstractmethod
+    def get_power_w(self) -> float | None:
+        """Get current power consumption in Watts.
+
+        Returns
+        -------
+            Power consumption in Watts, or None if unavailable.
+        """
+        pass
+
+    @abstractmethod
+    def check_permissions(self) -> bool:
+        """Check if we have the necessary permissions to use this power source.
+
+        Returns
+        -------
+            True if permissions are sufficient, False otherwise.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the name of the power source (e.g., 'cpu', 'gpu_0')."""
 
 
 class PowerBackend(ABC):
