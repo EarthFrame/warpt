@@ -45,7 +45,7 @@ class NvidiaBackend(GPUBackend):
             int or None: PCIe generation (3, 4, 5) or None if unavailable
         """
         try:
-            return pynvml.nvmlDeviceGetMaxPcielinkGeneration(device_handle)
+            return pynvml.nvmlDeviceGetMaxPcieLinkGeneration(device_handle)
         except pynvml.NVMLError:
             return None  # TODO - want to look into standardized logging for errors
 
