@@ -1,0 +1,616 @@
+# Writing Stress Tests for warpt
+
+This guide explains how to create, register, and integrate new stress tests into warpt.
+
+______________________________________________________________________
+
+## Overview
+
+The stress test system has four main components:
+
+1. **StressTest** (base class) — Defines the interface all tests must implement
+1. **TestRegistry** — Automatically discovers tests from Python files in `warpt/stress/`
+1. **TestRunner** — Executes tests and collects results
+1. **TestResults** — Stores and emits results to JSON, YAML, or stdout
+
+When you create a new test, you:
+
+1. Create a Python file in `warpt/stress/`
+1. Define a class that inherits from `StressTest`
+1. Implement the required abstract methods
+1. (Optional) Create a Pydantic model for structured output
+
+The registry automatically discovers your test. No manual registration required.
+
+______________________________________________________________________
+
+## Quick Start: Minimal Test
+
+Here's the smallest possible test:
+
+```python
+# warpt/stress/my_test.py
+from warpt.stress.base import StressTest, TestCategory
+
+
+class MySimpleTest(StressTest):
+    """A minimal stress test example."""
+
+    _PARAM_FIELDS = ("burnin_seconds",)
+
+    def __init__(self, burnin_seconds: int = 5):
+        self.burnin_seconds = burnin_seconds
+
+    def get_pretty_name(self) -> str:
+        return "My Simple Test"
+
+    def get_description(self) -> str:
+        return "A minimal example stress test"
+
+    def get_category(self) -> TestCategory:
+        return TestCategory.CPU
+
+    def is_available(self) -> bool:
+        return True  # Always available
+
+    def validate_configuration(self) -> None:
+        if self.burnin_seconds < 0:
+            raise ValueError("burnin_seconds must be >= 0")
+
+    def setup(self) -> None:
+        pass  # Nothing to set up
+
+    def teardown(self) -> None:
+        pass  # Nothing to clean up
+
+    def run(self, duration: int, iterations: int = 1) -> dict:
+        self.validate_configuration()
+        self.setup()
+        try:
+            # Do your test work here
+            return {"test_name": self.get_name(), "duration": duration}
+        finally:
+            self.teardown()
+```
+
+That's it. Save this file, and `warpt stress --list` will show your test.
+
+______________________________________________________________________
+
+## The StressTest Interface
+
+Every test must inherit from `StressTest` and implement these abstract methods:
+
+### Required Methods
+
+| Method | Purpose |
+|--------|---------|
+| `get_pretty_name()` | Human-readable name for display (e.g., "GPU Matrix Multiplication") |
+| `get_description()` | One-line description of what the test measures |
+| `get_category()` | Return a `TestCategory` enum value |
+| `is_available()` | Return `True` if test can run on this system |
+| `validate_configuration()` | Raise `ValueError`/`RuntimeError` if config is invalid |
+| `setup()` | Initialize resources before the test runs |
+| `teardown()` | Clean up resources after the test completes |
+| `run(duration, iterations)` | Execute the test and return results |
+
+### Test Categories
+
+```python
+from warpt.stress.base import TestCategory
+
+TestCategory.CPU          # CPU compute tests
+TestCategory.ACCELERATOR  # GPU/TPU/accelerator tests
+TestCategory.RAM          # Memory bandwidth/stress tests
+TestCategory.STORAGE      # Disk I/O tests
+TestCategory.NETWORK      # Network throughput tests
+```
+
+______________________________________________________________________
+
+## Lifecycle: How a Test Runs
+
+When the runner executes your test, this happens:
+
+```text
+1. is_available()           # Check if test can run
+2. validate_configuration() # Validate config
+3. setup()                  # Allocate resources
+4. warmup()                 # Optional warmup phase
+5. [Your test logic]        # Measure performance
+6. teardown()               # Clean up (always runs via finally)
+7. Return results           # Dict or Pydantic model
+```
+
+The `run()` method should call these in order:
+
+```python
+def run(self, duration: int, iterations: int = 1) -> dict:
+    self.validate_configuration()
+    self.setup()
+    try:
+        self.warmup(duration_seconds=self.burnin_seconds)
+        # ... timed test logic ...
+        return {"tflops": 12.5, "duration": elapsed}
+    finally:
+        self.teardown()  # Always clean up
+```
+
+______________________________________________________________________
+
+## Configuration with \_PARAM_FIELDS
+
+The `_PARAM_FIELDS` tuple tells the base class which attributes are configurable parameters:
+
+```python
+class MyTest(StressTest):
+    _PARAM_FIELDS = ("matrix_size", "burnin_seconds", "device_id")
+
+    def __init__(
+        self,
+        matrix_size: int = 4096,
+        burnin_seconds: int = 5,
+        device_id: int = 0,
+    ):
+        self.matrix_size = matrix_size
+        self.burnin_seconds = burnin_seconds
+        self.device_id = device_id
+```
+
+With `_PARAM_FIELDS` defined, you get these methods for free:
+
+- `get_parameters()` — Returns `{"matrix_size": 4096, "burnin_seconds": 5, "device_id": 0}`
+- `set_parameters(dict)` — Updates attributes from a config dict
+
+The CLI and config file system use these to pass custom values to your test.
+
+______________________________________________________________________
+
+## Checking Hardware Availability
+
+The `is_available()` method must not raise exceptions. Return `False` if unavailable:
+
+```python
+def is_available(self) -> bool:
+    """Check if PyTorch and CUDA are available."""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+```
+
+This method is called when listing tests and before running. Tests that aren't available are skipped (or shown as "Not Available" in `--list`).
+
+______________________________________________________________________
+
+## Returning Results
+
+Your `run()` method can return either:
+
+1. **A plain dict** — Simple and flexible
+1. **A Pydantic model** — Typed, validated, self-documenting
+
+### Option 1: Plain Dict
+
+```python
+def run(self, duration: int, iterations: int = 1) -> dict:
+    # ... test logic ...
+    return {
+        "test_name": self.get_name(),
+        "tflops": 12.5,
+        "duration": elapsed,
+        "iterations": iter_count,
+        "matrix_size": self.matrix_size,
+    }
+```
+
+### Option 2: Pydantic Model (Recommended for Complex Results)
+
+First, define your model in `warpt/models/stress_models.py`:
+
+```python
+from pydantic import BaseModel, Field
+
+
+class MyTestResult(BaseModel):
+    """Results from my stress test."""
+
+    tflops: float = Field(..., ge=0, description="Throughput in TFLOPS")
+    duration: float = Field(..., ge=0, description="Test duration in seconds")
+    iterations: int = Field(..., ge=0, description="Iterations completed")
+    matrix_size: int = Field(..., ge=1, description="Matrix dimension")
+```
+
+Then return an instance from your test:
+
+```python
+from warpt.models.stress_models import MyTestResult
+
+
+def run(self, duration: int, iterations: int = 1) -> MyTestResult:
+    # ... test logic ...
+    return MyTestResult(
+        tflops=12.5,
+        duration=elapsed,
+        iterations=iter_count,
+        matrix_size=self.matrix_size,
+    )
+```
+
+The runner automatically converts Pydantic models to dicts via `model_dump()`.
+
+______________________________________________________________________
+
+## How Registration Works
+
+The `TestRegistry` automatically discovers your test. Here's how:
+
+1. When `TestRegistry()` is instantiated, it scans `warpt/stress/*.py`
+
+1. It imports each Python file and inspects all classes
+
+1. Any class that:
+
+   - Inherits from `StressTest`
+   - Is not abstract
+   - Is defined in that module (not imported)
+
+   ...gets registered automatically.
+
+**No decorators. No manual registration. Just put your file in the right place.**
+
+### File Naming Rules
+
+- Place your test in `warpt/stress/`
+- Name the file anything except starting with `_` (those are skipped)
+- Common pattern: `{category}_{what}.py` (e.g., `gpu_compute.py`, `cpu_compute.py`)
+
+### Class Naming Rules
+
+- Use descriptive class names ending in `Test` (convention, not required)
+- Class name must be unique across all tests
+- Examples: `GPUMatMulTest`, `CPUMatMulTest`, `RAMBandwidthTest`
+
+______________________________________________________________________
+
+## How Results Flow Through the System
+
+```text
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌──────────┐
+│ Your Test   │────▶│ TestRunner  │────▶│ TestResults │────▶│  Output  │
+│ (StressTest)│     │ .run()      │     │ .emit()     │     │ JSON/YAML│
+└─────────────┘     └─────────────┘     └─────────────┘     └──────────┘
+       │                   │                   │
+       ▼                   ▼                   ▼
+   Returns dict      Calls model_dump()   Serializes to
+   or Pydantic       if Pydantic,         requested format
+   model             stores in results
+```
+
+### Step by Step Instructions
+
+1. **TestRunner** instantiates your test class
+1. **TestRunner** calls `test.is_available()` — skips if False
+1. **TestRunner** calls `test.run(duration=30)`
+1. Your test returns a dict or Pydantic model
+1. **TestRunner** converts Pydantic to dict via `model_dump()`
+1. **TestRunner** stores the dict in `TestResults.add_result(name, result_dict)`
+1. CLI calls `results.emit("output.json", OutputFormat.JSON)`
+1. **TestResults** serializes everything and writes to file
+
+______________________________________________________________________
+
+## Complete Example: GPU Test
+
+Here's a realistic GPU test showing all the patterns:
+
+```python
+# warpt/stress/gpu_example.py
+"""Example GPU stress test."""
+
+import time
+from warpt.stress.base import StressTest, TestCategory
+
+
+class GPUExampleTest(StressTest):
+    """Example GPU stress test using PyTorch."""
+
+    _PARAM_FIELDS = ("device_id", "matrix_size", "burnin_seconds")
+
+    def __init__(
+        self,
+        device_id: int,
+        matrix_size: int = 4096,
+        burnin_seconds: int = 5,
+    ):
+        """Initialize GPU test.
+
+        Args:
+            device_id: GPU device ID (0, 1, 2, etc.) - REQUIRED
+            matrix_size: Size of square matrices for matmul
+            burnin_seconds: Warmup duration before measurement
+        """
+        self.device_id = device_id
+        self.matrix_size = matrix_size
+        self.burnin_seconds = burnin_seconds
+        self._device = None
+        self._gpu_name = None
+
+    # -------------------------------------------------------------------------
+    # Identity
+    # -------------------------------------------------------------------------
+
+    def get_pretty_name(self) -> str:
+        return "GPU Example Test"
+
+    def get_description(self) -> str:
+        return "Example GPU compute test using PyTorch matmul"
+
+    def get_category(self) -> TestCategory:
+        return TestCategory.ACCELERATOR
+
+    # -------------------------------------------------------------------------
+    # Availability
+    # -------------------------------------------------------------------------
+
+    def is_available(self) -> bool:
+        """Check if PyTorch and CUDA are available."""
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except ImportError:
+            return False
+
+    def validate_configuration(self) -> None:
+        """Validate GPU is accessible."""
+        if not self.is_available():
+            raise RuntimeError("CUDA is not available")
+
+        import torch
+        if self.device_id >= torch.cuda.device_count():
+            raise ValueError(
+                f"GPU {self.device_id} not found. "
+                f"Available: 0-{torch.cuda.device_count() - 1}"
+            )
+        if self.matrix_size < 64:
+            raise ValueError("matrix_size must be >= 64")
+
+    # -------------------------------------------------------------------------
+    # Lifecycle
+    # -------------------------------------------------------------------------
+
+    def setup(self) -> None:
+        """Initialize GPU device."""
+        import torch
+
+        self._device = torch.device(f"cuda:{self.device_id}")
+        torch.cuda.set_device(self._device)
+        self._gpu_name = torch.cuda.get_device_name(self._device)
+        self.logger.info(f"Using GPU {self.device_id}: {self._gpu_name}")
+
+    def teardown(self) -> None:
+        """Clean up GPU resources."""
+        import torch
+        torch.cuda.empty_cache()
+        self._device = None
+        self._gpu_name = None
+
+    def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
+        """Run warmup to stabilize GPU clocks."""
+        import torch
+
+        if duration_seconds > 0:
+            start = time.time()
+            while (time.time() - start) < duration_seconds:
+                a = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                b = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                _ = torch.matmul(a, b)
+                torch.cuda.synchronize()
+                del a, b
+        else:
+            for _ in range(iterations):
+                a = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                b = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                _ = torch.matmul(a, b)
+                torch.cuda.synchronize()
+                del a, b
+
+    # -------------------------------------------------------------------------
+    # Core Test
+    # -------------------------------------------------------------------------
+
+    def run(self, duration: int, iterations: int = 1) -> dict:
+        """Run the GPU stress test."""
+        import torch
+
+        del iterations  # Unused; we run for duration
+        self.validate_configuration()
+        self.setup()
+
+        try:
+            # Warmup
+            self.log_warmup_start()
+            self.warmup(duration_seconds=self.burnin_seconds)
+
+            # Timed test
+            self.log_test_start()
+            start_time = time.time()
+            iter_count = 0
+
+            while (time.time() - start_time) < duration:
+                a = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                b = torch.randn(self.matrix_size, self.matrix_size,
+                               device=self._device, dtype=torch.float32)
+                _ = torch.matmul(a, b)
+                torch.cuda.synchronize()
+                iter_count += 1
+                del a, b
+
+            elapsed = time.time() - start_time
+
+            # Calculate TFLOPS
+            ops_per_matmul = 2 * (self.matrix_size ** 3)
+            total_ops = iter_count * ops_per_matmul
+            tflops = total_ops / elapsed / 1e12
+
+            self.log_test_complete()
+            self.logger.info(f"Result: {tflops:.2f} TFLOPS")
+
+            return {
+                "test_name": self.get_name(),
+                "device_id": f"gpu_{self.device_id}",
+                "gpu_name": self._gpu_name,
+                "tflops": tflops,
+                "duration": elapsed,
+                "iterations": iter_count,
+                "matrix_size": self.matrix_size,
+                "total_operations": total_ops,
+                "burnin_seconds": self.burnin_seconds,
+            }
+
+        finally:
+            self.teardown()
+```
+
+______________________________________________________________________
+
+## Running Your Test
+
+After creating your test file:
+
+```bash
+# List all tests (yours should appear)
+warpt stress --list
+
+# Run your specific test
+warpt stress -t GPUExampleTest
+
+# Run with custom duration
+warpt stress -t GPUExampleTest --duration 60
+
+# Save results to JSON
+warpt stress -t GPUExampleTest -o results.json
+
+# Run all tests in a category
+warpt stress -c accelerator
+```
+
+______________________________________________________________________
+
+## Checklist for New Tests
+
+Before submitting a new test, verify:
+
+- [ ] File is in `warpt/stress/` and doesn't start with `_`
+- [ ] Class inherits from `StressTest`
+- [ ] Class is not abstract (all abstract methods implemented)
+- [ ] `_PARAM_FIELDS` lists all configurable parameters
+- [ ] `__init__` sets all parameters as instance attributes
+- [ ] `is_available()` never raises exceptions
+- [ ] `validate_configuration()` raises `ValueError` or `RuntimeError` on bad config
+- [ ] `run()` calls `setup()` and `teardown()` properly (teardown in finally block)
+- [ ] `run()` returns a dict or Pydantic model with meaningful metrics
+- [ ] Linting passes (`make lint`)
+- [ ] Test appears in `warpt stress --list`
+
+______________________________________________________________________
+
+## Common Patterns
+
+### Tests That Require device_id
+
+GPU tests typically require a `device_id` parameter. The registry and runner handle this:
+
+```python
+def __init__(self, device_id: int, matrix_size: int = 4096):
+    self.device_id = device_id
+    # ...
+```
+
+The runner tries instantiation with `device_id=0` if no-arg fails.
+
+### Lazy Imports
+
+Import heavy dependencies inside methods to avoid import errors when listing tests:
+
+```python
+def is_available(self) -> bool:
+    try:
+        import torch  # Lazy import
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+
+def run(self, duration: int, iterations: int = 1) -> dict:
+    import torch  # Import here too
+    # ...
+```
+
+### Using the Logger
+
+Every test has a logger available:
+
+```python
+self.logger.debug("Starting warmup...")
+self.logger.info(f"Result: {tflops:.2f} TFLOPS")
+self.logger.warning("GPU throttling detected")
+```
+
+### Helper Methods
+
+Use `log_warmup_start()`, `log_test_start()`, and `log_test_complete()` for consistent logging:
+
+```python
+def run(self, duration: int, iterations: int = 1) -> dict:
+    # ...
+    self.log_warmup_start()
+    self.warmup(duration_seconds=self.burnin_seconds)
+
+    self.log_test_start()
+    # ... test logic ...
+
+    self.log_test_complete()
+    return results
+```
+
+______________________________________________________________________
+
+## Troubleshooting
+
+### Test doesn't appear in `--list`
+
+1. Is the file in `warpt/stress/`?
+1. Does the filename start with `_`? (Those are skipped)
+1. Is the class abstract? (Check all abstract methods are implemented)
+1. Does the class have import errors? (Check with `python -c "from warpt.stress.myfile import MyTest"`)
+
+### Test shows as "Not Available"
+
+1. Check `is_available()` — it's returning `False`
+1. Verify required libraries are installed
+1. Verify hardware is present (GPU, etc.)
+
+### Test crashes during run
+
+1. Ensure `teardown()` is in a `finally` block
+1. Check `validate_configuration()` catches invalid config
+1. Look for unhandled exceptions in your test logic
+
+______________________________________________________________________
+
+## Reference: Existing Test Models
+
+See `warpt/models/stress_models.py` for examples of Pydantic result models:
+
+- `CPUSystemResult` — CPU test results with TFLOPS, core counts, throttle events
+- `GPUDeviceResult` — Single GPU results with compute and memory metrics
+- `GPUMemoryBandwidthResult` — Memory bandwidth test results
+- `MixedPrecisionResults` — FP16/BF16/INT8 precision test results
+
+Use these as templates for your own result models.

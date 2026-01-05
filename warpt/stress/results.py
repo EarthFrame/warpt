@@ -182,7 +182,7 @@ class TestResults:
             ValueError: If pyyaml is not installed.
         """
         try:
-            import yaml  # type: ignore[import-untyped]
+            import yaml
         except ImportError:
             raise ValueError(
                 "YAML output requires pyyaml. Install with: pip install pyyaml"

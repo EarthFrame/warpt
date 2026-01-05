@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 import psutil
 
 from warpt.monitoring import ResourceSnapshot, SystemMonitorDaemon
+from warpt.utils.env import get_env
 
 if TYPE_CHECKING:
     _CursesWindow = Any  # curses window type
@@ -42,24 +43,27 @@ class PowerMetrics:
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
 
     def start(self) -> None:
         """Start collecting power metrics in background."""
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._collect_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         """Stop collecting power metrics."""
         self._running = False
+        self._stop_event.set()
         if self._thread:
-            self._thread.join(timeout=2.0)
+            self._thread.join(timeout=0.5)
 
     def _collect_loop(self) -> None:
         """Background loop to collect power metrics."""
-        while self._running:
+        while not self._stop_event.is_set():
             try:
                 result = subprocess.run(
                     [
@@ -91,7 +95,8 @@ class PowerMetrics:
             except Exception as e:
                 with self._lock:
                     self.error = str(e)
-            time.sleep(2.0)
+            if self._stop_event.wait(2.0):
+                break
 
     def _parse_powermetrics(self, output: str) -> None:
         """Parse powermetrics output."""
@@ -140,13 +145,16 @@ class MonitorState:
 
     def __init__(self, max_history: int = 5):
         self.current_tab = 0
-        self.tabs = ["Overview", "Processes", "Power"]
+        self.tabs = ["Overview", "Processes"]
+        if get_env("WARPT_ENABLE_POWER", default=False, as_type=bool):
+            self.tabs.append("Power")
+
         self.cpu_history: deque[float] = deque(maxlen=max_history)
         self.mem_history: deque[float] = deque(maxlen=max_history)
         self.power_metrics: PowerMetrics | None = None
 
-        # Start power metrics collection if on macOS
-        if platform.system() == "Darwin":
+        # Start power metrics collection if on macOS and power is enabled
+        if platform.system() == "Darwin" and "Power" in self.tabs:
             self.power_metrics = PowerMetrics()
             self.power_metrics.start()
 
@@ -491,7 +499,13 @@ def _render_cpu_section(
     row += 1
 
     core_percents = psutil.cpu_percent(percpu=True)
-    for idx, percent in enumerate(core_percents[:8], start=1):
+    height, _ = stdscr.getmaxyx()
+    remaining_rows = max(1, height - row - 4)
+    visible_cores = min(len(core_percents), remaining_rows)
+    if visible_cores == 0 and core_percents:
+        visible_cores = len(core_percents)
+
+    for idx, percent in enumerate(core_percents[:visible_cores], start=1):
         core_label = f"  Core {idx}"
         core_suffix = f"{percent:5.1f}%"
         _draw_bar(
@@ -522,7 +536,13 @@ def _render_cpu_section_placeholder(
     _draw_bar(stdscr, row, 2, agg_label, 0.0, "—", label_width=20, bar_width=40)
     row += 1
 
-    for idx in range(1, min(9, total_cores + 1)):
+    height, _ = stdscr.getmaxyx()
+    remaining_rows = max(1, height - row - 4)
+    placeholder_cores = min(total_cores, remaining_rows)
+    if placeholder_cores == 0:
+        placeholder_cores = min(total_cores, 8)
+
+    for idx in range(1, placeholder_cores + 1):
         core_label = f"  Core {idx}"
         _draw_bar(stdscr, row, 2, core_label, 0.0, "—", label_width=20, bar_width=32)
         row += 1
@@ -592,7 +612,11 @@ def _render_gpu_section(
             power = gpu.power_watts or 0.0
 
             gpu_label = f"GPU {gpu.index} ({gpu.model or 'N/A'})"
-            gpu_suffix = f"{util:5.1f}% | {power:6.1f}W"
+            if get_env("WARPT_ENABLE_POWER", default=False, as_type=bool):
+                gpu_suffix = f"{util:5.1f}% | {power:6.1f}W"
+            else:
+                gpu_suffix = f"{util:5.1f}%"
+
             _draw_bar(
                 stdscr,
                 row,
