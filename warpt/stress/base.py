@@ -13,6 +13,8 @@ from warpt.utils.env import get_env
 class TestCategory(Enum):
     """Categories of stress tests."""
 
+    __test__ = False  # Tell pytest not to collect this as a test class
+
     CPU = "cpu"
     ACCELERATOR = "accelerator"
     RAM = "ram"

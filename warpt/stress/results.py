@@ -44,6 +44,8 @@ class TestResults:
         >>> results.emit(sys.stdout, OutputFormat.TEXT)
     """
 
+    __test__ = False  # Tell pytest not to collect this as a test class
+
     def __init__(self) -> None:
         """Initialize empty results collection."""
         self._results: dict[str, Any] = {}
