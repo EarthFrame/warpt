@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any
 
-from warpt.backends.power.base import PowerSource
+from warpt.backends.power.base import BasePowerSource
 from warpt.utils.logger import Logger
 
 
@@ -23,7 +23,7 @@ class PowerMonitorDaemon:
             interval: Sampling interval in seconds (default 0.1s / 10Hz).
         """
         self._interval = interval
-        self._sources: list[PowerSource] = []
+        self._sources: list[BasePowerSource] = []
         self._samples: dict[str, list[float]] = {}
         self._running = False
         self._thread: threading.Thread | None = None
@@ -41,7 +41,7 @@ class PowerMonitorDaemon:
         On Linux: Intel/AMD RAPL counters
         On any platform: NVIDIA GPU power via NVML
         """
-        src: PowerSource
+        src: BasePowerSource
 
         # Apple Silicon (macOS)
         if platform.system() == "Darwin":

@@ -6,10 +6,10 @@ import subprocess
 import time
 from pathlib import Path
 
-from warpt.backends.power.base import PowerSource
+from warpt.backends.power.base import BasePowerSource
 
 
-class AppleSiliconPowerSource(PowerSource):
+class AppleSiliconPowerSource(BasePowerSource):
     """Power source for Apple Silicon using powermetrics.
 
     Uses the macOS 'powermetrics' tool to measure combined CPU+GPU+ANE power.
@@ -128,7 +128,7 @@ class AppleSiliconPowerSource(PowerSource):
             return False
 
 
-class NvidiaPowerSource(PowerSource):
+class NvidiaPowerSource(BasePowerSource):
     """Power source for NVIDIA GPUs using NVML."""
 
     def __init__(self, index: int = 0) -> None:
@@ -159,7 +159,7 @@ class NvidiaPowerSource(PowerSource):
             return False
 
 
-class RAPLPowerSource(PowerSource):
+class RAPLPowerSource(BasePowerSource):
     """Power source for Intel/AMD CPUs using RAPL (Linux only).
 
     RAPL (Running Average Power Limit) provides hardware-based power measurement
