@@ -5,8 +5,6 @@ import string
 from datetime import datetime
 from pathlib import Path
 
-import pynvml
-
 from warpt.backends.factory import get_gpu_backend
 from warpt.backends.hardware.storage.base import (
     BusType,
@@ -14,6 +12,7 @@ from warpt.backends.hardware.storage.base import (
     StorageType,
 )
 from warpt.backends.hardware.storage.factory import get_storage_manager
+from warpt.backends.pci import PCIBackend
 from warpt.backends.ram import RAM
 from warpt.backends.software import (
     DockerDetector,
@@ -128,6 +127,7 @@ def run_list(export_format=None, export_filename=None) -> None:
 
     cpu = CPU()
     info = cpu.get_cpu_info()
+    backend = None
 
     print("CPU Information:")
     print(f"  Make:               {info.make}")
@@ -182,15 +182,18 @@ def run_list(export_format=None, export_filename=None) -> None:
 
     # GPU Detection
     print("\nGPU Information:")
+    gpu_list = None
+    backend = None
+
     try:
         backend = get_gpu_backend()
-        gpus = backend.list_devices()
+        gpu_list = backend.list_devices()
 
         # backend.list_devices() returns empty list when no GPUs are present
-        if not gpus:
+        if not gpu_list:
             print("  No GPUs detected")
         else:
-            for gpu in gpus:
+            for gpu in gpu_list:
                 print(f"  [{gpu.index}] {gpu.model}")
                 print(f"      Memory:         {gpu.memory_gb} GB")
                 print(f"      CUDA Compute:   {gpu.compute_capability}")
@@ -199,14 +202,28 @@ def run_list(export_format=None, export_filename=None) -> None:
                 if gpu.driver_version:
                     print(f"      Driver Version: {gpu.driver_version}")
 
-        gpu_list = gpus  # Save for JSON export (empty list if no GPUs)
-
-    except ImportError:
-        print("  GPU detection unavailable (nvidia-ml-py not installed)")
-        gpu_list = None
     except Exception as e:
         print(f"  GPU detection failed: {e}")
-        gpu_list = None
+
+    # PCI Check for hidden GPUs
+    pci = PCIBackend()
+    if pci.is_available():
+        pci_gpus = pci.get_gpus()
+        if pci_gpus:
+            # This is a bit complex since lspci doesn't give us indices
+            # But if gpu_list is empty and pci_gpus is not, it's a clear mismatch
+            if not gpu_list:
+                for p_gpu in pci_gpus:
+                    print(
+                        f"  WARNING: {p_gpu.vendor_name} {p_gpu.device_name} detected "
+                        f"on PCI bus ({p_gpu.slot}), but not accessible via drivers."
+                    )
+            elif len(pci_gpus) > len(gpu_list):
+                # More found on PCI than by drivers
+                print(
+                    f"  WARNING: {len(pci_gpus)} GPUs detected on PCI bus, "
+                    f"but only {len(gpu_list)} accessible via drivers."
+                )
 
     # CUDA Detection
     # TODO: Add CUDA toolkit version detection (nvcc) - for now just using
@@ -214,15 +231,15 @@ def run_list(export_format=None, export_filename=None) -> None:
     print("\nCUDA Information:")
     cuda_driver_version = None
 
-    # Get CUDA driver version from pynvml (if GPUs available)
-    if gpu_list:
+    # Get CUDA driver version from backend (if available)
+    if gpu_list and backend:
         try:
-            # returns version like 12010 for CUDA 12.1
-            driver_version_int = pynvml.nvmlSystemGetCudaDriverVersion()
-            major = driver_version_int // 1000
-            minor = (driver_version_int % 1000) // 10
-            cuda_driver_version = f"{major}.{minor}"
-            print(f"  Driver Version: {cuda_driver_version}")
+            if hasattr(backend, "get_cuda_driver_version"):
+                cuda_driver_version = backend.get_cuda_driver_version()
+                if cuda_driver_version:
+                    print(f"  Driver Version: {cuda_driver_version}")
+            else:
+                print("  CUDA detection not supported for this backend")
         except Exception as e:
             print(f"  CUDA detection failed: {e}")
     else:

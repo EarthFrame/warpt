@@ -185,6 +185,15 @@ class GPUBackend(ABC):
         pass
 
     @abstractmethod
+    def get_driver_version(self) -> str | None:
+        """Get the GPU driver version.
+
+        Returns:
+            str: Driver version string, or None if unavailable.
+        """
+        pass
+
+    @abstractmethod
     def shutdown(self):
         """Cleanup and shutdown the GPU backend.
 

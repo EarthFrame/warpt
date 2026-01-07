@@ -45,7 +45,7 @@ class NvidiaBackend(GPUBackend):
             int or None: PCIe generation (3, 4, 5) or None if unavailable
         """
         try:
-            return pynvml.nvmlDeviceGetMaxPcielinkGeneration(device_handle)
+            return pynvml.nvmlDeviceGetMaxPcieLinkGeneration(device_handle)
         except pynvml.NVMLError:
             return None  # TODO - want to look into standardized logging for errors
 
@@ -272,6 +272,26 @@ class NvidiaBackend(GPUBackend):
             return throttle_reasons
         except pynvml.NVMLError:
             return []
+
+    def get_driver_version(self) -> str | None:
+        """Get NVIDIA driver version."""
+        try:
+            version = pynvml.nvmlSystemGetDriverVersion()
+            if isinstance(version, bytes):
+                return version.decode("utf-8")
+            return str(version)
+        except pynvml.NVMLError:
+            return None
+
+    def get_cuda_driver_version(self) -> str | None:
+        """Get CUDA driver version."""
+        try:
+            driver_version_int = pynvml.nvmlSystemGetCudaDriverVersion()
+            major = driver_version_int // 1000
+            minor = (driver_version_int % 1000) // 10
+            return f"{major}.{minor}"
+        except pynvml.NVMLError:
+            return None
 
     def shutdown(self):
         """Cleanup and shutdown NVML."""

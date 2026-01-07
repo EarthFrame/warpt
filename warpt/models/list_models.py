@@ -63,7 +63,7 @@ class GPUInfo(BaseModel):
 class MemoryInfo(BaseModel):
     """System memory information."""
 
-    total_gb: int = Field(..., description="Total system memory in GB", ge=1)
+    total_gb: int = Field(..., description="Total system memory in GB", ge=0)
     free_gb: float = Field(..., description="Free system memory in GB", ge=0)
     type: str | None = Field(None, description="Memory type (DDR4, DDR5, etc.)")
     speed_mhz: int | None = Field(None, description="Memory speed in MHz")
@@ -74,7 +74,7 @@ class StorageDevice(BaseModel):
     """Storage device information."""
 
     device_path: str = Field(..., description="Device path (e.g., /dev/nvme0n1)")
-    capacity_gb: int = Field(..., description="Storage capacity in GB", ge=1)
+    capacity_gb: int = Field(..., description="Storage capacity in GB", ge=0)
     type: str = Field(..., description="Storage type (NVMe SSD, SATA SSD, HDD, etc.)")
     model: str | None = Field(None, description="Device model string (if available)")
     manufacturer: str | None = Field(
