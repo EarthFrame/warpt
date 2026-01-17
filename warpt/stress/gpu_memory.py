@@ -50,7 +50,7 @@ class GPUMemoryBandwidthTest(StressTest):
         self.data_size_gb = data_size_gb
         self.use_pinned_memory = use_pinned_memory
         self._device_str: str | None = None
-        self._device: "torch.device" | None = None
+        self._device: torch.device | None = None
 
         # TODO: Consider adding different default sizes for D2D vs H2D/D2H
         # D2D tests GPU memory bandwidth (could use larger sizes like 2GB)
