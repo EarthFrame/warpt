@@ -5,7 +5,7 @@ import subprocess
 from enum import Enum
 
 import psutil
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FrequencyScope(str, Enum):
@@ -23,10 +23,7 @@ class CPUFrequency(BaseModel):
     min: float = Field(..., description="Minimum CPU frequency in MHz")
     max: float = Field(..., description="Maximum CPU frequency in MHz")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class SocketCPUInfo(BaseModel):
@@ -47,10 +44,7 @@ class SocketCPUInfo(BaseModel):
         None, description="Multi-core boost frequency in MHz"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class CPUInfo(BaseModel):
@@ -100,10 +94,7 @@ class CPUInfo(BaseModel):
         None, description="Per-socket CPU details (for heterogeneous systems)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class CPU:

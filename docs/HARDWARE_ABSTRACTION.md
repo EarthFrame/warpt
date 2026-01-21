@@ -587,7 +587,7 @@ def list_available_vendors() -> list[str]:
 ```python
 # warpt/models/list_models.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 class AcceleratorInfo(BaseModel):
     """Universal accelerator device information.
@@ -619,8 +619,8 @@ class AcceleratorInfo(BaseModel):
     # Use this for vendor-specific metrics that don't fit the common schema
     extra_info: dict | None = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "vendor": "NVIDIA",
                 "device_type": "gpu",
@@ -639,6 +639,7 @@ class AcceleratorInfo(BaseModel):
                 }
             }
         }
+    )
 
 
 class HardwareInfo(BaseModel):
