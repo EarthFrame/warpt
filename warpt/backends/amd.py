@@ -56,6 +56,10 @@ class AMDBackend(GPUBackend):
         """Get GPU throttling reasons."""
         raise NotImplementedError("AMD backend not yet implemented")
 
+    def get_driver_version(self) -> str | None:
+        """Get AMD driver version."""
+        raise NotImplementedError("AMD backend not yet implemented")
+
     def shutdown(self):
         """Cleanup and shutdown AMD backend."""
         raise NotImplementedError("AMD backend not yet implemented")

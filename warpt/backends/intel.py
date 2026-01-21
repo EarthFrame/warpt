@@ -56,6 +56,10 @@ class IntelBackend(GPUBackend):
         """Get GPU throttling reasons."""
         raise NotImplementedError("Intel backend not yet implemented")
 
+    def get_driver_version(self) -> str | None:
+        """Get Intel driver version."""
+        raise NotImplementedError("Intel backend not yet implemented")
+
     def shutdown(self):
         """Cleanup and shutdown Intel backend."""
         raise NotImplementedError("Intel backend not yet implemented")
