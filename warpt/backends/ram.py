@@ -4,7 +4,7 @@ import platform
 import subprocess
 
 import psutil
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SwapMemoryInfo(BaseModel):
@@ -17,10 +17,7 @@ class SwapMemoryInfo(BaseModel):
     sin: int = Field(..., description="Bytes swapped in from disk (cumulative)")
     sout: int = Field(..., description="Bytes swapped out to disk (cumulative)")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
     @property
     def total_gb(self) -> float:
@@ -99,10 +96,7 @@ class RAMInfo(BaseModel):
     # Swap information
     swap: SwapMemoryInfo | None = Field(None, description="Swap memory information")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
     @property
     def total_gb(self) -> float:

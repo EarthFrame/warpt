@@ -1,11 +1,17 @@
 """Base class for performance benchmarks."""
 
 import logging
+import sys
 import time
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from datetime import UTC
+else:
+    UTC = UTC
 
 
 class RunMode(Enum):

@@ -51,6 +51,8 @@ class TestNameCollisionError(TestRegistryError):
 class TestNotFoundError(TestRegistryError):
     """Raised when a requested test is not found."""
 
+    __test__ = False  # Tell pytest not to collect this as a test class
+
     def __init__(self, name: str) -> None:
         self.name = name
         super().__init__(f"Test not found: '{name}'")
@@ -72,6 +74,8 @@ class TestRegistry:
         ...     if test.is_available():
         ...         result = test.run(duration=30)
     """
+
+    __test__ = False  # Tell pytest not to collect this as a test class
 
     # Default paths to search for tests
     DEFAULT_PATHS: ClassVar[list[Path]] = [

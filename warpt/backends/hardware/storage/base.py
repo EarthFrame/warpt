@@ -28,7 +28,7 @@ but not physical PCIe buses).
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class StorageType(str, Enum):
@@ -131,10 +131,7 @@ class LatencyMetrics(BaseModel):
     min_us: float | None = Field(None, description="Minimum latency in μs")
     max_us: float | None = Field(None, description="Maximum latency in μs")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class IOPSMetrics(BaseModel):
@@ -162,10 +159,7 @@ class IOPSMetrics(BaseModel):
         None, description="Queue depth used for measurement"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class ThroughputMetrics(BaseModel):
@@ -200,10 +194,7 @@ class ThroughputMetrics(BaseModel):
         None, description="Block size in KB used for measurement"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class PerformanceMetrics(BaseModel):
@@ -252,10 +243,7 @@ class PerformanceMetrics(BaseModel):
         None, description="Tool used for measurement (fio, dd, custom)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class StorageDeviceInfo(BaseModel):
@@ -415,10 +403,7 @@ class StorageDeviceInfo(BaseModel):
 
         return False
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class LocalBlockDeviceInfo(StorageDeviceInfo):
@@ -477,10 +462,7 @@ class LocalBlockDeviceInfo(StorageDeviceInfo):
     )
     total_bytes_read: int | None = Field(None, description="Lifetime bytes read (SSDs)")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class NetworkStorageInfo(StorageDeviceInfo):
@@ -505,10 +487,7 @@ class NetworkStorageInfo(StorageDeviceInfo):
         None, description="Protocol version (NFSv4, SMB3, etc.)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class ObjectStorageInfo(StorageDeviceInfo):
@@ -537,10 +516,7 @@ class ObjectStorageInfo(StorageDeviceInfo):
     api_version: str | None = Field(None, description="API version")
     ssl_enabled: bool = Field(True, description="True if using HTTPS")
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class BenchmarkConfig(BaseModel):
@@ -560,10 +536,7 @@ class BenchmarkConfig(BaseModel):
         70, description="Read percentage for mixed workload (0-100)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class StorageBackend(ABC):

@@ -17,11 +17,18 @@ Usage:
 
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Any, TextIO
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from datetime import UTC
+else:
+    from datetime import timezone
+
+    UTC = timezone.utc  # noqa: UP017
 
 
 class OutputFormat(Enum):
@@ -43,6 +50,8 @@ class TestResults:
         >>> results.emit("results.json", OutputFormat.JSON)
         >>> results.emit(sys.stdout, OutputFormat.TEXT)
     """
+
+    __test__ = False  # Tell pytest not to collect this as a test class
 
     def __init__(self) -> None:
         """Initialize empty results collection."""
