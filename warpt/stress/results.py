@@ -17,11 +17,16 @@ Usage:
 
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from io import StringIO
 from pathlib import Path
 from typing import Any, TextIO
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from datetime import UTC
+else:
+    UTC = UTC
 
 
 class OutputFormat(Enum):
