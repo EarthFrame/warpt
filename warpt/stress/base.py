@@ -11,7 +11,9 @@ from typing import Any
 if sys.version_info >= (3, 11):  # noqa: UP036
     from datetime import UTC
 else:
-    UTC = UTC
+    from datetime import timezone
+
+    UTC = timezone.utc  # noqa: UP017
 
 from warpt.utils.env import get_env
 
