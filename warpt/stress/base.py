@@ -1,17 +1,27 @@
 """Base class for stress tests."""
 
 import logging
+import sys
 import time
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
+
+if sys.version_info >= (3, 11):  # noqa: UP036
+    from datetime import UTC
+else:
+    from datetime import timezone
+
+    UTC = timezone.utc  # noqa: UP017
 
 from warpt.utils.env import get_env
 
 
 class TestCategory(Enum):
     """Categories of stress tests."""
+
+    __test__ = False  # Tell pytest not to collect this as a test class
 
     CPU = "cpu"
     ACCELERATOR = "accelerator"

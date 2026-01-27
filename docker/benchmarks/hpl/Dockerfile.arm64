@@ -1,0 +1,64 @@
+# Dockerfile for HPL (High Performance Linpack) on ARM64 (Apple Silicon)
+# This container builds HPL with OpenMPI and OpenBLAS for optimal performance on ARM.
+
+FROM arm64v8/ubuntu:22.04 AS builder
+
+# Prevent interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gfortran \
+    wget \
+    libopenblas-dev \
+    libopenmpi-dev \
+    openmpi-bin \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# HPL Version
+ENV HPL_VERSION=2.3
+
+# Download and extract HPL
+WORKDIR /build
+RUN wget http://www.netlib.org/benchmark/hpl/hpl-${HPL_VERSION}.tar.gz && \
+    tar -zxf hpl-${HPL_VERSION}.tar.gz
+
+WORKDIR /build/hpl-${HPL_VERSION}
+
+# Copy the custom Make file for ARM64 Linux
+COPY Make.arm64_linux /build/hpl-${HPL_VERSION}/Make.arm64_linux
+
+# Build HPL
+RUN make arch=arm64_linux
+
+# Final image
+FROM arm64v8/ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libopenblas0 \
+    libopenmpi3 \
+    openmpi-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy HPL binary and example HPL.dat
+WORKDIR /hpl
+COPY --from=builder /build/hpl-2.3/bin/arm64_linux/xhpl /usr/local/bin/xhpl
+COPY HPL.dat /hpl/HPL.dat
+
+# Create a simple entrypoint script to allow passing mpirun arguments
+RUN echo '#!/bin/bash\n\
+if [ "$1" == "xhpl" ]; then\n\
+    shift\n\
+    exec mpirun --allow-run-as-root "$@"\n\
+else\n\
+    exec "$@"\n\
+fi' > /entrypoint.sh && chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command: run HPL with 4 processes
+# Note: Users should override this with -np matching their core count
+CMD ["xhpl", "-np", "4", "xhpl"]

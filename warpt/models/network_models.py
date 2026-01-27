@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NetworkInterfaceInfo(BaseModel):
@@ -20,10 +20,7 @@ class NetworkInterfaceInfo(BaseModel):
         None, description="Link speed in Mbps (if available)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 
 class NetworkInfo(BaseModel):
@@ -37,7 +34,4 @@ class NetworkInfo(BaseModel):
         None, description="Default network interface (if detectable)"
     )
 
-    class Config:
-        """Pydantic config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)

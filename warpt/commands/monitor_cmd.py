@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 from warpt.monitoring import ResourceSnapshot, SystemMonitorDaemon
+from warpt.utils.env import get_env
 
 
 def run_monitor(interval_seconds: float, duration_seconds: float | None) -> None:
@@ -68,20 +69,30 @@ def _format_snapshot(snapshot: ResourceSnapshot) -> str:
     if wired is not None:
         memory_line += f" wired: {_format_bytes(wired)}"
 
-    lines = [
+    enable_power = get_env("WARPT_ENABLE_POWER", default=False, as_type=bool)
+
+    cpu_line = (
         f"[{timestamp}] CPU: {_format_percent(snapshot.cpu_utilization_percent)} "
-        f"power: {_format_power(snapshot.cpu_power_watts)}",
+    )
+    if enable_power:
+        cpu_line += f"power: {_format_power(snapshot.cpu_power_watts)}"
+
+    lines = [
+        cpu_line,
         memory_line,
     ]
 
     for gpu in snapshot.gpu_usage:
         model_suffix = f" ({gpu.model})" if gpu.model else ""
-        lines.append(
+        gpu_line = (
             f"GPU {gpu.index}{model_suffix}: "
-            "util: {_format_percent(gpu.utilization_percent)} "
-            "mem: {_format_percent(gpu.memory_utilization_percent)} "
-            "power: {_format_power(gpu.power_watts)}"
+            f"util: {_format_percent(gpu.utilization_percent)} "
+            f"mem: {_format_percent(gpu.memory_utilization_percent)} "
         )
+        if enable_power:
+            gpu_line += f"power: {_format_power(gpu.power_watts)}"
+
+        lines.append(gpu_line)
         if gpu.guid:
             lines.append(f"    GUID: {gpu.guid}")
 

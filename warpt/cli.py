@@ -105,10 +105,240 @@ def monitor(interval, duration, no_tui):
         raise click.ClickException(str(exc)) from exc
 
 
+@warpt.command(hidden=not get_env("WARPT_ENABLE_POWER", default=False, as_type=bool))
+@click.option(
+    "--interval",
+    "-i",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Sampling interval in seconds",
+)
+@click.option(
+    "--duration",
+    "-d",
+    type=float,
+    default=None,
+    help="Stop after this many seconds (default: run until interrupted)",
+)
+@click.option(
+    "--no-processes",
+    is_flag=True,
+    default=False,
+    help="Don't show per-process power attribution",
+)
+@click.option(
+    "--top",
+    "-n",
+    type=int,
+    default=10,
+    show_default=True,
+    help="Number of top processes to display",
+)
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    default=False,
+    help="Output in JSON format",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=str,
+    default=None,
+    help="Write results to JSON file",
+)
+@click.option(
+    "--continuous",
+    "-c",
+    is_flag=True,
+    default=False,
+    help="Run continuously (vs single snapshot)",
+)
+@click.option(
+    "--sources",
+    is_flag=True,
+    default=False,
+    help="Show available power sources and exit",
+)
+def power(
+    interval, duration, no_processes, top, output_json, output, continuous, sources
+):
+    r"""Monitor system power consumption.
+
+    Displays power usage in watts for CPU, GPU, and other components.
+    Can attribute power consumption to individual processes.
+
+    \b
+    Examples:
+      warpt power                    # Single snapshot
+      warpt power -c                 # Continuous monitoring
+      warpt power -c -d 60           # Monitor for 60 seconds
+      warpt power --json             # JSON output
+      warpt power -o power.json      # Save to file
+      warpt power --sources          # Show available power sources
+
+    \b
+    Platform support:
+      Linux: Intel/AMD RAPL via /sys/class/powercap/
+      macOS: powermetrics (requires sudo)
+      All: NVIDIA GPUs via NVML
+    """
+    from warpt.commands.power_cmd import run_power, show_power_sources
+
+    if sources:
+        show_power_sources()
+        return
+
+    try:
+        run_power(
+            interval_seconds=interval,
+            duration_seconds=duration,
+            show_processes=not no_processes,
+            top_n_processes=top,
+            output_format="json" if output_json else "text",
+            output_file=output,
+            continuous=continuous,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 @warpt.command()
-def benchmark():
-    """Run system benchmarks."""
-    print("Benchmarking!")
+@click.option(
+    "--benchmark",
+    "-b",
+    help="Benchmark name (e.g. hpl)",
+)
+@click.option(
+    "--system",
+    type=click.Path(exists=True),
+    help="System configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--benchmark-config",
+    type=click.Path(exists=True),
+    help="Benchmark configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--cluster",
+    type=click.Path(exists=True),
+    help="Cluster configuration file (JSON, YAML, or HCL)",
+)
+@click.option(
+    "--set",
+    "overrides",
+    multiple=True,
+    help="Override configuration value (KEY=VALUE format, repeatable)",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Validate and print actions without executing",
+)
+@click.option(
+    "--debug",
+    is_flag=True,
+    help="Enable debug output and stack traces",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    help="Write structured benchmark results to file",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force rebuild even if cached image exists",
+)
+@click.option(
+    "--no-monitor",
+    is_flag=True,
+    default=False,
+    help="Disable power and resource monitoring during benchmark",
+)
+@click.argument(
+    "subcommand",
+    type=click.Choice(["list", "validate", "build", "run"]),
+    required=False,
+)
+def benchmark(
+    subcommand,
+    benchmark,
+    system,
+    benchmark_config,
+    cluster,
+    overrides,
+    dry_run,
+    debug,
+    output,
+    force,
+    no_monitor,
+):
+    r"""Run and manage performance benchmarks.
+
+    \b
+    Examples:
+      warpt benchmark                          # List available benchmarks
+      warpt benchmark list                     # List supported benchmarks
+      warpt benchmark validate                 # Validate configuration files
+      warpt benchmark build -b hpl             # Build benchmark container
+      warpt benchmark run -b hpl               # Run HPL benchmark
+      warpt benchmark run -b hpl --output results.json  # Run with output file
+    """
+    from warpt.benchmarks.registry import BenchmarkRegistry
+    from warpt.commands.benchmark_cmd import (
+        build_benchmark,
+        list_benchmarks,
+        run_benchmark,
+        validate_configs,
+    )
+
+    if debug:
+        Logger.set_level("DEBUG")
+
+    # Create registry for benchmark discovery
+    registry = BenchmarkRegistry()
+
+    # If no subcommand provided, show available benchmarks
+    if subcommand is None:
+        list_benchmarks(registry)
+        return
+
+    # Dispatch to appropriate function based on subcommand
+    if subcommand == "list":
+        list_benchmarks(registry)
+    elif subcommand == "validate":
+        validate_configs(
+            benchmark, system, benchmark_config, cluster, overrides, registry
+        )
+    elif subcommand == "build":
+        build_benchmark(
+            benchmark,
+            system,
+            benchmark_config,
+            cluster,
+            overrides,
+            force,
+            dry_run,
+            debug,
+            registry,
+        )
+    elif subcommand == "run":
+        run_benchmark(
+            benchmark,
+            system,
+            benchmark_config,
+            cluster,
+            overrides,
+            output,
+            dry_run,
+            debug,
+            registry,
+            no_monitor,
+        )
 
 
 @warpt.command()
@@ -213,6 +443,15 @@ def check():
     default=None,
     help="Network test mode: latency, bandwidth, or both",
 )
+@click.option(
+    "--read-ratio",
+    type=float,
+    default=None,
+    help=(
+        "Read ratio for StorageMixedTest (0.0-1.0). "
+        "E.g., 0.7 = 70%% reads, 30%% writes"
+    ),
+)
 def stress(
     list_only,
     category,
@@ -227,6 +466,7 @@ def stress(
     target,
     payload,
     network_mode,
+    read_ratio,
 ):
     r"""Run hardware stress tests.
 
@@ -261,6 +501,7 @@ def stress(
         target=target,
         payload=payload,
         network_mode=network_mode,
+        read_ratio=read_ratio,
     )
 
 

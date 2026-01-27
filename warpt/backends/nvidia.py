@@ -45,7 +45,7 @@ class NvidiaBackend(GPUBackend):
             int or None: PCIe generation (3, 4, 5) or None if unavailable
         """
         try:
-            return pynvml.nvmlDeviceGetMaxPcielinkGeneration(device_handle)
+            return pynvml.nvmlDeviceGetMaxPcieLinkGeneration(device_handle)
         except pynvml.NVMLError:
             return None  # TODO - want to look into standardized logging for errors
 
@@ -77,6 +77,13 @@ class NvidiaBackend(GPUBackend):
 
         for i in range(device_count):
             device_handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+
+            # Get GPU UUID (persistent identifier across reboots)
+            try:
+                gpu_uuid = pynvml.nvmlDeviceGetUUID(device_handle)
+            except pynvml.NVMLError:
+                gpu_uuid = None
+
             device_info.append(
                 GPUInfo(
                     index=i,
@@ -84,6 +91,7 @@ class NvidiaBackend(GPUBackend):
                     memory_gb=self._bytes_to_gb(
                         pynvml.nvmlDeviceGetMemoryInfo(device_handle).total
                     ),
+                    uuid=gpu_uuid,
                     compute_capability=self._get_compute_capability(device_handle),
                     pcie_gen=self._get_pcie_generation(device_handle),
                     driver_version=driver_version,
@@ -264,6 +272,26 @@ class NvidiaBackend(GPUBackend):
             return throttle_reasons
         except pynvml.NVMLError:
             return []
+
+    def get_driver_version(self) -> str | None:
+        """Get NVIDIA driver version."""
+        try:
+            version = pynvml.nvmlSystemGetDriverVersion()
+            if isinstance(version, bytes):
+                return version.decode("utf-8")
+            return str(version)
+        except pynvml.NVMLError:
+            return None
+
+    def get_cuda_driver_version(self) -> str | None:
+        """Get CUDA driver version."""
+        try:
+            driver_version_int = pynvml.nvmlSystemGetCudaDriverVersion()
+            major = driver_version_int // 1000
+            minor = (driver_version_int % 1000) // 10
+            return f"{major}.{minor}"
+        except pynvml.NVMLError:
+            return None
 
     def shutdown(self):
         """Cleanup and shutdown NVML."""

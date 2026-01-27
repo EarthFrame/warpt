@@ -1,0 +1,10 @@
+# hpl_config.yaml
+benchmarks:
+  - name: hpl
+    parameters:
+      problem_size: 10240
+      block_size: 128
+      p_grid: 2
+      q_grid: 2
+      execution_mode: "docker"
+      docker_image: "warpt-hpl:arm64"

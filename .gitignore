@@ -128,7 +128,16 @@ dmypy.json
 *.swp
 *.swo
 *~
+*.backup
+*.bak
+*.orig
 .DS_Store
+
+# Linting
+.ruff_cache/
+
+# Claude Code
+.claude/
 
 # Pre-commit
 .pre-commit
