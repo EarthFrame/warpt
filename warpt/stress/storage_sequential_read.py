@@ -345,8 +345,7 @@ class StorageSequentialReadTest(StressTest):
         max_bandwidth_mbps = max(iteration_speeds) if iteration_speeds else 0
 
         self.logger.info(
-            f"Read {total_mb:.2f} MB in {elapsed:.2f}s "
-            f"({iteration_count} iterations)"
+            f"Read {total_mb:.2f} MB in {elapsed:.2f}s ({iteration_count} iterations)"
         )
         self.logger.info(f"Overall bandwidth: {overall_bandwidth_mbps:.2f} MB/s")
         self.logger.info(

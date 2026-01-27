@@ -105,7 +105,7 @@ class RAMBandwidthTest(StressTest):
         self.logger.info(
             f"Allocating: {total_allocation_gb:.2f} GB total "
             f"({self._allocated_gb:.2f} GB x 2 arrays, "
-            f"{self.allocation_percent*100:.0f}%)"
+            f"{self.allocation_percent * 100:.0f}%)"
         )
 
         # Allocate memory arrays (each is half of total allocation)

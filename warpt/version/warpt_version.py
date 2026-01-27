@@ -24,10 +24,7 @@ class Version:
 
     def full_version(self) -> str:
         """Return full version info including hash and date."""
-        return (
-            f"{self} (hash: {self.hash[:8]}, "
-            f"date: {self.date.strftime('%Y-%m-%d')})"
-        )
+        return f"{self} (hash: {self.hash[:8]}, date: {self.date.strftime('%Y-%m-%d')})"
 
     def semver(self) -> tuple[int, int, int]:
         """Return semantic version as tuple (major, minor, patch)."""

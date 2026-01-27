@@ -19,8 +19,7 @@ class ThrottleEvent(BaseModel):
     reasons: list[str] = Field(
         ...,
         description=(
-            "List of throttle reasons "
-            "(e.g., 'thermal', 'power_limit', 'SW Power Cap')"
+            "List of throttle reasons (e.g., 'thermal', 'power_limit', 'SW Power Cap')"
         ),
     )
 
@@ -194,7 +193,7 @@ class GPUDeviceResult(BaseModel):
     metrics: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Test-specific metrics " "(e.g., matrix_size, memory_bandwidth_gbps, etc.)"
+            "Test-specific metrics (e.g., matrix_size, memory_bandwidth_gbps, etc.)"
         ),
     )
 

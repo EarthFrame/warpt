@@ -228,14 +228,14 @@ class NetworkPointToPointTest(StressTest):
                         sock.sendall(warmup_payload)
                         # Try to receive echo (ignore if server doesn't echo)
                         sock.recv(len(warmup_payload))
-                    except (socket.timeout, OSError):
+                    except (TimeoutError, OSError):
                         # Server might not echo during warmup, that's ok
                         break
 
                 sock.close()
                 self.logger.debug(f"Warmup complete for {target_ip}")
 
-            except (socket.timeout, ConnectionRefusedError, OSError) as e:
+            except (TimeoutError, ConnectionRefusedError, OSError) as e:
                 # If warmup fails, that's ok - real test will handle connection errors
                 self.logger.debug(f"Warmup to {target_ip} failed: {e}")
 
@@ -332,9 +332,9 @@ class NetworkPointToPointTest(StressTest):
                 finally:
                     sock.close()
 
-            except (socket.timeout, ConnectionRefusedError, OSError) as e:
+            except (TimeoutError, ConnectionRefusedError, OSError) as e:
                 failed_attempts += 1
-                self.logger.debug(f"Attempt {i+1} failed: {e}")
+                self.logger.debug(f"Attempt {i + 1} failed: {e}")
 
         if not latencies:
             # All attempts failed
@@ -413,7 +413,7 @@ class NetworkPointToPointTest(StressTest):
                     sock.sendall(chunk)
                     total_bytes_sent += len(chunk)
                     chunks_sent += 1
-                except (socket.timeout, BrokenPipeError, OSError):
+                except (TimeoutError, BrokenPipeError, OSError):
                     break
 
             elapsed = time.perf_counter() - start_time
@@ -438,7 +438,7 @@ class NetworkPointToPointTest(StressTest):
                 "chunks_sent": chunks_sent,
             }
 
-        except (socket.timeout, ConnectionRefusedError, OSError) as e:
+        except (TimeoutError, ConnectionRefusedError, OSError) as e:
             self.logger.warning(
                 f"Bandwidth test to {target_ip}:{self.port} failed: {e!s}"
             )
