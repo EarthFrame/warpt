@@ -334,7 +334,7 @@ class NetworkPointToPointTest(StressTest):
 
             except (TimeoutError, ConnectionRefusedError, OSError) as e:
                 failed_attempts += 1
-                self.logger.debug(f"Attempt {i+1} failed: {e}")
+                self.logger.debug(f"Attempt {i + 1} failed: {e}")
 
         if not latencies:
             # All attempts failed

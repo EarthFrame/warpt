@@ -25,8 +25,7 @@ def warpt():
     is_flag=True,
     default=False,
     help=(
-        "Export results to JSON file with default filename "
-        "(warpt_list_TIMESTAMP.json)"
+        "Export results to JSON file with default filename (warpt_list_TIMESTAMP.json)"
     ),
 )
 @click.option(

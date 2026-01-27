@@ -2,21 +2,21 @@
 
 Performance monitoring and system utilities.
 
-**Note:** This is an internal development build. Not for public release.
-
 ## Quick Start
 
 ### Installation
 
 ```bash
-# Clone and navigate to the project
-cd warpt
+pip install warpt
+```
 
-# Create and activate a virtual environment
+**For development:**
+
+```bash
+git clone https://github.com/EarthFrame/warpt.git
+cd warpt
 python3 -m venv venv
 source venv/bin/activate
-
-# Install the package in development mode
 pip install -e .
 ```
 
@@ -37,7 +37,7 @@ warpt --help
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.8+
 - pip and venv
 
 ### Initial Setup
@@ -224,4 +224,4 @@ git commit -m "Descriptive commit message"
 
 ## License
 
-Internal use only.
+MIT License - see [LICENSE](LICENSE) for details.

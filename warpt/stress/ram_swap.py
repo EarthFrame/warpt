@@ -267,7 +267,7 @@ class RAMSwapPressureTest(StressTest):
         self.logger.info(
             f"Allocating: {total_allocation_gb:.2f} GB total "
             f"({per_array_gb:.2f} GB x 2 arrays, "
-            f"{allocation_percent*100:.0f}%)"
+            f"{allocation_percent * 100:.0f}%)"
         )
 
         # Allocate arrays
