@@ -377,7 +377,7 @@ def check():
 @click.option(
     "--duration",
     "-d",
-    type=int,
+    type=click.IntRange(min=1),
     default=30,
     help="Duration in seconds per test (default: 30)",
 )
