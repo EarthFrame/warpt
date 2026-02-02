@@ -1,227 +1,108 @@
 # warpt
 
-Performance monitoring and system utilities.
+A unified command-line tool for hardware discovery, stress testing, and performance monitoring.
 
-## Quick Start
+warpt provides a vendor-agnostic interface for understanding and validating computational resources—answering questions like *"What hardware do I have?"*, *"Is it working correctly?"*, and *"How fast is it?"*
 
-### Installation
+## Installation
 
 ```bash
 pip install warpt
 ```
 
-**For development:**
+For stress testing capabilities:
 
 ```bash
-git clone https://github.com/EarthFrame/warpt.git
-cd warpt
-python3 -m venv venv
-source venv/bin/activate
-pip install -e .
+pip install warpt[stress]
 ```
 
-### Running warpt
+**Requirements:** Python 3.8+ (3.11+ recommended) | Linux, macOS, or Windows
+
+## Quick Start
 
 ```bash
-# Display CPU information
+# Discover your hardware
 warpt list
 
-# Show version
-warpt version
+# Run CPU stress tests
+warpt stress -c cpu
 
-# Get help
-warpt --help
+# Monitor system in real-time
+warpt monitor
+
+# Check power consumption (Linux/macOS)
+warpt power
 ```
 
-## Development Setup
+## Features
 
-### Prerequisites
+| Command | Description |
+|---------|-------------|
+| `warpt list` | Detect CPU, GPU, memory, storage, and installed ML frameworks |
+| `warpt stress` | Run stress tests across CPU, GPU, RAM, storage, and network |
+| `warpt monitor` | Real-time system monitoring with TUI dashboard |
+| `warpt power` | Power consumption monitoring and per-process attribution |
+| `warpt benchmark` | Performance benchmarking suite |
 
-- Python 3.8+
-- pip and venv
+## Documentation
 
-### Initial Setup
+- [Getting Started](https://docs.earthframe.com/getting_started) — Installation and first steps
+- [CLI Reference](https://docs.earthframe.com/cli_reference) — Complete command and option reference
+- [Support Matrix](https://docs.earthframe.com/support_matrix) — System requirements and platform compatibility
 
-```bash
-# 1. Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+## Platform Support
 
-# 2. Install development dependencies
-pip install -e ".[dev]"
+| Platform | Status |
+|----------|--------|
+| Linux | Full support |
+| macOS | Full support (power monitoring requires sudo) |
+| Windows | Limited support (see [Known Limitations](https://docs.earthframe.com/support_matrix#known-limitations)) |
 
-# 3. Install pre-commit hooks
-pre-commit install
+**GPU Support:** NVIDIA GPUs supported. AMD, Intel, and Apple Silicon GPU support coming soon.
 
-# 4. (Optional) Run pre-commit on all files
-pre-commit run --all-files
-```
-
-### Pre-commit Hooks
-
-We use [pre-commit](https://pre-commit.com) for automated code quality checks. Hooks run automatically on `git commit`.
-
-**What gets checked:**
-
-- **ruff**: Fast Python linting (PEP 8, naming, imports, etc.)
-- **ruff format**: Code formatting
-- **YAML syntax**: Valid YAML files
-- **Large files**: Prevents accidentally committing large files
-- **Merge conflicts**: Detects unresolved merge conflicts
-- **Trailing whitespace**: Removes trailing whitespace
-
-**Manual checks:**
-
-```bash
-# Run pre-commit on staged files
-pre-commit run
-
-# Run pre-commit on all files
-pre-commit run --all-files
-
-# Run specific hook
-pre-commit run ruff --all-files
-pre-commit run ruff-format --all-files
-
-# Skip pre-commit for a commit (not recommended)
-git commit --no-verify
-```
-
-### Linting & Formatting
-
-**Manual linting:**
-
-```bash
-# Check code with ruff
-ruff check warpt/
-
-# Fix issues automatically
-ruff check warpt/ --fix
-
-# Format code
-ruff format warpt/
-```
-
-**Configuration:**
-
-Linting rules are configured in `pyproject.toml`:
-
-```toml
-[tool.ruff]
-line-length = 88
-target-version = "py311"
-
-[tool.ruff.lint]
-select = [
-    "E",      # Errors
-    "W",      # Warnings
-    "F",      # Pyflakes
-    "I",      # Import sorting
-    "N",      # Naming
-    "D",      # Docstrings (Google style)
-    # ... more rules
-]
-```
-
-### Running Tests
-
-```bash
-# Run pytest
-pytest
-
-# Run with verbose output
-pytest -v
-
-# Run specific test file
-pytest tests/test_example.py
-```
-
-## Project Structure
+## Example Output
 
 ```
-warpt/
-├── warpt/                      # Main package
-│   ├── __init__.py             # Package exports
-│   ├── cli.py                  # CLI entry point
-│   ├── backends/               # Hardware backends
-│   │   └── system.py           # CPU information
-│   ├── commands/               # CLI command handlers
-│   │   ├── list_cmd.py         # List CPU info
-│   │   └── version_cmd.py      # Display version
-│   ├── models/                 # Data models
-│   ├── utils/                  # Utilities
-│   └── version/                # Version info
-├── tests/                      # Test suite
-├── docs/                       # Documentation
-├── pyproject.toml              # Project configuration
-├── .pre-commit-config.yaml     # Pre-commit hooks config
-└── README.md                   # This file
+$ warpt list
+
+CPU Information:
+  Make:               Intel
+  Model:              Xeon W-2295
+  Architecture:       x86_64
+
+Topology:
+  Total Sockets:      1
+  Total Phys Cores:   18
+  Total Logic Cores:  36
+
+Memory Information:
+  Total:              128.0 GB
+  Type:               DDR4
+
+GPU Information:
+  GPU 0: NVIDIA RTX 4090
+    Memory: 24576 MB
+    Driver: 545.23.08
 ```
 
-## Key Modules
+## Alpha Release
 
-### CPU Backend (`warpt/backends/system.py`)
+This is **v0.1.0-alpha**. Some features are still in development:
 
-Comprehensive CPU information with Pydantic models:
+- AMD GPU support (ROCm) — in progress
+- Intel GPU support (oneAPI) — in progress
+- Apple Neural Engine — in progress
+- Additional benchmarks — expanding
 
-```python
-from warpt.backends.system import CPU
+See the [Support Matrix](https://docs.earthframe.com/support_matrix) for full details.
 
-cpu = CPU()
-info = cpu.get_cpu_info()
+## Feedback
 
-print(f"Processor: {info.make} {info.model}")
-print(f"Cores: {info.total_physical_cores}")
-print(f"Threads: {info.total_logical_cores}")
-print(f"Base Freq: {info.base_frequency} MHz")
-print(f"Single-Core Boost: {info.boost_frequency_single_core} MHz")
-```
+We'd love to hear from you:
 
-See [docs/CPU.md](docs/CPU.md) for detailed documentation.
-
-### Version Info (`warpt/version/warpt_version.py`)
-
-Access version information easily:
-
-```python
-import warpt
-
-print(warpt.__version__)  # "0.1.0"
-print(warpt.WARPT_VERSION)  # Full version object
-print(warpt.WARPT_VERSION.full_version())  # With hash and date
-```
-
-See [docs/VERSION.md](docs/VERSION.md) for detailed documentation.
-
-## Contributing
-
-### Code Quality Guidelines
-
-- Follow [PEP 8](https://pep8.org/) style guide (enforced by ruff)
-- Use type hints for all functions
-- Write docstrings in Google style
-- Keep functions focused and well-named
-
-### Before Committing
-
-```bash
-# 1. Make your changes
-# 2. Run pre-commit checks
-pre-commit run --all-files
-
-# 3. Fix any issues (most are auto-fixable)
-# 4. Commit when all checks pass
-git add .
-git commit -m "Descriptive commit message"
-```
-
-## Resources
-
-- [Pre-commit Documentation](https://pre-commit.com)
-- [Ruff Documentation](https://docs.astral.sh/ruff/)
-- [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
-- [PEP 8](https://pep8.org/)
+- **Report bugs:** [GitHub Issues](https://github.com/EarthFrame/warpt/issues)
+- **Feature requests:** [GitHub Issues](https://github.com/EarthFrame/warpt/issues)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
