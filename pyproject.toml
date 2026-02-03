@@ -1,0 +1,160 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warpt"
+version = "0.1.0"
+description = "Performance monitoring and system utilities"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+keywords = ["performance", "monitoring", "gpu", "cpu", "system", "benchmark", "stress-test"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Hardware",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "click>=8.0.0",
+    "psutil>=5.9.0",
+    "pydantic>=2.0.0",
+    "nvidia-ml-py>=12.0.0",
+    "backports.strenum>=1.3.1; python_version<'3.11'",
+]
+
+[project.urls]
+Repository = "https://github.com/EarthFrame/warpt"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
+    "mypy>=1.0.0",
+    "types-psutil>=5.9.0",
+    "types-PyYAML",
+]
+
+stress = [
+    "torch>=2.0.0",  # TODO: Make optional per vendor (nvidia/amd/intel) when multi-vendor support added
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+warpt = "warpt.cli:warpt"
+
+[tool.setuptools]
+packages = [
+    "warpt",
+    "warpt.backends",
+    "warpt.backends.hardware",
+    "warpt.backends.hardware.storage",
+    "warpt.backends.power",
+    "warpt.backends.software",
+    "warpt.backends.software.frameworks",
+    "warpt.benchmarks",
+    "warpt.commands",
+    "warpt.models",
+    "warpt.stress",
+    "warpt.stress.monitoring",
+    "warpt.utils",
+    "warpt.version",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "*.egg-info",
+    "dist",
+    "build",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort - import sorting
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "ARG",    # flake8-unused-arguments
+    "RUF",    # ruff-specific rules
+    "D",      # pydocstyle - docstring conventions
+]
+ignore = [
+    "D100",   # Missing module docstring (sometimes not needed)
+    "D104",   # Missing docstring in public package
+    "D212",   # Multi-line docstring summary should start at the first line (NumPy style uses second line)
+    "D406",   # Section name should end with a newline (our NumPy style variation)
+    "D407",   # Missing dashed underline after section (our NumPy style variation)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"  # Use NumPy-style docstrings
+
+[tool.ruff.lint.isort]
+known-first-party = ["warpt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | venv
+)/
+'''
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+ignore_missing_imports = true

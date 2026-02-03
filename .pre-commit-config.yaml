@@ -1,0 +1,47 @@
+# Pre-commit hooks configuration for warpt
+# See https://pre-commit.com for more information
+
+repos:
+  # Black: Python code formatter
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        types: [python]
+
+  # Ruff: Fast Python linting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.8
+    hooks:
+      - id: ruff
+        types: [python]
+
+  # Mypy: Static type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
+    hooks:
+      - id: mypy
+        additional_dependencies: ['types-psutil', 'pydantic', 'types-PyYAML']
+        args: [warpt/]
+        types: [python]
+        pass_filenames: false
+
+  # Python syntax checking
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: Makefile
+
+  # Markdown formatting with mdformat
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        args: ["--check"]
+        types: [markdown]
