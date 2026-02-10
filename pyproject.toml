@@ -4,11 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "warpt"
-version = "0.1.0"
+version = "0.1.2"
 description = "Performance monitoring and system utilities"
 readme = "README.md"
 requires-python = ">=3.8"
 license = "MIT"
+authors = [
+    {name = "Yousuf W. Rajput", email = "yousuf@earthframe.com"},
+    {name = "Eric T. Dawson", email = "eric@earthframe.com"},
+]
 keywords = ["performance", "monitoring", "gpu", "cpu", "system", "benchmark", "stress-test"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -35,6 +39,8 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://earthframe.com"
+Documentation = "https://docs.earthframe.com"
 Repository = "https://github.com/EarthFrame/warpt"
 
 [project.optional-dependencies]

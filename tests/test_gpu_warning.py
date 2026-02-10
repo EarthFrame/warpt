@@ -1,6 +1,5 @@
 """Tests for GPU mismatch warnings in list command."""
 
-import os
 from unittest.mock import MagicMock, patch
 
 from warpt.backends.pci import PCIDevice
@@ -93,18 +92,14 @@ def test_run_list_gpu_warning(
         )
     ]
 
-    # Run the command
-    run_list(export_filename="test_output.json")
+    # Run the command (no export_filename — no JSON file created by default)
+    run_list()
 
     captured = capsys.readouterr()
 
     # Check for the warning
     assert "WARNING: NVIDIA GeForce RTX 4090 detected on PCI bus" in captured.out
     assert "but not accessible via drivers" in captured.out
-
-    # Clean up the json file if it was created
-    if os.path.exists("test_output.json"):
-        os.remove("test_output.json")
 
 
 @patch("warpt.commands.list_cmd.get_gpu_backend")
@@ -200,12 +195,10 @@ def test_run_list_no_gpu_warning_when_matched(
         )
     ]
 
-    run_list(export_filename="test_output_matched.json")
+    # Run the command (no export_filename — no JSON file created by default)
+    run_list()
 
     captured = capsys.readouterr()
 
     # Should NOT have the warning
     assert "WARNING" not in captured.out
-
-    if os.path.exists("test_output_matched.json"):
-        os.remove("test_output_matched.json")

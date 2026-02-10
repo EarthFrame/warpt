@@ -45,3 +45,26 @@ def test_get_gpu_backend_none_available():
         with pytest.raises(RuntimeError) as excinfo:
             get_gpu_backend()
         assert "No GPUs detected on this system" in str(excinfo.value)
+
+
+def test_nvidia_fail_falls_through_to_amd():
+    """Test that NVIDIA import failure falls through to AMD backend."""
+    # Make NVIDIA import raise an exception
+    mock_nvidia = MagicMock()
+    mock_nvidia.NvidiaBackend.side_effect = RuntimeError("NVML not found")
+
+    # Make AMD available
+    mock_amd = MagicMock()
+    mock_amd_instance = MagicMock()
+    mock_amd_instance.is_available.return_value = True
+    mock_amd.AMDBackend.return_value = mock_amd_instance
+
+    modules = {
+        "warpt.backends.nvidia": mock_nvidia,
+        "warpt.backends.amd": mock_amd,
+    }
+
+    with patch.dict(sys.modules, modules):
+        backend = get_gpu_backend()
+        assert backend == mock_amd_instance
+        mock_amd_instance.is_available.assert_called_once()
