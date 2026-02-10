@@ -27,11 +27,7 @@ def get_gpu_backend() -> GPUBackend:
         if backend.is_available():
             return backend
     except Exception:
-        # pass
-        raise RuntimeError(
-            "Failed to detect NVIDIA GPUs on this system. "
-            "AMD/Intel GPUs not currently supported."
-        ) from None
+        pass
 
     # TODO: Add support for AMD and Intel
     try:

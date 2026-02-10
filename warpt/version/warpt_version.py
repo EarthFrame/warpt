@@ -69,7 +69,7 @@ def _compute_package_hash() -> str:
 WARPT_VERSION = Version(
     major=0,
     minor=1,
-    patch=0,
+    patch=2,
     hash=_compute_package_hash(),
-    date=datetime(2025, 10, 27),
+    date=datetime(2026, 2, 10),
 )
