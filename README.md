@@ -1,10 +1,17 @@
-# warpt
+# warpt: EarthFrame's Workload and Resource Performance and Transparency Toolkit
 
-A unified command-line tool for hardware discovery, stress testing, and performance monitoring.
+`warpt` is a unified command-line tool for hardware discovery, stress testing, and performance monitoring.
 
-warpt provides a vendor-agnostic interface for understanding and validating computational resources—answering questions like *"What hardware do I have?"*, *"Is it working correctly?"*, and *"How fast is it?"*
+warpt provides a structured, vendor-agnostic interface for understanding and validating computational resources—answering questions such as:
+
+- *"What hardware do I have?"*,
+- *"How much power is it actively using?"*,
+- *"Is it working correctly?"*, and
+- *"How fast is it?"*
 
 ## Installation
+
+**Note:** We recommend using `warpt` in a virtualenv.
 
 ```bash
 pip install warpt
@@ -105,4 +112,4 @@ We'd love to hear from you:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+`warpt` is licensed under the MIT License — see [LICENSE](LICENSE) for details.
