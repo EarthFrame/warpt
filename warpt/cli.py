@@ -342,18 +342,6 @@ def benchmark(
 
 
 @warpt.command()
-def system_info():
-    """Display detailed system information."""
-    print("System info!")
-
-
-@warpt.command()
-def check():
-    """Run system health checks."""
-    print("Health check!")
-
-
-@warpt.command()
 @click.option(
     "--list",
     "-l",
