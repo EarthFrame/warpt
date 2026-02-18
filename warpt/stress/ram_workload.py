@@ -200,7 +200,7 @@ class RAMWorkloadSimulationTest(StressTest):
             f"Simulating {self.workload_mode} workload at different RAM levels..."
         )
         self.logger.info(f"Operations per level: {self.operations_per_level:,}")
-        percentages = ", ".join(f"{p*100:.0f}%" for p in self.test_ram_percentages)
+        percentages = ", ".join(f"{p * 100:.0f}%" for p in self.test_ram_percentages)
         self.logger.info(f"Testing at: {percentages}")
 
         results = []
@@ -211,7 +211,7 @@ class RAMWorkloadSimulationTest(StressTest):
             results.append(result)
 
             self.logger.info(
-                f"  {pct*100:>3.0f}% RAM: {result['ops_per_sec']:>8.0f} ops/sec, "
+                f"  {pct * 100:>3.0f}% RAM: {result['ops_per_sec']:>8.0f} ops/sec, "
                 f"avg latency: {result['avg_latency_us']:.2f} μs"
             )
 
@@ -230,7 +230,7 @@ class RAMWorkloadSimulationTest(StressTest):
         if recommended_pct:
             recommended_gb = self._available_ram_gb * recommended_pct
             self.logger.info(
-                f"\nRecommendation: Maintain at least {recommended_pct*100:.0f}% "
+                f"\nRecommendation: Maintain at least {recommended_pct * 100:.0f}% "
                 f"RAM ({recommended_gb:.1f} GB) for acceptable performance"
             )
         else:

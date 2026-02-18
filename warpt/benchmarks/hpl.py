@@ -159,7 +159,9 @@ class HPLBenchmark(Benchmark):
             for i in range(n):
                 self.A[i, i] += n
 
-            self.logger.info(f"Allocated {n}x{n} matrix ({n*n*8/(1024**3):.2f} GB)")
+            self.logger.info(
+                f"Allocated {n}x{n} matrix ({n * n * 8 / (1024**3):.2f} GB)"
+            )
         elif self.execution_mode == "docker":
             # Generate HPL.dat in the current directory or a temp directory
             self.generate_hpl_dat("HPL.dat")

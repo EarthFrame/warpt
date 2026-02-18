@@ -60,38 +60,41 @@ def run_power(
         monitor.cleanup()
         return
 
-    # Continuous mode
+    # Continuous mode — wrap in CarbonTracker for energy accounting
+    from warpt.carbon.tracker import CarbonTracker
+
     snapshots: list[PowerSnapshot] = []
     start_time = time.time()
 
-    try:
-        print("Power monitoring started. Press Ctrl+C to stop.")
-        print("-" * 60)
+    with CarbonTracker(label="warpt power"):
+        try:
+            print("Power monitoring started. Press Ctrl+C to stop.")
+            print("-" * 60)
 
-        while True:
-            snapshot = monitor.get_snapshot()
-            snapshots.append(snapshot)
+            while True:
+                snapshot = monitor.get_snapshot()
+                snapshots.append(snapshot)
 
-            if output_format == "json":
-                print(json.dumps(snapshot.to_dict(), indent=2))
-            else:
-                _display_snapshot_compact(snapshot, show_processes, top_n_processes)
+                if output_format == "json":
+                    print(json.dumps(snapshot.to_dict(), indent=2))
+                else:
+                    _display_snapshot_compact(snapshot, show_processes, top_n_processes)
 
-            # Check duration limit
-            if duration_seconds and (time.time() - start_time) >= duration_seconds:
-                break
+                # Check duration limit
+                if duration_seconds and (time.time() - start_time) >= duration_seconds:
+                    break
 
-            time.sleep(interval_seconds)
+                time.sleep(interval_seconds)
 
-    except KeyboardInterrupt:
-        print("\nStopping power monitor...")
+        except KeyboardInterrupt:
+            print("\nStopping power monitor...")
 
-    finally:
-        monitor.cleanup()
+        finally:
+            monitor.cleanup()
 
-        if output_file and snapshots:
-            _write_json_output_list(snapshots, output_file)
-            print(f"\nResults written to: {output_file}")
+            if output_file and snapshots:
+                _write_json_output_list(snapshots, output_file)
+                print(f"\nResults written to: {output_file}")
 
 
 def _display_snapshot(

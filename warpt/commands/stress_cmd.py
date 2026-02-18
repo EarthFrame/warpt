@@ -464,7 +464,14 @@ def run_stress(
         test_config = configs.get(test_cls.__name__, {})
         runner.add_test(test_cls, test_config)
 
-    results = runner.run(duration=cfg_duration, skip_unavailable=True)
+    try:
+        from warpt.carbon.tracker import CarbonTracker
+
+        with CarbonTracker(label="warpt stress"):
+            results = runner.run(duration=cfg_duration, skip_unavailable=True)
+    except KeyboardInterrupt:
+        click.echo("\n\nInterrupted.")
+        sys.exit(130)
 
     # Emit results to multiple outputs
     if outputs:
