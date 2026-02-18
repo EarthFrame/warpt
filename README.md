@@ -42,6 +42,7 @@ warpt power
 | `warpt stress` | Run stress tests across CPU, GPU, RAM, storage, and network |
 | `warpt monitor` | Real-time system monitoring with TUI dashboard |
 | `warpt power` | Power consumption monitoring and per-process attribution |
+| `warpt carbon` | Track energy consumption, CO2 emissions, and estimated cost |
 | `warpt benchmark` | Performance benchmarking suite |
 
 ## Documentation
@@ -59,6 +60,30 @@ warpt power
 | Windows | Limited support (see [Known Limitations](https://docs.earthframe.com/support_matrix#known-limitations)) |
 
 **GPU Support:** NVIDIA GPUs supported. AMD, Intel, and Apple Silicon GPU support coming soon.
+
+## Carbon Tracking
+
+warpt automatically tracks energy usage and CO2 emissions during stress tests and power monitoring. You can also track any workload manually:
+
+```bash
+# Automatic — built into stress tests
+warpt stress -c cpu -d 30
+# [carbon] 30.2s | 23.8W avg | 199.7 mWh | 0.08g CO2 | $0.0000 | less than breathing for a minute
+
+# Manual — track any workload
+warpt carbon start
+# ... run your workload ...
+warpt carbon stop
+
+# View history and totals
+warpt carbon history
+warpt carbon summary
+
+# Check available grid regions and carbon intensities
+warpt carbon regions
+```
+
+Carbon calculations use regional grid intensity data to estimate CO2 emissions from energy consumption. Configure your region with `--region` (defaults to US).
 
 ## Example Output
 
@@ -87,8 +112,9 @@ GPU Information:
 
 ## Alpha Release
 
-This is **v0.1.0-alpha**. Some features are still in development:
+This is an **alpha release**. Some features are still in development:
 
+- Carbon tracking — new in v0.2.0
 - AMD GPU support (ROCm) — in progress
 - Intel GPU support (oneAPI) — in progress
 - Apple Neural Engine — in progress

@@ -325,8 +325,7 @@ class StorageSequentialWriteTest(StressTest):
             steady_state_bandwidth_mbps = 0
 
         self.logger.info(
-            f"Wrote {total_mb:.2f} MB in {elapsed:.2f}s "
-            f"({iteration_count} iterations)"
+            f"Wrote {total_mb:.2f} MB in {elapsed:.2f}s ({iteration_count} iterations)"
         )
         self.logger.info(f"Overall bandwidth: {overall_bandwidth_mbps:.2f} MB/s")
         self.logger.info(

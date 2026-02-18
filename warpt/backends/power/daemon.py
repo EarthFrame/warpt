@@ -94,7 +94,7 @@ class PowerMonitorDaemon:
 
         if not self._sources:
             self._logger.warning(
-                "No power sources discovered. " "Power monitoring will be unavailable."
+                "No power sources discovered. Power monitoring will be unavailable."
             )
 
     def start(self) -> None:

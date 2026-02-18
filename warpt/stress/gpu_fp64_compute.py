@@ -89,7 +89,7 @@ class GPUFP64ComputeTest(StressTest):
         if self.device_id < 0 or self.device_id >= torch.cuda.device_count():
             raise ValueError(
                 f"Invalid device_id {self.device_id}. "
-                f"Available devices: 0-{torch.cuda.device_count()-1}"
+                f"Available devices: 0-{torch.cuda.device_count() - 1}"
             )
 
         if self.matrix_size < 512:
@@ -334,12 +334,12 @@ class GPUFP64ComputeTest(StressTest):
         self.logger.info(f"Average FP64 performance: {avg_tflops:.3f} TFLOPS")
         self.logger.info(f"Peak FP64 performance: {peak_tflops:.3f} TFLOPS")
         self.logger.info(
-            f"Iteration time: avg={avg_iter_time*1000:.2f}ms, "
-            f"min={min_iter_time*1000:.2f}ms, max={max_iter_time*1000:.2f}ms"
+            f"Iteration time: avg={avg_iter_time * 1000:.2f}ms, "
+            f"min={min_iter_time * 1000:.2f}ms, max={max_iter_time * 1000:.2f}ms"
         )
         self.logger.info(
-            f"Percentiles: p50={p50_time*1000:.2f}ms, "
-            f"p95={p95_time*1000:.2f}ms, p99={p99_time*1000:.2f}ms"
+            f"Percentiles: p50={p50_time * 1000:.2f}ms, "
+            f"p95={p95_time * 1000:.2f}ms, p99={p99_time * 1000:.2f}ms"
         )
 
         return {

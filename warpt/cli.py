@@ -448,8 +448,7 @@ def check():
     type=float,
     default=None,
     help=(
-        "Read ratio for StorageMixedTest (0.0-1.0). "
-        "E.g., 0.7 = 70%% reads, 30%% writes"
+        "Read ratio for StorageMixedTest (0.0-1.0). E.g., 0.7 = 70%% reads, 30%% writes"
     ),
 )
 def stress(
@@ -503,6 +502,52 @@ def stress(
         network_mode=network_mode,
         read_ratio=read_ratio,
     )
+
+
+@warpt.command()
+@click.argument(
+    "subcommand",
+    type=click.Choice(["start", "stop", "status", "history", "summary", "regions"]),
+    required=False,
+)
+@click.option("--label", "-l", default=None, help="Session label")
+@click.option("--region", "-r", default="US", help="Grid region for CO2 calculation")
+@click.option(
+    "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
+)
+@click.option(
+    "--limit", "-n", default=20, type=int, help="Max sessions to show in history"
+)
+@click.option(
+    "--days", "-d", default=30, type=int, help="Time window in days for summary"
+)
+@click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
+def carbon(subcommand, label, region, interval, limit, days, output_json):
+    r"""Track energy consumption, CO2 emissions, and electricity cost.
+
+    \b
+    Examples:
+      warpt carbon                     # Show daemon status
+      warpt carbon start               # Start background tracking
+      warpt carbon stop                # Stop and show results
+      warpt carbon history             # Show recent sessions
+      warpt carbon summary --days 7    # Aggregate last 7 days
+      warpt carbon regions             # List grid regions
+
+    \b
+    Automatic mode:
+      Energy is tracked automatically when running 'warpt stress' or
+      'warpt power -c'. A one-line summary prints at the end.
+
+    \b
+    Manual mode:
+      warpt carbon start --label "my workload" --region EU-DE
+      # ... run your workload ...
+      warpt carbon stop
+    """
+    from warpt.commands.carbon_cmd import run_carbon
+
+    run_carbon(subcommand, label, region, interval, limit, days, output_json)
 
 
 if __name__ == "__main__":

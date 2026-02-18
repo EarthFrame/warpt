@@ -58,6 +58,7 @@ class MacOSPowerBackend(PowerBackend):
         self._running = False
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._process: subprocess.Popen | None = None
 
     def is_available(self) -> bool:
         """Check if powermetrics is available.
@@ -123,6 +124,10 @@ class MacOSPowerBackend(PowerBackend):
     def initialize(self) -> bool:
         """Start background powermetrics collection.
 
+        Launches a single persistent powermetrics process that streams
+        plist samples. This avoids repeated fork() calls which deadlock
+        on macOS when Accelerate/GCD BLAS threads are active.
+
         Returns:
             True if collection started successfully.
         """
@@ -135,6 +140,24 @@ class MacOSPowerBackend(PowerBackend):
 
         self._running = True
         self._stop_event.clear()
+
+        # Start persistent powermetrics process (single fork, before BLAS)
+        self._process = subprocess.Popen(
+            [
+                "sudo",
+                "-n",
+                "powermetrics",
+                "--samplers",
+                "cpu_power",
+                "-f",
+                "plist",
+                "-i",
+                str(self._sample_interval_ms),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+
         self._thread = threading.Thread(target=self._collection_loop, daemon=True)
         self._thread.start()
 
@@ -143,14 +166,28 @@ class MacOSPowerBackend(PowerBackend):
         return True
 
     def _collection_loop(self) -> None:
-        """Background loop to collect power metrics."""
+        """Read streaming plist samples from the persistent powermetrics process."""
+        buf = b""
         while not self._stop_event.is_set():
-            readings = self._collect_single_sample()
-            with self._lock:
-                self._latest_readings = readings
-
-            # Wait for next sample, but check stop event periodically
-            self._stop_event.wait(self._sample_interval_ms / 1000.0)
+            if self._process is None or self._process.stdout is None:
+                break
+            if self._process.poll() is not None:
+                break
+            chunk = self._process.stdout.read(4096)
+            if not chunk:
+                break
+            buf += chunk
+            # powermetrics separates plist samples with \x00
+            while b"\x00" in buf:
+                raw, buf = buf.split(b"\x00", 1)
+                if raw.strip():
+                    try:
+                        data = plistlib.loads(raw)
+                        readings = self._parse_plist_data(data)
+                        with self._lock:
+                            self._latest_readings = readings
+                    except Exception:
+                        pass
 
     def _collect_single_sample(self) -> list[DomainPower]:
         """Collect a single powermetrics sample.
@@ -389,8 +426,15 @@ class MacOSPowerBackend(PowerBackend):
         """Stop background collection and clean up."""
         self._running = False
         self._stop_event.set()
+        if self._process:
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+            self._process = None
         if self._thread:
-            self._thread.join(timeout=1.0)
+            self._thread.join(timeout=2.0)
         self._thread = None
         self._latest_readings = []
 

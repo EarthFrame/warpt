@@ -1,4 +1,5 @@
 """Test framework detection functionality."""
+
 import builtins
 import sys
 from unittest.mock import MagicMock

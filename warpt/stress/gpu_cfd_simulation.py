@@ -90,7 +90,7 @@ class GPUCFDSimulationTest(StressTest):
         if self.device_id < 0 or self.device_id >= torch.cuda.device_count():
             raise ValueError(
                 f"Invalid device_id {self.device_id}. "
-                f"Available devices: 0-{torch.cuda.device_count()-1}"
+                f"Available devices: 0-{torch.cuda.device_count() - 1}"
             )
 
         if self.mesh_size < 10000:
@@ -277,7 +277,7 @@ class GPUCFDSimulationTest(StressTest):
         gb_allocated = bytes_allocated / (1024**3)
 
         self.logger.info(
-            f"Allocated {gb_allocated:.2f} GB in {alloc_time*1000:.1f}ms "
+            f"Allocated {gb_allocated:.2f} GB in {alloc_time * 1000:.1f}ms "
             f"({self.mesh_size:,} cells)"
         )
 
