@@ -22,6 +22,13 @@ from warpt.models.power_models import (
     ProcessPower,
     RAPLDomain,
 )
+from warpt.models.profile_models import (
+    DeviceFingerprint,
+    DeviceProfile,
+    HardwareCategory,
+    Observation,
+    ObservationEnvironment,
+)
 from warpt.models.stress_models import (
     CPUSummary,
     CPUSystemResult,
@@ -38,6 +45,8 @@ from warpt.models.stress_models import (
 
 __all__ = [
     "CPUInfo",
+    "DeviceFingerprint",
+    "DeviceProfile",
     "CPUSummary",
     "CPUSystemResult",
     "CPUTestResults",
@@ -51,9 +60,12 @@ __all__ = [
     "GPUSummary",
     "GPUSystemResult",
     "GPUTestResults",
+    "HardwareCategory",
     "HardwareInfo",
     "ListOutput",
     "MemoryInfo",
+    "Observation",
+    "ObservationEnvironment",
     "PowerDomain",
     "PowerSnapshot",
     "PowerSource",
