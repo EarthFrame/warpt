@@ -7,6 +7,7 @@ which is critical for scientific computing workloads.
 import time
 from typing import Any
 
+from warpt.backends.base import GPUBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
 
@@ -32,6 +33,7 @@ class GPUFP64ComputeTest(StressTest):
         matrix_size: int = 8192,
         device_id: int = 0,
         burnin_seconds: int = DEFAULT_BURNIN_SECONDS,
+        backend: GPUBackend | None = None,
     ):
         """Initialize GPU FP64 compute test.
 
@@ -40,10 +42,13 @@ class GPUFP64ComputeTest(StressTest):
                 Default 8192 (8K x 8K = ~512MB per matrix in FP64).
             device_id: GPU device ID to test. Default 0.
             burnin_seconds: Warmup duration before measurement.
+            backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
+                If None, defaults to NVIDIA/CUDA.
         """
         self.matrix_size = matrix_size
         self.device_id = device_id
         self.burnin_seconds = burnin_seconds
+        self.backend = backend
         self._device = None
         self._gpu_name = None
 
@@ -122,7 +127,12 @@ class GPUFP64ComputeTest(StressTest):
         """Initialize GPU and get device info."""
         import torch
 
-        self._device = torch.device(f"cuda:{self.device_id}")
+        if self.backend:
+            self._device_str = self.backend.get_pytorch_device_string(self.device_id)
+        else:
+            self._device_str = f"cuda:{self.device_id}"
+
+        self._device = torch.device(self._device_str)
         self._gpu_name = torch.cuda.get_device_name(self.device_id)
 
         # Get GPU properties

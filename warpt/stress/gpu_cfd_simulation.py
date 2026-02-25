@@ -7,6 +7,7 @@ to measure realistic performance for fluid simulation applications.
 import time
 from typing import Any
 
+from warpt.backends.base import GPUBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
 
@@ -30,6 +31,7 @@ class GPUCFDSimulationTest(StressTest):
         device_id: int = 0,
         burnin_seconds: int = DEFAULT_BURNIN_SECONDS,
         solver_iterations: int = 100,
+        backend: GPUBackend | None = None,
     ):
         """Initialize GPU CFD simulation test.
 
@@ -40,11 +42,14 @@ class GPUCFDSimulationTest(StressTest):
             burnin_seconds: Warmup duration before measurement.
             solver_iterations: Number of solver iterations per solve.
                 Default 100 (typical for pressure solver).
+            backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
+                If None, defaults to NVIDIA/CUDA.
         """
         self.mesh_size = mesh_size
         self.device_id = device_id
         self.burnin_seconds = burnin_seconds
         self.solver_iterations = solver_iterations
+        self.backend = backend
         self._device = None
         self._gpu_name = None
 
@@ -131,7 +136,12 @@ class GPUCFDSimulationTest(StressTest):
         """Initialize GPU and get device info."""
         import torch
 
-        self._device = torch.device(f"cuda:{self.device_id}")
+        if self.backend:
+            self._device_str = self.backend.get_pytorch_device_string(self.device_id)
+        else:
+            self._device_str = f"cuda:{self.device_id}"
+
+        self._device = torch.device(self._device_str)
         self._gpu_name = torch.cuda.get_device_name(self.device_id)
 
         # Get GPU properties

@@ -75,6 +75,7 @@ packages = [
     "warpt.benchmarks",
     "warpt.commands",
     "warpt.models",
+    "warpt.profiles",
     "warpt.stress",
     "warpt.stress.monitoring",
     "warpt.utils",
