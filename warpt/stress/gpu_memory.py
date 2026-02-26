@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import torch
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import GPU_MEMORY_TEST, MIN_MEMORY_TEST_DURATION
 from warpt.models.stress_models import GPUMemoryBandwidthResult
 from warpt.stress.base import StressTest, TestCategory
@@ -25,7 +25,7 @@ class GPUMemoryBandwidthTest(StressTest):
         self,
         device_id: int,
         burnin_seconds: int = 5,
-        backend: GPUBackend | None = None,
+        backend: AcceleratorBackend | None = None,
         data_size_gb: float = 1.0,
         test_types: list[str] | None = None,
         use_pinned_memory: bool = True,

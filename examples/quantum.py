@@ -5,11 +5,11 @@ This backend is a placeholder for future quantum computing accelerators.
 Currently raises NotImplementedError for all methods.
 """
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.list_models import GPUInfo
 
 
-class QuantumBackend(GPUBackend):
+class QuantumBackend(AcceleratorBackend):
     """Backend for quantum computing accelerators."""
 
     def __init__(self):

@@ -6,7 +6,7 @@ from warpt.backends.pci import PCIDevice
 from warpt.commands.list_cmd import run_list
 
 
-@patch("warpt.commands.list_cmd.get_gpu_backend")
+@patch("warpt.commands.list_cmd.get_accelerator_backend")
 @patch("warpt.commands.list_cmd.PCIBackend")
 @patch("warpt.commands.list_cmd.CPU")
 @patch("warpt.commands.list_cmd.RAM")
@@ -102,7 +102,7 @@ def test_run_list_gpu_warning(
     assert "but not accessible via drivers" in captured.out
 
 
-@patch("warpt.commands.list_cmd.get_gpu_backend")
+@patch("warpt.commands.list_cmd.get_accelerator_backend")
 @patch("warpt.commands.list_cmd.PCIBackend")
 @patch("warpt.commands.list_cmd.CPU")
 @patch("warpt.commands.list_cmd.RAM")

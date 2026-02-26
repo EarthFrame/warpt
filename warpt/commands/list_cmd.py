@@ -5,7 +5,7 @@ import string
 from datetime import datetime
 from pathlib import Path
 
-from warpt.backends.factory import get_gpu_backend
+from warpt.backends.factory import get_accelerator_backend
 from warpt.backends.hardware.storage.base import (
     BusType,
     StorageDeviceInfo,
@@ -201,7 +201,7 @@ def run_list(export_format=None, export_filename=None) -> None:
     backend = None
 
     try:
-        backend = get_gpu_backend()
+        backend = get_accelerator_backend()
         gpu_list = backend.list_devices()
 
         # backend.list_devices() returns empty list when no GPUs are present

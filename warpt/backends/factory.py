@@ -6,19 +6,19 @@ returns the appropriate backend implementation.
 Priority order: NVIDIA → AMD → Intel
 """
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 
 
-def get_gpu_backend() -> GPUBackend:
+def get_accelerator_backend() -> AcceleratorBackend:
     """Auto-detect GPU vendor and return appropriate backend.
 
     Returns:
-        GPUBackend: The appropriate backend for detected GPU vendor
+        AcceleratorBackend: The appropriate backend for detected GPU vendor
 
     Raises:
         RuntimeError: If no GPUs are detected on the system
     """
-    backend: GPUBackend
+    backend: AcceleratorBackend
 
     try:
         from warpt.backends.nvidia import NvidiaBackend

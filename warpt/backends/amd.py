@@ -6,11 +6,11 @@ when implemented.
 Currently raises NotImplementedError for all methods.
 """
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.list_models import GPUInfo
 
 
-class AMDBackend(GPUBackend):
+class AMDBackend(AcceleratorBackend):
     """Backend for AMD GPU information (placeholder - not yet implemented)."""
 
     def __init__(self):
