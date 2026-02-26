@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import MIXED_PRECISION_TEST, Precision
 from warpt.models.stress_models import MixedPrecisionResults, PrecisionResult
 from warpt.stress.base import StressTest, TestCategory
@@ -21,7 +21,7 @@ class GPUPrecisionTest(StressTest):
         self,
         device_id: int = 0,
         burnin_seconds: int = 0,
-        backend: GPUBackend | None = None,
+        backend: AcceleratorBackend | None = None,
         matrix_size: int = 2048,
         test_duration: int = 5,
         allow_tf32: bool = True,

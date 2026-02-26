@@ -5,11 +5,11 @@ This backend collects GPU information for the list command.
 
 import pynvml
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.list_models import GPUInfo
 
 
-class NvidiaBackend(GPUBackend):
+class NvidiaBackend(AcceleratorBackend):
     """Backend for NVIDIA GPU information using pynvml."""
 
     def __init__(self):

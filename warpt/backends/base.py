@@ -15,8 +15,8 @@ from abc import ABC, abstractmethod
 from warpt.models.list_models import GPUInfo
 
 
-class GPUBackend(ABC):
-    """Abstract base class for GPU vendor backends (NVIDIA, AMD, Intel, etc.)."""
+class AcceleratorBackend(ABC):
+    """Abstract base class for accelerator backends (NVIDIA, AMD, Intel, etc.)."""
 
     @abstractmethod
     def __init__(self):

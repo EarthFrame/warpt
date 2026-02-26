@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from warpt.backends.base import GPUBackend
+from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS, GPU_STRESS_TEST
 from warpt.stress.base import StressTest, TestCategory
 from warpt.stress.utils import calculate_tflops
@@ -22,7 +22,7 @@ class GPUMatMulTest(StressTest):
         self,
         device_id: int = 0,
         burnin_seconds: int = DEFAULT_BURNIN_SECONDS,
-        backend: GPUBackend | None = None,
+        backend: AcceleratorBackend | None = None,
         matrix_size: int = 8192,
         allow_tf32: bool = True,
     ):
