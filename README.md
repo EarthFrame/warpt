@@ -1,22 +1,36 @@
-# warpt
+# warpt: EarthFrame's Workload and Resource Performance and Transparency Toolkit
 
-A unified command-line tool for hardware discovery, stress testing, and performance monitoring.
+`warpt` is a unified command-line tool for hardware discovery, stress testing, and performance monitoring.
 
-warpt provides a vendor-agnostic interface for understanding and validating computational resources—answering questions like *"What hardware do I have?"*, *"Is it working correctly?"*, and *"How fast is it?"*
+warpt provides a vendor-agnostic reporting interface for software and hardware resources. `warpt` brings transparency to system configuration, benchmarking, and stress testing, answering questions such as:
+
+- *"What hardware do I have?"*,
+- *"How much power is it actively using?"*,
+- *"Is it working correctly?"*, and
+- *"How fast is it?"*
 
 ## Installation
+
+`warpt` requires Python 3.8 or newer, though we recommend 3.10+. `warpt` has full support on Mac OS X and Linux; Windows support is currently limited.
+
+**Note:** We recommend using `warpt` in a virtualenv. Before installing warpt, you can create and activate a virtualenv by running:
+
+```bash
+python -m venv warpt-env
+source warpt-env/bin/activate
+```
+
+You can install the basic `warpt` command set like so:
 
 ```bash
 pip install warpt
 ```
 
-For stress testing capabilities:
+Stress testing has some vendor-specific code at the moment; you can install this to enable all compatible stress tests by running:
 
 ```bash
 pip install warpt[stress]
 ```
-
-**Requirements:** Python 3.8+ (3.11+ recommended) | Linux, macOS, or Windows
 
 ## Quick Start
 
@@ -131,4 +145,4 @@ We'd love to hear from you:
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+`warpt` is licensed under the MIT License — see [LICENSE](LICENSE) for details.
