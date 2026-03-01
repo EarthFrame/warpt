@@ -120,3 +120,18 @@ class TestCarbonCalculator:
         calc = CarbonCalculator(region="US")
         result = calc.humanize(3000.0)
         assert "air conditioning" in result
+
+    def test_energy_from_counter_one_kwh(self):
+        """3,600,000 joules = 1 kWh."""
+        calc = CarbonCalculator(region="US")
+        assert abs(calc.energy_from_counter(3_600_000.0) - 1.0) < 1e-9
+
+    def test_energy_from_counter_small(self):
+        """360 joules = 0.0001 kWh."""
+        calc = CarbonCalculator(region="US")
+        assert abs(calc.energy_from_counter(360.0) - 0.0001) < 1e-9
+
+    def test_energy_from_counter_zero(self):
+        """0 joules = 0 kWh."""
+        calc = CarbonCalculator(region="US")
+        assert calc.energy_from_counter(0.0) == 0.0
