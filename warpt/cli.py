@@ -538,5 +538,14 @@ def carbon(subcommand, label, region, interval, limit, days, output_json):
     run_carbon(subcommand, label, region, interval, limit, days, output_json)
 
 
+# Register integrate command group (requires optional deps)
+try:
+    from warpt.integrate.cli import integrate
+
+    warpt.add_command(integrate)
+except ImportError:
+    pass  # integrate deps not installed
+
+
 if __name__ == "__main__":
     warpt()

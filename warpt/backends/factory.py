@@ -29,16 +29,6 @@ def get_accelerator_backend() -> AcceleratorBackend:
     except Exception:
         pass
 
-    # TODO: Add support for AMD and Intel
-    try:
-        from warpt.backends.amd import AMDBackend
-
-        backend = AMDBackend()
-        if backend.is_available():
-            return backend
-    except Exception:
-        pass
-
     try:
         from warpt.backends.intel import IntelBackend
 
