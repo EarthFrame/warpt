@@ -286,8 +286,6 @@ async def _run_claude_session_async(
     tuple[str, str]
         (session_id, agent_output_text)
     """
-    import tempfile
-
     try:
         from claude_code_sdk import (
             AssistantMessage,
@@ -302,23 +300,6 @@ async def _run_claude_session_async(
             "[integrate]'"
         ) from exc
 
-    # Write system prompt to a temp file and pass via
-    # --system-prompt-file to avoid CLI argument size limits.
-    # The SDK doesn't support this directly, so we use
-    # append_system_prompt for the bulk and keep the main
-    # system_prompt small.
-    #
-    # Actually, the SDK passes system_prompt as a CLI arg
-    # which has OS-level size limits. Write to temp file
-    # and read it back as a workaround isn't supported.
-    # Instead, keep system_prompt under ~100KB.
-    prompt_size = len(system_prompt.encode("utf-8"))
-    if prompt_size > 200_000:
-        click.echo(
-            f"Warning: System prompt is {prompt_size:,} bytes. "
-            "This may exceed CLI argument limits."
-        )
-
     options = ClaudeCodeOptions(
         system_prompt=system_prompt,
         permission_mode="acceptEdits",
@@ -331,30 +312,18 @@ async def _run_claude_session_async(
     output_parts: list[str] = []
     result_session_id = session_id or ""
 
-    # Write the user prompt to a temp file so the SDK
-    # can read it via stdin instead of passing as a CLI arg
-    # (which would exceed OS argument size limits for large
-    # SDK docs).
-    prompt_file = tempfile.NamedTemporaryFile(
-        mode="w",
-        suffix=".txt",
-        delete=False,
-        encoding="utf-8",
-    )
-    prompt_file.write(user_prompt)
-    prompt_file.close()
-    prompt_path = prompt_file.name
+    # Write SDK docs to a file inside the repo so the
+    # agent can read it with its file tools. Temp files
+    # in /tmp or /var may be inaccessible to the sandbox.
+    sdk_docs_file = _REPO_ROOT / ".sdk_docs.txt"
+    sdk_docs_file.write_text(user_prompt, encoding="utf-8")
 
     try:
-        # Use a file reference as the prompt — the SDK
-        # will pass this short string as the CLI arg,
-        # and the agent can read the full prompt from
-        # the file.
         short_prompt = (
-            f"Read the full task prompt and SDK documentation "
-            f"from this file: {prompt_path}\n"
-            f"The file contains your complete instructions "
-            f"and the vendor SDK docs. Read it first."
+            "Your full task instructions and vendor SDK "
+            "documentation are in the file .sdk_docs.txt "
+            "in the repo root. Read that file first before "
+            "doing anything else."
         )
 
         async for message in _query_with_skip(
@@ -373,8 +342,8 @@ async def _run_claude_session_async(
         click.echo(f"\nAgent session failed: {exc}")
         raise
     finally:
-        # Clean up temp file
-        Path(prompt_path).unlink(missing_ok=True)
+        # Clean up SDK docs file from repo
+        sdk_docs_file.unlink(missing_ok=True)
 
     return result_session_id, "\n".join(output_parts)
 

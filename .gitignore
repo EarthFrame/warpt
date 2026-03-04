@@ -148,3 +148,6 @@ feature_considerations.md
 # Tester agent
 TESTER_AGENT.md
 tests/RESULTS.md
+
+# Integration agent temp files
+.sdk_docs.txt
