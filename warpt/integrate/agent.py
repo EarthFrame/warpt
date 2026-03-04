@@ -162,7 +162,10 @@ def _git_commit(vendor: str, pass_number: int) -> None:
         pass  # Non-fatal — user can commit manually
 
 
-def _build_init_prompt(vendor: str) -> str:
+def _build_init_prompt(
+    vendor: str,
+    sdk_docs_text: str,
+) -> str:
     """Build the initial user prompt for the agent."""
     return (
         f"Integrate the {vendor} hardware accelerator backend "
@@ -173,7 +176,7 @@ def _build_init_prompt(vendor: str) -> str:
         "2. Study the NVIDIA reference at "
         "warpt/backends/nvidia.py\n"
         "3. Analyze the vendor SDK documentation "
-        "provided in your system prompt\n"
+        "provided below\n"
         "4. Create warpt/backends/"
         f"{vendor}.py implementing AcceleratorBackend\n"
         "5. If the SDK supports power monitoring, create "
@@ -188,6 +191,9 @@ def _build_init_prompt(vendor: str) -> str:
         "11. Log all questions to questions.yaml "
         "following the schema in your system prompt\n\n"
         "Begin by reading the ABC and NVIDIA reference files."
+        "\n\n---\n\n"
+        f"# {vendor} SDK Documentation\n\n"
+        f"{sdk_docs_text}"
     )
 
 
@@ -229,6 +235,8 @@ async def _run_claude_session_async(
     tuple[str, str]
         (session_id, agent_output_text)
     """
+    import tempfile
+
     try:
         from claude_code_sdk import (
             AssistantMessage,
@@ -244,6 +252,23 @@ async def _run_claude_session_async(
             "[integrate]'"
         ) from exc
 
+    # Write system prompt to a temp file and pass via
+    # --system-prompt-file to avoid CLI argument size limits.
+    # The SDK doesn't support this directly, so we use
+    # append_system_prompt for the bulk and keep the main
+    # system_prompt small.
+    #
+    # Actually, the SDK passes system_prompt as a CLI arg
+    # which has OS-level size limits. Write to temp file
+    # and read it back as a workaround isn't supported.
+    # Instead, keep system_prompt under ~100KB.
+    prompt_size = len(system_prompt.encode("utf-8"))
+    if prompt_size > 200_000:
+        click.echo(
+            f"Warning: System prompt is {prompt_size:,} bytes. "
+            "This may exceed CLI argument limits."
+        )
+
     options = ClaudeCodeOptions(
         system_prompt=system_prompt,
         permission_mode="acceptEdits",
@@ -256,18 +281,51 @@ async def _run_claude_session_async(
     output_parts: list[str] = []
     result_session_id = session_id or ""
 
-    async for message in query(
-        prompt=user_prompt,
-        options=options,
-    ):
-        if isinstance(message, ResultMessage):
-            result_session_id = message.session_id
-            if message.result:
-                output_parts.append(message.result)
-        elif isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock):
-                    output_parts.append(block.text)
+    # Write the user prompt to a temp file so the SDK
+    # can read it via stdin instead of passing as a CLI arg
+    # (which would exceed OS argument size limits for large
+    # SDK docs).
+    prompt_file = tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".txt",
+        delete=False,
+        encoding="utf-8",
+    )
+    prompt_file.write(user_prompt)
+    prompt_file.close()
+    prompt_path = prompt_file.name
+
+    try:
+        # Use a file reference as the prompt — the SDK
+        # will pass this short string as the CLI arg,
+        # and the agent can read the full prompt from
+        # the file.
+        short_prompt = (
+            f"Read the full task prompt and SDK documentation "
+            f"from this file: {prompt_path}\n"
+            f"The file contains your complete instructions "
+            f"and the vendor SDK docs. Read it first."
+        )
+
+        async for message in query(
+            prompt=short_prompt,
+            options=options,
+        ):
+            if isinstance(message, ResultMessage):
+                result_session_id = message.session_id
+                if message.result:
+                    output_parts.append(message.result)
+            elif isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        click.echo(block.text[:200])
+                        output_parts.append(block.text)
+    except Exception as exc:
+        click.echo(f"\nAgent session failed: {exc}")
+        raise
+    finally:
+        # Clean up temp file
+        Path(prompt_path).unlink(missing_ok=True)
 
     return result_session_id, "\n".join(output_parts)
 
@@ -370,10 +428,10 @@ def run_init(
 
     click.echo(f"Starting {vendor} backend integration...")
 
-    # Build system prompt
+    # Build system prompt (instructions only, no SDK docs)
     system_prompt = build_system_prompt(
         vendor=vendor,
-        sdk_docs_text=sdk_docs_text,
+        sdk_docs_text="",
         vendor_context=vendor_context,
     )
 
@@ -390,8 +448,8 @@ def run_init(
         session_id=placeholder_sid,
     )
 
-    # Build the user prompt
-    user_prompt = _build_init_prompt(vendor)
+    # Build the user prompt (includes SDK docs)
+    user_prompt = _build_init_prompt(vendor, sdk_docs_text)
 
     click.echo("Running agent session (this may take a few minutes)...")
 

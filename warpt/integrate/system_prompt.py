@@ -24,7 +24,7 @@ def _read_file(path: Path) -> str:
 
 def build_system_prompt(
     vendor: str,
-    sdk_docs_text: str,
+    sdk_docs_text: str,  # noqa: ARG001
     vendor_context: str | None = None,
 ) -> str:
     """Assemble the full system prompt for the agent.
@@ -148,10 +148,12 @@ def build_system_prompt(
         "```"
     )
 
-    # 11. Vendor SDK documentation
+    # 11. Note that SDK docs will be in the user prompt
     sections.append(
         f"# Vendor SDK Documentation ({vendor})\n\n"
-        f"{sdk_docs_text}"
+        "The vendor's SDK documentation is provided in the "
+        "user prompt below (not in this system prompt). "
+        "Refer to it when implementing the backend."
     )
 
     # 12. Vendor context (if provided)
