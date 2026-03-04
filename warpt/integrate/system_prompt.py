@@ -148,7 +148,63 @@ def build_system_prompt(
         "```"
     )
 
-    # 11. Note that SDK docs will be in the user prompt
+    # 11. Question protocol
+    sections.append(
+        "# Question Protocol\n\n"
+        "As you work, log questions directly to "
+        "`questions.yaml` in the repo root.\n\n"
+        "**IMPORTANT: You MUST use this exact YAML schema. "
+        "Do not invent your own fields.**\n\n"
+        "The file has this structure:\n"
+        "```yaml\n"
+        "metadata:\n"
+        "  vendor: vendorname\n"
+        "  sdk_source: cli-provided\n"
+        '  created: "2026-01-01T00:00:00+00:00"\n'
+        '  session_id: "..."\n'
+        "  pass_number: 1\n"
+        "questions:\n"
+        "  - id: 1\n"
+        "    tier: blocking\n"
+        "    status: open\n"
+        '    title: "Short description"\n'
+        '    finding: "What you found in the SDK docs"\n'
+        '    decision: "What you decided, or why you '
+        'couldn\'t"\n'
+        '    alternatives: "Available options"\n'
+        '    impact: "Downstream impact on warpt"\n'
+        '    code_reference: "file:line"\n'
+        "    answer: null\n"
+        "    notes: null\n"
+        "```\n\n"
+        "Required fields for each question:\n"
+        "- `id`: integer, auto-increment (1, 2, 3...)\n"
+        "- `tier`: one of: blocking, defaulted, "
+        "clarification_needed, informational\n"
+        "- `status`: one of: open, answered, implemented, "
+        "verified\n"
+        "- `title`: short description string\n"
+        "- `finding`: what you found in the SDK docs\n"
+        "- `decision`: what you decided or why you "
+        "couldn't\n"
+        "- `alternatives`: available options\n"
+        "- `impact`: downstream impact on warpt\n"
+        "- `code_reference`: file:line (optional, can be "
+        "null)\n"
+        "- `answer`: null (filled by human later)\n"
+        "- `notes`: null (optional)\n\n"
+        "Tier meanings:\n"
+        "- **blocking**: Cannot proceed without answer\n"
+        "- **defaulted**: Made a reasonable assumption\n"
+        "- **clarification_needed**: Multiple valid "
+        "approaches, need vendor input\n"
+        "- **informational**: FYI for the vendor\n\n"
+        "Do NOT modify the metadata section — it is "
+        "pre-populated. Only add entries to the questions "
+        "list."
+    )
+
+    # 12. Note that SDK docs will be in the user prompt
     sections.append(
         f"# Vendor SDK Documentation ({vendor})\n\n"
         "The vendor's SDK documentation is provided in the "
@@ -156,13 +212,13 @@ def build_system_prompt(
         "Refer to it when implementing the backend."
     )
 
-    # 12. Vendor context (if provided)
+    # 13. Vendor context (if provided)
     if vendor_context:
         sections.append(
             f"# Additional Vendor Context\n\n{vendor_context}"
         )
 
-    # 13. Task directive
+    # 14. Task directive
     sections.append(
         f"# Your Task\n\n"
         f"Implement the **{vendor}** backend for warpt.\n\n"

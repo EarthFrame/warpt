@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import sys
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,6 +31,95 @@ from warpt.integrate.system_prompt import build_system_prompt
 # Root of the warpt repository (two levels up from this file)
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+class _ProgressTracker:
+    """Live spinner + status line for agent sessions."""
+
+    def __init__(self) -> None:
+        self._turn = 0
+        self._status = "Starting agent session..."
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+
+    def start(self) -> None:
+        """Start the spinner thread."""
+        self._thread = threading.Thread(
+            target=self._spin, daemon=True
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop the spinner and clear the line."""
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+        # Clear spinner line
+        sys.stderr.write("\r\033[K")
+        sys.stderr.flush()
+
+    def update(self, status: str) -> None:
+        """Update the status message."""
+        with self._lock:
+            self._status = status
+
+    def bump_turn(self) -> None:
+        """Increment the turn counter."""
+        with self._lock:
+            self._turn += 1
+
+    def _spin(self) -> None:
+        """Spinner loop (runs in background thread)."""
+        idx = 0
+        while not self._stop.is_set():
+            frame = _SPINNER_FRAMES[idx % len(_SPINNER_FRAMES)]
+            with self._lock:
+                turn = self._turn
+                status = self._status
+            # Truncate status to fit terminal
+            label = f"{frame} [Turn {turn}] {status}"
+            if len(label) > 78:
+                label = label[:75] + "..."
+            sys.stderr.write(f"\r\033[K{label}")
+            sys.stderr.flush()
+            idx += 1
+            time.sleep(0.1)
+
+    @staticmethod
+    def describe_tool(name: str, tool_input: dict) -> str:
+        """Map a tool call to a short human-readable status."""
+        if name in ("Read", "read_file"):
+            path = tool_input.get(
+                "file_path", tool_input.get("path", "")
+            )
+            short = Path(path).name if path else "file"
+            return f"Reading {short}"
+        if name in ("Write", "write_file"):
+            path = tool_input.get(
+                "file_path", tool_input.get("path", "")
+            )
+            short = Path(path).name if path else "file"
+            return f"Writing {short}"
+        if name in ("Edit", "edit_file"):
+            path = tool_input.get(
+                "file_path", tool_input.get("path", "")
+            )
+            short = Path(path).name if path else "file"
+            return f"Editing {short}"
+        if name in ("Bash", "bash"):
+            cmd = str(
+                tool_input.get("command", "")
+            )[:40]
+            return f"Running: {cmd}"
+        if name in ("Glob", "glob"):
+            return "Searching files"
+        if name in ("Grep", "grep"):
+            pattern = tool_input.get("pattern", "")
+            return f"Searching for '{pattern[:30]}'"
+        return f"Using {name}"
+
 
 def _questions_path() -> Path:
     """Path to the questions.yaml file."""
@@ -38,7 +130,17 @@ def _load_questions() -> QuestionsDocument:
     """Load the questions document."""
     path = _questions_path()
     if path.exists():
-        return QuestionsDocument.from_yaml(path.read_text())
+        try:
+            return QuestionsDocument.from_yaml(
+                path.read_text()
+            )
+        except Exception:
+            click.echo(
+                "Warning: questions.yaml has invalid format. "
+                "The agent may not have followed the schema. "
+                "Review the file manually."
+            )
+            return QuestionsDocument()
     return QuestionsDocument()
 
 
@@ -170,28 +272,26 @@ def _build_init_prompt(
     return (
         f"Integrate the {vendor} hardware accelerator backend "
         f"into warpt.\n\n"
+        "IMPORTANT: The AcceleratorBackend ABC, NVIDIA "
+        "reference implementation, factory pattern, power "
+        "backend ABC, test patterns, and coding standards "
+        "are already in your system prompt. Do NOT re-read "
+        "those files — use them directly from your context.\n\n"
         "Steps:\n"
-        "1. Read the ABC definition at "
-        "warpt/backends/base.py\n"
-        "2. Study the NVIDIA reference at "
-        "warpt/backends/nvidia.py\n"
-        "3. Analyze the vendor SDK documentation "
-        "provided below\n"
-        "4. Create warpt/backends/"
+        "1. Read .sdk_docs.txt for the vendor SDK docs\n"
+        "2. Create warpt/backends/"
         f"{vendor}.py implementing AcceleratorBackend\n"
-        "5. If the SDK supports power monitoring, create "
+        "3. If the SDK supports power monitoring, create "
         f"warpt/backends/power/{vendor}_power.py\n"
-        "6. Edit warpt/backends/factory.py to register "
+        "4. Edit warpt/backends/factory.py to register "
         "the new backend\n"
-        f"7. Create tests/test_{vendor}_backend.py "
+        f"5. Create tests/test_{vendor}_backend.py "
         "with mock-based tests\n"
-        f"8. Run: pytest tests/test_{vendor}_backend.py -v\n"
-        f"9. Run: ruff check warpt/backends/{vendor}.py\n"
-        "10. Fix any failures and re-run\n"
-        "11. Log all questions to questions.yaml "
+        f"6. Run: pytest tests/test_{vendor}_backend.py -v\n"
+        f"7. Run: ruff check warpt/backends/{vendor}.py\n"
+        "8. Fix any failures and re-run\n"
+        "9. Log all questions to questions.yaml "
         "following the schema in your system prompt\n\n"
-        "Begin by reading the ABC and NVIDIA reference files."
-        "\n\n---\n\n"
         f"# {vendor} SDK Documentation\n\n"
         f"{sdk_docs_text}"
     )
@@ -292,6 +392,7 @@ async def _run_claude_session_async(
             ClaudeCodeOptions,
             ResultMessage,
             TextBlock,
+            ToolUseBlock,
         )
     except ImportError as exc:
         raise click.ClickException(
@@ -302,7 +403,7 @@ async def _run_claude_session_async(
 
     options = ClaudeCodeOptions(
         system_prompt=system_prompt,
-        permission_mode="acceptEdits",
+        permission_mode="bypassPermissions",
         cwd=str(_REPO_ROOT),
     )
 
@@ -317,6 +418,9 @@ async def _run_claude_session_async(
     # in /tmp or /var may be inaccessible to the sandbox.
     sdk_docs_file = _REPO_ROOT / ".sdk_docs.txt"
     sdk_docs_file.write_text(user_prompt, encoding="utf-8")
+
+    progress = _ProgressTracker()
+    progress.start()
 
     try:
         short_prompt = (
@@ -333,17 +437,57 @@ async def _run_claude_session_async(
                 result_session_id = message.session_id
                 if message.result:
                     output_parts.append(message.result)
+                # Show session stats
+                turns = getattr(
+                    message, "num_turns", None
+                )
+                duration = getattr(
+                    message, "duration_ms", None
+                )
+                cost = getattr(
+                    message, "total_cost_usd", None
+                )
+                parts = []
+                if turns:
+                    parts.append(f"{turns} turns")
+                if duration:
+                    mins = duration / 60_000
+                    parts.append(f"{mins:.1f}m")
+                if cost:
+                    parts.append(f"${cost:.2f}")
+                if parts:
+                    progress.stop()
+                    click.echo(
+                        f"Done ({', '.join(parts)})"
+                    )
             elif isinstance(message, AssistantMessage):
+                progress.bump_turn()
                 for block in message.content:
-                    if isinstance(block, TextBlock):
-                        click.echo(block.text[:200])
+                    if isinstance(block, ToolUseBlock):
+                        status = progress.describe_tool(
+                            block.name, block.input or {}
+                        )
+                        progress.update(status)
+                    elif isinstance(block, TextBlock):
                         output_parts.append(block.text)
+                        # Show first sentence as status
+                        first_line = block.text.strip().split(
+                            "\n"
+                        )[0][:60]
+                        if first_line:
+                            progress.update(first_line)
     except Exception as exc:
+        progress.stop()
         click.echo(f"\nAgent session failed: {exc}")
         raise
     finally:
+        progress.stop()
         # Clean up SDK docs file from repo
         sdk_docs_file.unlink(missing_ok=True)
+
+    # Print session summary from ResultMessage
+    if result_session_id:
+        click.echo(f"Session: {result_session_id[:16]}...")
 
     return result_session_id, "\n".join(output_parts)
 
