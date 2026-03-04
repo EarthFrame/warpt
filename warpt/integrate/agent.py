@@ -214,6 +214,57 @@ def _build_iterate_prompt(vendor: str) -> str:
     )
 
 
+async def _query_with_skip(prompt, options):
+    """Wrap query() to skip unknown message types.
+
+    The Claude CLI may emit message types (e.g.,
+    rate_limit_event) that older SDK versions don't
+    recognize. This wrapper catches those parse errors
+    and continues instead of crashing.
+    """
+    from claude_code_sdk import query
+    from claude_code_sdk._errors import MessageParseError
+
+    try:
+        from claude_code_sdk._internal.message_parser import (
+            parse_message,
+        )
+        from claude_code_sdk._internal.transport.subprocess_cli import (
+            SubprocessCLITransport,
+        )
+
+        transport = SubprocessCLITransport(
+            prompt=prompt, options=options
+        )
+        await transport.connect()
+
+        from claude_code_sdk._internal.query import Query
+
+        q = Query(
+            transport=transport,
+            is_streaming_mode=False,
+        )
+        await q.start()
+
+        async for data in q.receive_messages():
+            try:
+                yield parse_message(data)
+            except MessageParseError:
+                # Skip unrecognized message types
+                continue
+
+        await q.close()
+        return
+    except ImportError:
+        pass
+
+    # Fallback: use query() directly if internals changed
+    async for message in query(
+        prompt=prompt, options=options
+    ):
+        yield message
+
+
 async def _run_claude_session_async(
     system_prompt: str,
     user_prompt: str,
@@ -243,7 +294,6 @@ async def _run_claude_session_async(
             ClaudeCodeOptions,
             ResultMessage,
             TextBlock,
-            query,
         )
     except ImportError as exc:
         raise click.ClickException(
@@ -307,9 +357,8 @@ async def _run_claude_session_async(
             f"and the vendor SDK docs. Read it first."
         )
 
-        async for message in query(
-            prompt=short_prompt,
-            options=options,
+        async for message in _query_with_skip(
+            short_prompt, options
         ):
             if isinstance(message, ResultMessage):
                 result_session_id = message.session_id
