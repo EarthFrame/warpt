@@ -30,6 +30,15 @@ def get_accelerator_backend() -> AcceleratorBackend:
         pass
 
     try:
+        from warpt.backends.amd import AmdBackend
+
+        backend = AmdBackend()
+        if backend.is_available():
+            return backend
+    except Exception:
+        pass
+
+    try:
         from warpt.backends.intel import IntelBackend
 
         backend = IntelBackend()

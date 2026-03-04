@@ -79,3 +79,6 @@ GPU_MEMORY_TEST = "GPU Memory Bandwidth"
 
 # Docker
 DOCKER_NAME = "docker"
+
+# Integration agent
+MAX_SDK_TOKENS = 125_000

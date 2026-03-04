@@ -1,3 +1,5 @@
+<!-- DO NOT EDIT — This file is maintained by the warpt core team. -->
+
 ---
 title: Adding a Hardware Accelerator Backend
 description: Learn how to implement new hardware accelerator backends for warpt.

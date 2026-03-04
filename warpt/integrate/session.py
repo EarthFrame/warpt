@@ -122,6 +122,28 @@ def list_sessions() -> list[str]:
     ]
 
 
+def delete_session(vendor: str) -> bool:
+    """Delete all session data for a vendor.
+
+    Parameters
+    ----------
+    vendor : str
+        Vendor name.
+
+    Returns
+    -------
+    bool
+        True if session data was deleted, False if none existed.
+    """
+    import shutil
+
+    vdir = _vendor_dir(vendor)
+    if not vdir.exists():
+        return False
+    shutil.rmtree(vdir)
+    return True
+
+
 def increment_pass(vendor: str) -> int:
     """Increment the pass counter and update last_run.
 

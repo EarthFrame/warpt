@@ -173,8 +173,18 @@ def _git_run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _create_git_branch(vendor: str) -> None:
+def _create_git_branch(vendor: str) -> str:
     """Create and checkout a new git branch for the integration.
+
+    Parameters
+    ----------
+    vendor : str
+        Vendor name used to form the branch name.
+
+    Returns
+    -------
+    str
+        The parent branch name (the branch we branched from).
 
     Raises
     ------
@@ -226,6 +236,8 @@ def _create_git_branch(vendor: str) -> None:
                 f"Failed to create branch {branch_name}: "
                 f"{result.stderr.strip()}"
             )
+
+    return current_branch
 
 
 
@@ -580,13 +592,15 @@ def run_init(
         )
         return
 
-    # Warn if SDK docs are very large
+    # Reject if SDK docs exceed the token limit
+    from warpt.models.constants import MAX_SDK_TOKENS
+
     token_estimate = len(sdk_docs_text) // 4
-    if token_estimate > 150_000:
-        click.echo(
-            f"Warning: SDK docs are ~{token_estimate:,} tokens. "
-            "This may exceed context limits. "
-            "Consider trimming to the most relevant sections."
+    if token_estimate > MAX_SDK_TOKENS:
+        raise click.ClickException(
+            f"SDK docs are ~{token_estimate:,} tokens, "
+            f"exceeding the {MAX_SDK_TOKENS:,} token limit. "
+            "Point --sdk-docs at a smaller subdirectory."
         )
 
     click.echo(f"Starting {vendor} backend integration...")
@@ -599,7 +613,7 @@ def run_init(
     )
 
     # Create git branch
-    _create_git_branch(vendor)
+    parent_branch = _create_git_branch(vendor)
 
     # Generate a placeholder session ID for the questions doc
     placeholder_sid = f"pending-{vendor}"
@@ -614,7 +628,7 @@ def run_init(
     # Build the user prompt (includes SDK docs)
     user_prompt = _build_init_prompt(vendor, sdk_docs_text)
 
-    click.echo("Running agent session (this may take a few minutes)...")
+    click.echo("Running agent session (this will take a few minutes)...")
 
     # Run the agent
     session_id, output = _run_claude_session(
@@ -629,6 +643,7 @@ def run_init(
         metadata={
             "vendor": vendor,
             "pass_count": 1,
+            "parent_branch": parent_branch,
         },
     )
 

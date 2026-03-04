@@ -230,7 +230,24 @@ def _run_init(
     except (ValueError, FileNotFoundError) as e:
         raise click.ClickException(str(e)) from e
 
+    from warpt.models.constants import MAX_SDK_TOKENS
+
     token_estimate = len(sdk_docs_text) // 4
+
+    if token_estimate > MAX_SDK_TOKENS:
+        raise click.ClickException(
+            f"SDK docs are ~{token_estimate:,} tokens, "
+            f"which exceeds the {MAX_SDK_TOKENS:,} token limit.\n\n"
+            "To fix this, point --sdk-docs at a smaller "
+            "subdirectory — typically the Python bindings "
+            "or API reference folder.\n\n"
+            "Example:\n"
+            "  warpt integrate --vendor myvendor "
+            "--sdk-docs ./sdk-repo/python/\n\n"
+            "Tip: The agent only needs the SDK's Python "
+            "interface (function signatures, enums, types)."
+        )
+
     click.echo(
         f"Loaded ~{token_estimate:,} tokens of documentation."
     )
@@ -290,3 +307,141 @@ def validate(ctx: click.Context, vendor: str | None):
         )
 
     run_validate(vendor=resolved)
+
+
+@integrate.command()
+@click.option(
+    "--vendor",
+    default=None,
+    help="Vendor to reset",
+)
+@click.pass_context
+def reset(ctx: click.Context, vendor: str | None):
+    """Reset a vendor integration, deleting all generated files."""
+    from pathlib import Path
+
+    from warpt.integrate.agent import _REPO_ROOT, _git_run
+    from warpt.integrate.session import (
+        delete_session,
+        load_session,
+        session_exists,
+    )
+
+    resolved = _resolve_vendor(
+        vendor or ctx.obj.get("vendor")
+    )
+    if not resolved:
+        sessions = list_sessions()
+        if not sessions:
+            raise click.ClickException(
+                "No active integrations found."
+            )
+        raise click.ClickException(
+            "Multiple active integrations. "
+            "Specify with --vendor."
+        )
+
+    branch_name = f"backend/{resolved}"
+
+    # Collect files that would be affected
+    vendor_files = [
+        Path("warpt") / "backends" / f"{resolved}.py",
+        Path("warpt") / "backends" / "power"
+        / f"{resolved}_power.py",
+        Path("tests") / f"test_{resolved}_backend.py",
+        Path("questions.yaml"),
+    ]
+
+    existing_files = [
+        f
+        for f in vendor_files
+        if (_REPO_ROOT / f).exists()
+    ]
+
+    # Load parent branch from session metadata
+    parent_branch = None
+    if session_exists(resolved):
+        try:
+            _, metadata = load_session(resolved)
+            parent_branch = metadata.get("parent_branch")
+        except FileNotFoundError:
+            pass
+
+    # Show what will be affected
+    click.echo(
+        f"\nThis will reset the '{resolved}' integration:"
+    )
+    click.echo(f"  Branch: {branch_name} (will be deleted)")
+    if existing_files:
+        click.echo("  Files on branch:")
+        for f in existing_files:
+            click.echo(f"    {f}")
+    if session_exists(resolved):
+        click.echo(
+            f"  Session: ~/.warpt/integrate/{resolved}/"
+        )
+    if parent_branch:
+        click.echo(
+            f"  Will switch back to: {parent_branch}"
+        )
+    click.echo()
+
+    confirmation = click.prompt(
+        'Type "reset" to confirm',
+        default="",
+        show_default=False,
+    )
+    if confirmation.strip().lower() != "reset":
+        click.echo("Aborted.")
+        return
+
+    # 1. Switch to parent branch before deleting
+    current = _git_run("branch", "--show-current")
+    current_branch = current.stdout.strip()
+
+    if current_branch == branch_name:
+        if parent_branch:
+            target = parent_branch
+        else:
+            # No saved parent — ask the user
+            target = click.prompt(
+                "Which branch should we switch to?",
+                default="main",
+            ).strip()
+
+        result = _git_run("checkout", target)
+        if result.returncode != 0:
+            raise click.ClickException(
+                f"Could not checkout '{target}': "
+                f"{result.stderr.strip()}\n"
+                "Checkout a different branch manually, "
+                "then re-run reset."
+            )
+        click.echo(f"Switched to branch '{target}'")
+
+    # 2. Delete the vendor branch
+    branch_exists = _git_run(
+        "branch", "--list", branch_name
+    )
+    if branch_name in branch_exists.stdout:
+        result = _git_run("branch", "-D", branch_name)
+        if result.returncode == 0:
+            click.echo(f"Deleted branch '{branch_name}'")
+        else:
+            click.echo(
+                f"Warning: could not delete branch "
+                f"'{branch_name}': {result.stderr.strip()}"
+            )
+    else:
+        click.echo(
+            f"Branch '{branch_name}' does not exist, "
+            "skipping."
+        )
+
+    # 3. Delete session data
+    if delete_session(resolved):
+        click.echo(
+            f"Deleted session data for '{resolved}'"
+        )
+
+    click.echo(f"\nReset complete for '{resolved}'.")

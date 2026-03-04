@@ -151,3 +151,4 @@ tests/RESULTS.md
 
 # Integration agent temp files
 .sdk_docs.txt
+questions.yaml

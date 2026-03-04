@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import psutil
 
+from warpt.backends.power.amd_power import AmdPowerBackend
 from warpt.backends.power.base import PowerBackend
 from warpt.backends.power.linux_rapl import LinuxRAPLBackend
 from warpt.backends.power.macos_power import MacOSPowerBackend
@@ -84,6 +85,12 @@ class PowerMonitor:
             nvidia.initialize()
             self._backends.append(nvidia)
             self._nvidia_backend = nvidia
+
+        # AMD GPU backend (Linux with ROCm)
+        amd = AmdPowerBackend()
+        if amd.is_available():
+            amd.initialize()
+            self._backends.append(amd)
 
         self._initialized = True
         return bool(self._backends)
