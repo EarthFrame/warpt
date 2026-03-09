@@ -58,6 +58,7 @@ warpt power
 | `warpt power` | Power consumption monitoring and per-process attribution |
 | `warpt carbon` | Track energy consumption, CO2 emissions, and estimated cost |
 | `warpt benchmark` | Performance benchmarking suite |
+| `warpt integrate` | AI-assisted hardware backend integration |
 
 ## Documentation
 
@@ -98,6 +99,123 @@ warpt carbon regions
 ```
 
 Carbon calculations use regional grid intensity data to estimate CO2 emissions from energy consumption. Configure your region with `--region` (defaults to US).
+
+## Backend Integration
+
+`warpt integrate` uses an AI agent (Claude Code SDK) to generate new hardware backend implementations from vendor SDK documentation. It creates the backend, power backend, factory registration, and tests automatically.
+
+### Prerequisites
+
+`warpt integrate` requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (Anthropic's CLI) and the Claude Code Python SDK.
+
+1. **Install Claude Code CLI:**
+
+   ```bash
+   npm install -g @anthropic-ai/claude-code
+   ```
+
+1. **Authenticate** — choose one:
+
+   - **Anthropic API key** (recommended for CI/automation):
+     ```bash
+     export ANTHROPIC_API_KEY=sk-ant-...
+     ```
+   - **Interactive login** (opens browser, uses your Claude account):
+     ```bash
+     claude login
+     ```
+
+1. **Install warpt with integration dependencies:**
+
+   ```bash
+   pip install warpt[integrate]
+   ```
+
+1. **Verify setup:**
+
+   ```bash
+   claude --version          # confirm CLI is installed
+   warpt integrate --vendor test --sdk-docs ./some-docs/ --dry-run
+   ```
+
+   The `--dry-run` validates everything without starting the agent.
+
+### Quick Start
+
+```bash
+# Start a new backend integration
+warpt integrate --vendor amd --sdk-docs ./amd-sdk/python/
+
+# Check integration status
+warpt integrate status
+
+# Process answered questions
+warpt integrate
+
+# Validate generated code (ruff + pytest)
+warpt integrate validate
+
+# Reset and start over
+warpt integrate reset
+```
+
+### Dry Run
+
+Use `--dry-run` to validate your setup before spending tokens on an agent session:
+
+```bash
+warpt integrate --vendor amd --sdk-docs ./amd-sdk/python/ --dry-run
+```
+
+This runs all validation (vendor name, existing backend check, doc loading, token limit) and prints a summary:
+
+```
+==================================================
+DRY RUN SUMMARY
+==================================================
+  SDK docs:      ~18,500 tokens from 42 file(s)
+  System prompt: ~12,000 tokens
+  Total context: ~30,500 tokens (limit ~200k)
+
+  Files to generate:
+    warpt/backends/amd.py
+    warpt/backends/power/amd_power.py
+    tests/test_amd_backend.py
+    questions.yaml
+
+  Branch: backend/amd
+==================================================
+
+Press Enter to start the agent, or Ctrl+C to abort:
+```
+
+Press Enter to proceed into the full agent run, or Ctrl+C to abort without creating anything.
+
+### Post-Agent File Audit
+
+After the agent session completes, `warpt integrate` automatically audits the generated files:
+
+```
+Generated files:
+  questions.yaml: created (8 question(s))
+  tests/test_amd_backend.py: created (320 lines)
+  warpt/backends/amd.py: created (245 lines)
+  warpt/backends/power/amd_power.py: created (180 lines)
+```
+
+If the agent modified files outside the expected set (`factory.py`, `pyproject.toml`, and the generated files), a warning is printed:
+
+```
+Warning: Unexpected file modifications:
+  warpt/utils/helpers.py
+```
+
+### Workflow
+
+1. **Init** (`--sdk-docs`): Agent reads SDK docs, generates backend + tests, logs questions to `questions.yaml`
+1. **Review**: Engineer reviews generated code and answers questions (set `status: answered`)
+1. **Iterate** (no `--sdk-docs`): Agent reads answers, updates code, runs tests
+1. **Validate**: Run `warpt integrate validate` to confirm ruff + pytest pass
 
 ## Example Output
 
