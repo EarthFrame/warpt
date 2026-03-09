@@ -59,6 +59,10 @@ stress = [
     "numpy>=1.24.0",
 ]
 
+amd = [
+    "amdsmi",
+]
+
 integrate = [
     "claude-code-sdk>=0.0.25",
     "pymupdf>=1.23.0",
