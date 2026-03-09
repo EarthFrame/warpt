@@ -7,7 +7,12 @@ import pytest
 
 from warpt.carbon.tracker import CarbonTracker
 from warpt.models.carbon_models import CarbonSession
-from warpt.models.power_models import PowerSnapshot
+from warpt.models.power_models import (
+    DomainPower,
+    PowerDomain,
+    PowerSnapshot,
+    PowerSource,
+)
 
 # PowerMonitor is imported at module level in tracker.py, so patch
 # the name in the tracker module (where it's looked up at runtime).
@@ -140,3 +145,263 @@ class TestCarbonTrackerIntegration:
                 raise ValueError("boom")
 
         assert mock_store.update_session.called
+
+
+class TestCarbonTrackerEnergyCounter:
+    """Tests for hardware energy counter integration."""
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_uses_counter_when_available(self, mock_pm_cls, mock_store_cls):
+        """Tracker uses GPU energy counter delta when available."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        call_count = 0
+
+        def make_snapshot():
+            nonlocal call_count
+            call_count += 1
+            # First call: __enter__ snapshot (start counter)
+            # Middle calls: sample loop
+            # Last call: _get_gpu_counter_delta (end counter)
+            energy_j = 1000.0 + (call_count * 500.0)
+            return PowerSnapshot(
+                timestamp=time.time(),
+                total_power_watts=200.0,
+                domains=[
+                    DomainPower(
+                        domain=PowerDomain.GPU,
+                        power_watts=150.0,
+                        energy_joules=energy_j,
+                        source=PowerSource.NVML,
+                        metadata={"gpu_index": 0},
+                    ),
+                ],
+            )
+
+        mock_monitor.get_snapshot.side_effect = make_snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
+
+        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert final_session.metadata["energy_source"] == "counter"
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_falls_back_to_polled_without_counter(self, mock_pm_cls, mock_store_cls):
+        """Tracker falls back to trapezoidal integration without counters."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        # No energy_joules on domains — no counter available
+        snapshot = PowerSnapshot(
+            timestamp=time.time(),
+            total_power_watts=100.0,
+        )
+        mock_monitor.get_snapshot.return_value = snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
+
+        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert final_session.metadata["energy_source"] == "polled"
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_counter_delta_captures_start_energy(self, mock_pm_cls, mock_store_cls):
+        """Start energy is captured from initial snapshot in __enter__."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        snapshot = PowerSnapshot(
+            timestamp=time.time(),
+            total_power_watts=100.0,
+            domains=[
+                DomainPower(
+                    domain=PowerDomain.GPU,
+                    power_watts=80.0,
+                    energy_joules=5000.0,
+                    source=PowerSource.NVML,
+                    metadata={"gpu_index": 0},
+                ),
+            ],
+        )
+        mock_monitor.get_snapshot.return_value = snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05) as tracker:
+            assert tracker._start_gpu_energy == {0: 5000.0}
+            time.sleep(0.1)
+
+
+class TestCarbonTrackerCPUCounter:
+    """Tests for CPU RAPL energy counter integration."""
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_uses_cpu_counter_when_available(self, mock_pm_cls, mock_store_cls):
+        """Tracker uses CPU energy counter delta when available."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        call_count = 0
+
+        def make_snapshot():
+            nonlocal call_count
+            call_count += 1
+            energy_j = 1000.0 + (call_count * 200.0)
+            return PowerSnapshot(
+                timestamp=time.time(),
+                total_power_watts=100.0,
+                domains=[
+                    DomainPower(
+                        domain=PowerDomain.PACKAGE,
+                        power_watts=50.0,
+                        energy_joules=energy_j,
+                        source=PowerSource.RAPL,
+                        metadata={"rapl_name": "package-0"},
+                    ),
+                ],
+            )
+
+        mock_monitor.get_snapshot.side_effect = make_snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
+
+        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert final_session.metadata["energy_source"] == "counter"
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_cpu_counter_with_gpu_counter(self, mock_pm_cls, mock_store_cls):
+        """Both CPU and GPU counters present, both used."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        call_count = 0
+
+        def make_snapshot():
+            nonlocal call_count
+            call_count += 1
+            cpu_energy = 500.0 + (call_count * 100.0)
+            gpu_energy = 2000.0 + (call_count * 300.0)
+            return PowerSnapshot(
+                timestamp=time.time(),
+                total_power_watts=200.0,
+                domains=[
+                    DomainPower(
+                        domain=PowerDomain.PACKAGE,
+                        power_watts=60.0,
+                        energy_joules=cpu_energy,
+                        source=PowerSource.RAPL,
+                        metadata={"rapl_name": "package-0"},
+                    ),
+                    DomainPower(
+                        domain=PowerDomain.GPU,
+                        power_watts=140.0,
+                        energy_joules=gpu_energy,
+                        source=PowerSource.NVML,
+                        metadata={"gpu_index": 0},
+                    ),
+                ],
+            )
+
+        mock_monitor.get_snapshot.side_effect = make_snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
+
+        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert final_session.metadata["energy_source"] == "counter"
+        assert final_session.energy_kwh > 0
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_cpu_counter_without_gpu_counter(self, mock_pm_cls, mock_store_cls):
+        """CPU counter only, GPU polled."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        call_count = 0
+
+        def make_snapshot():
+            nonlocal call_count
+            call_count += 1
+            cpu_energy = 1000.0 + (call_count * 150.0)
+            return PowerSnapshot(
+                timestamp=time.time(),
+                total_power_watts=120.0,
+                domains=[
+                    DomainPower(
+                        domain=PowerDomain.PACKAGE,
+                        power_watts=70.0,
+                        energy_joules=cpu_energy,
+                        source=PowerSource.RAPL,
+                        metadata={"rapl_name": "package-0"},
+                    ),
+                    DomainPower(
+                        domain=PowerDomain.GPU,
+                        power_watts=50.0,
+                        energy_joules=None,  # No GPU counter
+                        source=PowerSource.NVML,
+                        metadata={"gpu_index": 0},
+                    ),
+                ],
+            )
+
+        mock_monitor.get_snapshot.side_effect = make_snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
+
+        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert final_session.metadata["energy_source"] == "counter"
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_counter_delta_captures_start_cpu_energy(self, mock_pm_cls, mock_store_cls):
+        """Start CPU energy is captured from initial snapshot in __enter__."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        snapshot = PowerSnapshot(
+            timestamp=time.time(),
+            total_power_watts=80.0,
+            domains=[
+                DomainPower(
+                    domain=PowerDomain.PACKAGE,
+                    power_watts=40.0,
+                    energy_joules=3000.0,
+                    source=PowerSource.RAPL,
+                    metadata={"rapl_name": "package-0"},
+                ),
+            ],
+        )
+        mock_monitor.get_snapshot.return_value = snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05) as tracker:
+            assert tracker._start_cpu_energy == {"package-0": 3000.0}
+            time.sleep(0.1)

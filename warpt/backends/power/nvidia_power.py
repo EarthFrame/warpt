@@ -106,21 +106,35 @@ class NvidiaPowerBackend(PowerBackend):
                 power_mw = pynvml.nvmlDeviceGetPowerUsage(handle)
                 power_watts = power_mw / 1000.0
 
+                # Read hardware energy counter (Volta+ GPUs)
+                energy_joules = None
+                energy_mj = None
+                try:
+                    energy_mj = pynvml.nvmlDeviceGetTotalEnergyConsumption(handle)
+                    energy_joules = energy_mj / 1000.0  # millijoules → joules
+                except Exception:
+                    pass  # Not available on pre-Volta or unsupported driver
+
                 # Get GPU name for metadata
                 name = pynvml.nvmlDeviceGetName(handle)
                 if isinstance(name, bytes):
                     name = name.decode(errors="ignore")
 
+                metadata = {
+                    "gpu_index": idx,
+                    "gpu_name": name,
+                    "raw_mw": power_mw,
+                }
+                if energy_mj is not None:
+                    metadata["energy_mj"] = energy_mj
+
                 readings.append(
                     DomainPower(
                         domain=PowerDomain.GPU,
                         power_watts=power_watts,
+                        energy_joules=energy_joules,
                         source=PowerSource.NVML,
-                        metadata={
-                            "gpu_index": idx,
-                            "gpu_name": name,
-                            "raw_mw": power_mw,
-                        },
+                        metadata=metadata,
                     )
                 )
             except Exception:

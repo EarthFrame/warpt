@@ -12,6 +12,7 @@ from warpt.backends.power.factory import PowerMonitor
 from warpt.carbon.calculator import CarbonCalculator
 from warpt.carbon.store import EnergyStore
 from warpt.models.carbon_models import CarbonSession
+from warpt.models.power_models import PowerDomain
 
 
 class CarbonTracker:
@@ -52,6 +53,8 @@ class CarbonTracker:
         self._samples: list[tuple[float, float, float, float]] = []
         self._sources: list[str] = []
         self._noop = False
+        self._start_gpu_energy: dict[int, float] = {}  # gpu_index → joules
+        self._start_cpu_energy: dict[str, float] = {}  # rapl_name → joules
 
     def __enter__(self) -> CarbonTracker:
         """Start power sampling in a background thread."""
@@ -78,6 +81,25 @@ class CarbonTracker:
 
         store = EnergyStore()
         store.create_session(self._session)
+
+        # Snapshot energy counters at start (GPU Volta+ and CPU RAPL)
+        try:
+            start_snapshot = self._monitor.get_snapshot()
+            for domain in start_snapshot.domains:
+                if (
+                    domain.domain == PowerDomain.GPU
+                    and domain.energy_joules is not None
+                ):
+                    gpu_idx = domain.metadata.get("gpu_index", 0)
+                    self._start_gpu_energy[gpu_idx] = domain.energy_joules
+                elif (
+                    domain.domain == PowerDomain.PACKAGE
+                    and domain.energy_joules is not None
+                ):
+                    rapl_name = domain.metadata.get("rapl_name", "package-0")
+                    self._start_cpu_energy[rapl_name] = domain.energy_joules
+        except Exception:
+            pass
 
         # Start background sampling
         self._running = True
@@ -107,8 +129,35 @@ class CarbonTracker:
 
         # Calculate energy/CO2/cost
         calc = CarbonCalculator(region=self._region)
-        power_samples = [(t, w) for t, w, _c, _g in self._samples]
-        energy_kwh = calc.energy_from_samples(power_samples)
+        gpu_counter_energy_j = self._get_gpu_counter_delta()
+        cpu_counter_energy_j = self._get_cpu_counter_delta()
+
+        if gpu_counter_energy_j is not None and cpu_counter_energy_j is not None:
+            # Both hardware counters available
+            gpu_energy_kwh = calc.energy_from_counter(gpu_counter_energy_j)
+            cpu_energy_kwh = calc.energy_from_counter(cpu_counter_energy_j)
+            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
+            energy_source = "counter"
+        elif gpu_counter_energy_j is not None:
+            # GPU counter only, poll for CPU
+            cpu_samples = [(t, c) for t, _w, c, _g in self._samples]
+            cpu_energy_kwh = calc.energy_from_samples(cpu_samples)
+            gpu_energy_kwh = calc.energy_from_counter(gpu_counter_energy_j)
+            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
+            energy_source = "counter"
+        elif cpu_counter_energy_j is not None:
+            # CPU counter only, poll for GPU
+            cpu_energy_kwh = calc.energy_from_counter(cpu_counter_energy_j)
+            gpu_samples = [(t, g) for t, _w, _c, g in self._samples]
+            gpu_energy_kwh = calc.energy_from_samples(gpu_samples)
+            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
+            energy_source = "counter"
+        else:
+            # Fallback: trapezoidal integration for everything
+            power_samples = [(t, w) for t, w, _c, _g in self._samples]
+            energy_kwh = calc.energy_from_samples(power_samples)
+            energy_source = "polled"
+
         co2_grams = calc.co2_from_energy(energy_kwh)
         cost_usd = calc.cost_from_energy(energy_kwh)
 
@@ -141,6 +190,7 @@ class CarbonTracker:
             "avg_power_w": round(avg_power, 2),
             "peak_power_w": round(peak_power, 2),
             "sample_count": len(self._samples),
+            "energy_source": energy_source,
         }
         self._session.samples = sample_dicts
 
@@ -158,6 +208,70 @@ class CarbonTracker:
             f"{humanized}",
             file=sys.stderr,
         )
+
+    def _get_gpu_counter_delta(self) -> float | None:
+        """Compute GPU energy delta from hardware counters.
+
+        Takes a final snapshot, reads the energy counters, and subtracts
+        the start values captured in __enter__. Returns total joules
+        across all GPUs, or None if counters weren't available.
+        """
+        if not self._start_gpu_energy or self._monitor is None:
+            return None
+
+        try:
+            end_snapshot = self._monitor.get_snapshot()
+        except Exception:
+            return None
+
+        total_delta_j = 0.0
+        matched = False
+        for domain in end_snapshot.domains:
+            if domain.domain != PowerDomain.GPU or domain.energy_joules is None:
+                continue
+            gpu_idx = domain.metadata.get("gpu_index", 0)
+            start_j = self._start_gpu_energy.get(gpu_idx)
+            if start_j is None:
+                continue
+            delta = domain.energy_joules - start_j
+            if delta >= 0:
+                total_delta_j += delta
+                matched = True
+
+        return total_delta_j if matched else None
+
+    def _get_cpu_counter_delta(self) -> float | None:
+        """Compute CPU energy delta from RAPL hardware counters.
+
+        Takes a final snapshot, reads the PACKAGE energy counters, and
+        subtracts the start values captured in __enter__. Returns total
+        joules across all RAPL packages, or None if counters weren't available.
+        """
+        if not self._start_cpu_energy or self._monitor is None:
+            return None
+
+        try:
+            end_snapshot = self._monitor.get_snapshot()
+        except Exception:
+            return None
+
+        total_delta_j = 0.0
+        matched = False
+        for domain in end_snapshot.domains:
+            if domain.domain != PowerDomain.PACKAGE or domain.energy_joules is None:
+                continue
+            rapl_name = domain.metadata.get("rapl_name", "package-0")
+            start_j = self._start_cpu_energy.get(rapl_name)
+            if start_j is None:
+                continue
+            delta = domain.energy_joules - start_j
+            if delta < 0:
+                # RAPL counter wrapped around — treat as small positive delta
+                delta = 0.0
+            total_delta_j += delta
+            matched = True
+
+        return total_delta_j if matched else None
 
     def _sample_loop(self) -> None:
         """Continuously sample power readings at the configured interval."""
