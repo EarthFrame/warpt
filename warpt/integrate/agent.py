@@ -259,15 +259,13 @@ def _build_init_prompt(
         "Do NOT read any of those files.\n"
         "- Do NOT use TodoWrite or any task-planning tools. "
         "Just execute.\n"
-        "- Do NOT read files one chunk at a time. Read the "
-        "whole file in one call.\n"
         "- Write ALL code files BEFORE running any tests or "
         "linting.\n\n"
         "## EXECUTION PLAN\n\n"
         "Follow these steps in EXACTLY this order:\n\n"
-        "**Step 1** — Read `.sdk_docs.txt` (one read, full "
-        "file). Identify which SDK functions map to each "
-        "AcceleratorBackend method.\n\n"
+        "**Step 1** — Read `.sdk_docs.txt`. Identify which "
+        "SDK functions map to each AcceleratorBackend "
+        "method.\n\n"
         "**Step 2** — Write ALL FOUR files in a single "
         "batch (do not run tests between writes):\n\n"
         f"  a) `warpt/backends/{vendor}.py` — "
@@ -567,10 +565,78 @@ def _print_summary(doc: QuestionsDocument) -> None:
         click.echo("\n  No blocking questions.")
 
 
+def _audit_generated_files(vendor: str) -> None:
+    """Check expected files and warn about unexpected changes.
+
+    Called after the agent session completes to verify the
+    agent produced the expected output and didn't modify
+    files it shouldn't have.
+
+    Parameters
+    ----------
+    vendor : str
+        Vendor name.
+    """
+    expected_files = {
+        f"warpt/backends/{vendor}.py",
+        f"warpt/backends/power/{vendor}_power.py",
+        f"tests/test_{vendor}_backend.py",
+        "questions.yaml",
+    }
+
+    # Files the agent is allowed to modify beyond the above
+    allowed_files = expected_files | {
+        "warpt/backends/factory.py",
+        "warpt/backends/power/factory.py",
+        "pyproject.toml",
+    }
+
+    click.echo("\nGenerated files:")
+    for rel_path in sorted(expected_files):
+        full_path = _REPO_ROOT / rel_path
+        if full_path.exists():
+            if rel_path == "questions.yaml":
+                doc = _load_questions()
+                count = len(doc.questions)
+                click.echo(
+                    f"  {rel_path}: created "
+                    f"({count} question(s))"
+                )
+            else:
+                lines = full_path.read_text().splitlines()
+                click.echo(
+                    f"  {rel_path}: created "
+                    f"({len(lines)} lines)"
+                )
+        else:
+            click.echo(f"  {rel_path}: MISSING")
+
+    # Check for unexpected modifications via git
+    diff_result = _git_run("diff", "--name-only", "HEAD")
+    untracked = _git_run(
+        "ls-files", "--others", "--exclude-standard"
+    )
+
+    changed = set()
+    if diff_result.stdout.strip():
+        changed.update(diff_result.stdout.strip().splitlines())
+    if untracked.stdout.strip():
+        changed.update(untracked.stdout.strip().splitlines())
+
+    unexpected = sorted(changed - allowed_files)
+    if unexpected:
+        click.echo(
+            "\nWarning: Unexpected file modifications:"
+        )
+        for f in unexpected:
+            click.echo(f"  {f}")
+
+
 def run_init(
     vendor: str,
     sdk_docs_text: str,
     vendor_context: str | None = None,
+    system_prompt: str | None = None,
 ) -> None:
     """Run the initial integration pass.
 
@@ -582,6 +648,10 @@ def run_init(
         Loaded SDK documentation text.
     vendor_context : str | None
         Optional hardware context.
+    system_prompt : str | None
+        Pre-built system prompt. If None, one is built
+        automatically. Passing a pre-built prompt avoids
+        building it twice when coming from --dry-run.
     """
     if session_exists(vendor):
         click.echo(
@@ -605,12 +675,13 @@ def run_init(
 
     click.echo(f"Starting {vendor} backend integration...")
 
-    # Build system prompt (instructions only, no SDK docs)
-    system_prompt = build_system_prompt(
-        vendor=vendor,
-        sdk_docs_text="",
-        vendor_context=vendor_context,
-    )
+    # Build system prompt if not pre-built by --dry-run
+    if system_prompt is None:
+        system_prompt = build_system_prompt(
+            vendor=vendor,
+            sdk_docs_text="",
+            vendor_context=vendor_context,
+        )
 
     # Create git branch
     parent_branch = _create_git_branch(vendor)
@@ -628,7 +699,10 @@ def run_init(
     # Build the user prompt (includes SDK docs)
     user_prompt = _build_init_prompt(vendor, sdk_docs_text)
 
-    click.echo("Running agent session (this will take a few minutes)...")
+    click.echo(
+        "Running agent session "
+        "(this will take a few minutes)..."
+    )
 
     # Run the agent
     session_id, output = _run_claude_session(
@@ -660,17 +734,8 @@ def run_init(
     if output:
         click.echo(f"\nAgent output:\n{output[:2000]}")
 
-    # Print file status
-    generated_files = [
-        f"warpt/backends/{vendor}.py",
-        f"warpt/backends/power/{vendor}_power.py",
-        f"tests/test_{vendor}_backend.py",
-    ]
-    click.echo("\nGenerated files:")
-    for f in generated_files:
-        fpath = _REPO_ROOT / f
-        status = "created" if fpath.exists() else "not created"
-        click.echo(f"  {f}: {status}")
+    # Run post-agent file audit
+    _audit_generated_files(vendor)
 
     # Print question summary
     doc = _load_questions()
@@ -698,6 +763,26 @@ def run_iterate(vendor: str) -> None:
             f"No session found for {vendor}. "
             "Run 'warpt integrate --vendor "
             f"{vendor} --sdk-docs <path>' first."
+        )
+
+    # Verify we're on the correct branch
+    branch_name = f"backend/{vendor}"
+    current = _git_run("branch", "--show-current")
+    current_branch = current.stdout.strip()
+    if current_branch != branch_name:
+        raise click.ClickException(
+            f"Expected branch '{branch_name}', "
+            f"but you're on '{current_branch}'.\n"
+            f"Switch to it first: git checkout {branch_name}"
+        )
+
+    # Verify questions.yaml exists
+    if not _questions_path().exists():
+        raise click.ClickException(
+            "questions.yaml not found in the repo root.\n"
+            "This file should have been created during "
+            "'warpt integrate --sdk-docs'. "
+            "You may need to reset and re-run init."
         )
 
     # Load session
