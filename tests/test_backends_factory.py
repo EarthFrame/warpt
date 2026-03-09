@@ -30,7 +30,7 @@ def test_get_accelerator_backend_none_available():
     mock_nvidia.NvidiaBackend.return_value.is_available.return_value = False
 
     mock_amd = MagicMock()
-    mock_amd.AMDBackend.return_value.is_available.return_value = False
+    mock_amd.AmdBackend.return_value.is_available.return_value = False
 
     mock_intel = MagicMock()
     mock_intel.IntelBackend.return_value.is_available.return_value = False
@@ -57,7 +57,7 @@ def test_nvidia_fail_falls_through_to_amd():
     mock_amd = MagicMock()
     mock_amd_instance = MagicMock()
     mock_amd_instance.is_available.return_value = True
-    mock_amd.AMDBackend.return_value = mock_amd_instance
+    mock_amd.AmdBackend.return_value = mock_amd_instance
 
     modules = {
         "warpt.backends.nvidia": mock_nvidia,
