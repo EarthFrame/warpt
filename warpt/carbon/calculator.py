@@ -46,6 +46,26 @@ class CarbonCalculator:
         # Convert joules to kWh: 1 kWh = 3,600,000 J
         return energy_joules / 3_600_000.0
 
+    def energy_from_counter(self, joules: float) -> float:
+        """Convert a direct energy counter reading to kilowatt-hours.
+
+        Hardware energy counters (NVML on Volta+, RAPL) provide cumulative
+        energy in joules. This is more accurate than integrating polled
+        power samples since the counter tracks energy continuously at
+        the hardware level.
+
+        Parameters
+        ----------
+        joules : float
+            Energy in joules (e.g. delta between two counter reads).
+
+        Returns
+        -------
+        float
+            Energy in kilowatt-hours.
+        """
+        return joules / 3_600_000.0
+
     def co2_from_energy(self, energy_kwh: float) -> float:
         """Estimate CO2 emissions from energy consumption.
 
