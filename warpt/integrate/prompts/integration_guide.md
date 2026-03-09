@@ -1,22 +1,20 @@
 <!-- DO NOT EDIT — This file is maintained by the warpt core team. -->
 
----
-title: Adding a Hardware Accelerator Backend
-description: Learn how to implement new hardware accelerator backends for warpt.
-order: 1
----
+______________________________________________________________________
+
+## title: Adding a Hardware Accelerator Backend description: Learn how to implement new hardware accelerator backends for warpt. order: 1
 
 # Adding a Hardware Accelerator Backend to warpt
 
-----------
+______________________________________________________________________
 
 ## Overview
 
 `warpt` is meant to be a vendor-agnostic package for power measurement, hardware configuration detection, and stress testing. New hardware support can be added by implementing three classes in `warpt`:
 
-1.  **Accelerator Backend** — The accelerator backend exposes device discovery, memory, utilization, identity, and basic telemetry. This is the core requirement for integration with warpt.
-2.  **Power Backend** — Integrates power draw, temperature, and energy telemetry per device. Enables warpt's power profiling capabilities.
-3.  **Stress Backend (Optional but Recommended)** — Allows the implementation of stress test workloads so warpt can apply standardized load to your hardware.
+1. **Accelerator Backend** — The accelerator backend exposes device discovery, memory, utilization, identity, and basic telemetry. This is the core requirement for integration with warpt.
+1. **Power Backend** — Integrates power draw, temperature, and energy telemetry per device. Enables warpt's power profiling capabilities.
+1. **Stress Backend (Optional but Recommended)** — Allows the implementation of stress test workloads so warpt can apply standardized load to your hardware.
 
 An "accelerator" may be a GPU, TPU, NPU, or any other compute accelerator supported by your platform. The sections below walk through each backend type, the required methods, and concrete examples.
 
@@ -37,7 +35,7 @@ An "accelerator" may be a GPU, TPU, NPU, or any other compute accelerator suppor
 | 11. (Optional) Add custom stress tests | warpt/stress/yourvendor_compute.py | ☐ |
 | 12. Submit PR with tests passing | All files | ☐ |
 
-----------
+______________________________________________________________________
 
 ## Architecture Overview
 
@@ -77,7 +75,7 @@ warpt/
 │       └── yourvendor_power.py # Add this for power readings (optional, but recommended)
 ├── stress/
 │   ├── base.py                 # StressTest ABC
-│   ├── gpu_compute.py          
+│   ├── gpu_compute.py
 │   └── yourvendor_compute.py   # Add this to enable stress testing on your hardware
 ├── models/
 │   ├── list_models.py          # GPUInfo (Pydantic) — use extra_metrics
@@ -86,7 +84,7 @@ warpt/
 
 ```
 
-----------
+______________________________________________________________________
 
 ## 1. AcceleratorBackend
 
@@ -236,6 +234,7 @@ However, if your hardware has fundamental properties that don't map to any exist
 To define a custom model:
 
 1. Subclass `GPUInfo` (or a future `DeviceInfo` base) in `warpt/models/list_models.py`:
+
 ```python
     class TPUInfo(GPUInfo):
         tpu_version: int
@@ -245,13 +244,13 @@ To define a custom model:
 
 2. Register it in `warpt/models/__init__.py` and add it to the `__all__` export.
 
-3. Update `HardwareInfo` in `warpt/models/list_models.py` to accept your new model type.
+1. Update `HardwareInfo` in `warpt/models/list_models.py` to accept your new model type.
 
-4. In your backend subclass, you can type `list_devices()` as returning `list[TPUInfo]` instead of `list[GPUInfo]`. This works because `TPUInfo` is a subclass of `GPUInfo`, so it has all the same fields plus your extras. The rest of warpt treats them as normal `GPUInfo` objects and continues to work without modification.
+1. In your backend subclass, you can type `list_devices()` as returning `list[TPUInfo]` instead of `list[GPUInfo]`. This works because `TPUInfo` is a subclass of `GPUInfo`, so it has all the same fields plus your extras. The rest of warpt treats them as normal `GPUInfo` objects and continues to work without modification.
 
 Only define a custom model when `extra_metrics` genuinely falls short. If you find yourself putting the same keys into `extra_metrics` on every single device and validating them manually, that's a signal to promote them to typed fields on a proper subclass.
 
-----------
+______________________________________________________________________
 
 ## 2. Power Backend
 
@@ -313,7 +312,7 @@ warpt/backends/power/yourvendor_power.py
 
 Register it in `warpt/backends/power/factory.py` by adding your power source to the `PowerMonitor.initialize()` method.
 
-----------
+______________________________________________________________________
 
 ## 3. Stress Backend
 
@@ -360,6 +359,7 @@ The `TestRegistry` (`warpt/stress/registry.py`) auto-scans `warpt/stress/*.py` f
 If you take Path B specified in sub-section 3.2 and write custom stress tests using your native SDK, your `execute_test()` method can return any object — the return type is `Any`. However, for structured results that integrate cleanly with warpt's reporting and profiling pipeline, you should define a custom result model.
 
 Follow the same Pydantic `BaseModel` pattern used by `GPUDeviceResult` in `warpt/models/stress_models.py`:
+
 ```python
 # warpt/models/stress_models.py
 
@@ -377,7 +377,7 @@ The results collector serializes whatever `execute_test()` returns, so as long a
 
 Add your model to `warpt/models/stress_models.py` and export it from `warpt/models/__init__.py`.
 
-----------
+______________________________________________________________________
 
 ## 4. Registration: Wiring Your Backend In
 
@@ -420,7 +420,7 @@ The lazy import pattern (importing inside the `try` block) is intentional. It me
 
 Add your backend's package path to the `[tool.setuptools] packages` list in `pyproject.toml` so it gets included in builds.
 
-----------
+______________________________________________________________________
 
 ## 5. Dependencies and Packaging
 
@@ -457,7 +457,7 @@ stress = ["torch>=2.0.0", "numpy>=1.24.0"]
 
 This lets users install only what they need: `pip install warpt[tenstorrent]`
 
-----------
+______________________________________________________________________
 
 ## 6. Testing Without Hardware
 
@@ -491,7 +491,6 @@ def test_get_gpu_backend_yourvendor():
 
 ### 6.2 Key Test Files
 
-
 | Test File | What It Tests |
 |-----------|---------------|
 | test_backends_factory.py | Factory priority chain and fallthrough logic |
@@ -499,7 +498,7 @@ def test_get_gpu_backend_yourvendor():
 | test_stress_registry.py | Test auto-discovery |
 | test_stress_results.py | Result collection and emission |
 
-----------
+______________________________________________________________________
 
 ## 7. Runtime Backend Selection
 
@@ -509,7 +508,7 @@ This means your backend will be used automatically on systems where your hardwar
 
 > **Future improvement:** warpt may add explicit backend selection via a `--backend` CLI flag or `WARPT_BACKEND` environment variable. If you need to test your backend on a system that also has NVIDIA GPUs, you can temporarily reorder the priority chain in `factory.py` during development.
 
-----------
+______________________________________________________________________
 
 ## 8. Glossary
 
@@ -559,6 +558,6 @@ A quick-reference for warpt-specific terms used throughout this document.
 
 **Throttle reasons** — The list of strings returned by `get_throttle_reasons()` indicating performance-limiting conditions (e.g., `"thermal"`, `"power_limit"`). Empty list if the device is running unrestricted.
 
-----------
+______________________________________________________________________
 
 _EarthFrame Inc. | earthframe.com | Questions? Open an issue on the warpt repository._

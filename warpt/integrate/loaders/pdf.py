@@ -48,13 +48,9 @@ class PDFLoader(DocLoader):
             for page_num, page in enumerate(doc, start=1):
                 text = page.get_text()
                 if text.strip():
-                    parts.append(
-                        f"--- Page {page_num} ---\n{text}"
-                    )
+                    parts.append(f"--- Page {page_num} ---\n{text}")
 
         if not parts:
-            raise ValueError(
-                f"No text content extracted from PDF: {path}"
-            )
+            raise ValueError(f"No text content extracted from PDF: {path}")
 
         return "\n\n".join(parts)

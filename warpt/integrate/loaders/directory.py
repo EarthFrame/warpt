@@ -66,9 +66,7 @@ class DirectoryLoader(DocLoader):
         """
         root = Path(source).resolve()
         if not root.is_dir():
-            raise FileNotFoundError(
-                f"Directory not found: {root}"
-            )
+            raise FileNotFoundError(f"Directory not found: {root}")
 
         parts: list[str] = []
         files = sorted(root.rglob("*"))
@@ -81,15 +79,11 @@ class DirectoryLoader(DocLoader):
             if filepath.stat().st_size > self.max_file_size:
                 continue
             # Skip hidden files and directories
-            if any(
-                p.startswith(".") for p in filepath.relative_to(root).parts
-            ):
+            if any(p.startswith(".") for p in filepath.relative_to(root).parts):
                 continue
 
             try:
-                content = filepath.read_text(
-                    encoding="utf-8", errors="replace"
-                )
+                content = filepath.read_text(encoding="utf-8", errors="replace")
             except (OSError, UnicodeDecodeError):
                 continue
 

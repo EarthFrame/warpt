@@ -45,13 +45,13 @@ from warpt.models.stress_models import (
 
 __all__ = [
     "CPUInfo",
-    "DeviceFingerprint",
-    "DeviceProfile",
     "CPUSummary",
     "CPUSystemResult",
     "CPUTestResults",
     "CUDAInfo",
     "CompilerInfo",
+    "DeviceFingerprint",
+    "DeviceProfile",
     "DomainPower",
     "FrameworkInfo",
     "GPUDeviceResult",

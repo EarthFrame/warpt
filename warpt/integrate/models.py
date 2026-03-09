@@ -62,18 +62,10 @@ class Question(BaseModel):
     tier: QuestionTier
     status: QuestionStatus = QuestionStatus.OPEN
     title: str
-    finding: str = Field(
-        description="What the agent found in the SDK docs"
-    )
-    decision: str = Field(
-        description="What decision was made, or why none could be"
-    )
-    alternatives: str = Field(
-        description="Available options or approaches"
-    )
-    impact: str = Field(
-        description="Downstream impact on warpt integration"
-    )
+    finding: str = Field(description="What the agent found in the SDK docs")
+    decision: str = Field(description="What decision was made, or why none could be")
+    alternatives: str = Field(description="Available options or approaches")
+    impact: str = Field(description="Downstream impact on warpt integration")
     code_reference: str | None = Field(
         default=None,
         description="file:line reference in generated code",
@@ -94,8 +86,7 @@ class QuestionsDocument(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Metadata: vendor, sdk_source, created, "
-            "session_id, pass_number"
+            "Metadata: vendor, sdk_source, created, " "session_id, pass_number"
         ),
     )
     questions: list[Question] = Field(default_factory=list)
@@ -103,9 +94,7 @@ class QuestionsDocument(BaseModel):
     def to_yaml(self) -> str:
         """Serialize to YAML string."""
         data = self.model_dump(mode="json")
-        return yaml.dump(
-            data, default_flow_style=False, sort_keys=False
-        )
+        return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
     @classmethod
     def from_yaml(cls, text: str) -> QuestionsDocument:
@@ -119,9 +108,7 @@ class QuestionsDocument(BaseModel):
             return 1
         return max(q.id for q in self.questions) + 1
 
-    def get_by_status(
-        self, status: QuestionStatus
-    ) -> list[Question]:
+    def get_by_status(self, status: QuestionStatus) -> list[Question]:
         """Filter questions by status."""
         return [q for q in self.questions if q.status == status]
 

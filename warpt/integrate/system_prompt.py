@@ -54,9 +54,7 @@ def build_system_prompt(
 
     # 2. Coding standards
     standards = _read_file(_PROMPTS_DIR / "coding_standards.md")
-    sections.append(
-        f"# Coding Standards Reference\n\n{standards}"
-    )
+    sections.append(f"# Coding Standards Reference\n\n{standards}")
 
     # 3. ABC definition
     abc_text = _read_file(_WARPT_ROOT / "backends" / "base.py")
@@ -68,9 +66,7 @@ def build_system_prompt(
     )
 
     # 4. NVIDIA reference implementation
-    nvidia_text = _read_file(
-        _WARPT_ROOT / "backends" / "nvidia.py"
-    )
+    nvidia_text = _read_file(_WARPT_ROOT / "backends" / "nvidia.py")
     sections.append(
         "# NVIDIA Reference Implementation "
         "(warpt/backends/nvidia.py)\n"
@@ -80,9 +76,7 @@ def build_system_prompt(
     )
 
     # 5. Factory pattern
-    factory_text = _read_file(
-        _WARPT_ROOT / "backends" / "factory.py"
-    )
+    factory_text = _read_file(_WARPT_ROOT / "backends" / "factory.py")
     sections.append(
         "# Factory Pattern (warpt/backends/factory.py)\n"
         "```python\n"
@@ -91,9 +85,7 @@ def build_system_prompt(
     )
 
     # 6. Power backend ABC
-    power_base_text = _read_file(
-        _WARPT_ROOT / "backends" / "power" / "base.py"
-    )
+    power_base_text = _read_file(_WARPT_ROOT / "backends" / "power" / "base.py")
     sections.append(
         "# PowerBackend ABC "
         "(warpt/backends/power/base.py)\n"
@@ -127,9 +119,7 @@ def build_system_prompt(
     )
 
     # 9. GPUInfo model
-    list_models_text = _read_file(
-        _WARPT_ROOT / "models" / "list_models.py"
-    )
+    list_models_text = _read_file(_WARPT_ROOT / "models" / "list_models.py")
     sections.append(
         "# GPUInfo Model (warpt/models/list_models.py)\n"
         "```python\n"
@@ -138,9 +128,7 @@ def build_system_prompt(
     )
 
     # 10. Power models
-    power_models_text = _read_file(
-        _WARPT_ROOT / "models" / "power_models.py"
-    )
+    power_models_text = _read_file(_WARPT_ROOT / "models" / "power_models.py")
     sections.append(
         "# Power Models (warpt/models/power_models.py)\n"
         "```python\n"
@@ -170,7 +158,7 @@ def build_system_prompt(
         '    title: "Short description"\n'
         '    finding: "What you found in the SDK docs"\n'
         '    decision: "What you decided, or why you '
-        'couldn\'t"\n'
+        "couldn't\"\n"
         '    alternatives: "Available options"\n'
         '    impact: "Downstream impact on warpt"\n'
         '    code_reference: "file:line"\n'
@@ -214,9 +202,7 @@ def build_system_prompt(
 
     # 13. Vendor context (if provided)
     if vendor_context:
-        sections.append(
-            f"# Additional Vendor Context\n\n{vendor_context}"
-        )
+        sections.append(f"# Additional Vendor Context\n\n{vendor_context}")
 
     # 14. Task directive
     sections.append(

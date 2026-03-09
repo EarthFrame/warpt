@@ -36,10 +36,13 @@ class WebLoader(DocLoader):
                 "Install with: pip install 'warpt[integrate]'"
             ) from exc
 
+        _markdownify = None
         try:
-            from markdownify import markdownify as md
+            from markdownify import markdownify
+
+            _markdownify = markdownify
         except ImportError:
-            md = None
+            pass
 
         try:
             response = httpx.get(
@@ -47,25 +50,18 @@ class WebLoader(DocLoader):
                 follow_redirects=True,
                 timeout=30.0,
                 headers={
-                    "User-Agent": (
-                        "warpt-integrate/1.0 "
-                        "(documentation loader)"
-                    )
+                    "User-Agent": ("warpt-integrate/1.0 " "(documentation loader)")
                 },
             )
             response.raise_for_status()
         except httpx.HTTPError as e:
-            raise RuntimeError(
-                f"Failed to fetch {source}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to fetch {source}: {e}") from e
 
-        content_type = response.headers.get(
-            "content-type", ""
-        )
+        content_type = response.headers.get("content-type", "")
 
         # If it's HTML, convert to markdown
-        if "html" in content_type and md is not None:
-            return md(response.text, strip=["script", "style"])
+        if "html" in content_type and _markdownify is not None:
+            return str(_markdownify(response.text, strip=["script", "style"]))
 
         # If it's HTML but markdownify isn't available,
         # do basic tag stripping
@@ -73,7 +69,7 @@ class WebLoader(DocLoader):
             return _strip_html(response.text)
 
         # Plain text or other — return as-is
-        return response.text
+        return str(response.text)
 
 
 def _strip_html(html: str) -> str:

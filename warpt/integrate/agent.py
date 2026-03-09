@@ -46,9 +46,7 @@ class _ProgressTracker:
 
     def start(self) -> None:
         """Start the spinner thread."""
-        self._thread = threading.Thread(
-            target=self._spin, daemon=True
-        )
+        self._thread = threading.Thread(target=self._spin, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -91,27 +89,19 @@ class _ProgressTracker:
     def describe_tool(name: str, tool_input: dict) -> str:
         """Map a tool call to a short human-readable status."""
         if name in ("Read", "read_file"):
-            path = tool_input.get(
-                "file_path", tool_input.get("path", "")
-            )
+            path = tool_input.get("file_path", tool_input.get("path", ""))
             short = Path(path).name if path else "file"
             return f"Reading {short}"
         if name in ("Write", "write_file"):
-            path = tool_input.get(
-                "file_path", tool_input.get("path", "")
-            )
+            path = tool_input.get("file_path", tool_input.get("path", ""))
             short = Path(path).name if path else "file"
             return f"Writing {short}"
         if name in ("Edit", "edit_file"):
-            path = tool_input.get(
-                "file_path", tool_input.get("path", "")
-            )
+            path = tool_input.get("file_path", tool_input.get("path", ""))
             short = Path(path).name if path else "file"
             return f"Editing {short}"
         if name in ("Bash", "bash"):
-            cmd = str(
-                tool_input.get("command", "")
-            )[:40]
+            cmd = str(tool_input.get("command", ""))[:40]
             return f"Running: {cmd}"
         if name in ("Glob", "glob"):
             return "Searching files"
@@ -131,9 +121,7 @@ def _load_questions() -> QuestionsDocument:
     path = _questions_path()
     if path.exists():
         try:
-            return QuestionsDocument.from_yaml(
-                path.read_text()
-            )
+            return QuestionsDocument.from_yaml(path.read_text())
         except Exception:
             click.echo(
                 "Warning: questions.yaml has invalid format. "
@@ -211,34 +199,26 @@ def _create_git_branch(vendor: str) -> str:
     # Check if branch already exists
     existing = _git_run("branch", "--list", branch_name)
     if branch_name in existing.stdout:
-        click.echo(
-            f"Branch {branch_name} already exists, "
-            "checking out..."
-        )
+        click.echo(f"Branch {branch_name} already exists, " "checking out...")
         result = _git_run("checkout", branch_name)
         if result.returncode != 0:
             raise click.ClickException(
-                f"Failed to checkout {branch_name}: "
-                f"{result.stderr.strip()}"
+                f"Failed to checkout {branch_name}: " f"{result.stderr.strip()}"
             )
     else:
         if not click.confirm(
-            f"Create branch '{branch_name}' "
-            f"from '{current_branch}'?",
+            f"Create branch '{branch_name}' " f"from '{current_branch}'?",
         ):
             raise click.ClickException(
-                "Aborted. Switch to the branch you want "
-                "as the parent and try again."
+                "Aborted. Switch to the branch you want " "as the parent and try again."
             )
         result = _git_run("checkout", "-b", branch_name)
         if result.returncode != 0:
             raise click.ClickException(
-                f"Failed to create branch {branch_name}: "
-                f"{result.stderr.strip()}"
+                f"Failed to create branch {branch_name}: " f"{result.stderr.strip()}"
             )
 
     return current_branch
-
 
 
 def _build_init_prompt(
@@ -259,15 +239,13 @@ def _build_init_prompt(
         "Do NOT read any of those files.\n"
         "- Do NOT use TodoWrite or any task-planning tools. "
         "Just execute.\n"
-        "- Do NOT read files one chunk at a time. Read the "
-        "whole file in one call.\n"
         "- Write ALL code files BEFORE running any tests or "
         "linting.\n\n"
         "## EXECUTION PLAN\n\n"
         "Follow these steps in EXACTLY this order:\n\n"
-        "**Step 1** — Read `.sdk_docs.txt` (one read, full "
-        "file). Identify which SDK functions map to each "
-        "AcceleratorBackend method.\n\n"
+        "**Step 1** — Read `.sdk_docs.txt`. Identify which "
+        "SDK functions map to each AcceleratorBackend "
+        "method.\n\n"
         "**Step 2** — Write ALL FOUR files in a single "
         "batch (do not run tests between writes):\n\n"
         f"  a) `warpt/backends/{vendor}.py` — "
@@ -340,9 +318,7 @@ async def _query_with_skip(prompt, options):
             SubprocessCLITransport,
         )
 
-        transport = SubprocessCLITransport(
-            prompt=prompt, options=options
-        )
+        transport = SubprocessCLITransport(prompt=prompt, options=options)
         await transport.connect()
 
         from claude_code_sdk._internal.query import Query
@@ -366,9 +342,7 @@ async def _query_with_skip(prompt, options):
         pass
 
     # Fallback: use query() directly if internals changed
-    async for message in query(
-        prompt=prompt, options=options
-    ):
+    async for message in query(prompt=prompt, options=options):
         yield message
 
 
@@ -443,23 +417,15 @@ async def _run_claude_session_async(
             "doing anything else."
         )
 
-        async for message in _query_with_skip(
-            short_prompt, options
-        ):
+        async for message in _query_with_skip(short_prompt, options):
             if isinstance(message, ResultMessage):
                 result_session_id = message.session_id
                 if message.result:
                     output_parts.append(message.result)
                 # Show session stats
-                turns = getattr(
-                    message, "num_turns", None
-                )
-                duration = getattr(
-                    message, "duration_ms", None
-                )
-                cost = getattr(
-                    message, "total_cost_usd", None
-                )
+                turns = getattr(message, "num_turns", None)
+                duration = getattr(message, "duration_ms", None)
+                cost = getattr(message, "total_cost_usd", None)
                 parts = []
                 if turns:
                     parts.append(f"{turns} turns")
@@ -470,23 +436,17 @@ async def _run_claude_session_async(
                     parts.append(f"${cost:.2f}")
                 if parts:
                     progress.stop()
-                    click.echo(
-                        f"Done ({', '.join(parts)})"
-                    )
+                    click.echo(f"Done ({', '.join(parts)})")
             elif isinstance(message, AssistantMessage):
                 progress.bump_turn()
                 for block in message.content:
                     if isinstance(block, ToolUseBlock):
-                        status = progress.describe_tool(
-                            block.name, block.input or {}
-                        )
+                        status = progress.describe_tool(block.name, block.input or {})
                         progress.update(status)
                     elif isinstance(block, TextBlock):
                         output_parts.append(block.text)
                         # Show first sentence as status
-                        first_line = block.text.strip().split(
-                            "\n"
-                        )[0][:60]
+                        first_line = block.text.strip().split("\n")[0][:60]
                         if first_line:
                             progress.update(first_line)
     except Exception as exc:
@@ -554,8 +514,7 @@ def _print_summary(doc: QuestionsDocument) -> None:
         [
             q
             for q in doc.questions
-            if q.tier.value == "blocking"
-            and q.status == QuestionStatus.OPEN
+            if q.tier.value == "blocking" and q.status == QuestionStatus.OPEN
         ]
     )
     if blocking_open > 0:
@@ -567,10 +526,68 @@ def _print_summary(doc: QuestionsDocument) -> None:
         click.echo("\n  No blocking questions.")
 
 
+def _audit_generated_files(vendor: str) -> None:
+    """Check expected files and warn about unexpected changes.
+
+    Called after the agent session completes to verify the
+    agent produced the expected output and didn't modify
+    files it shouldn't have.
+
+    Parameters
+    ----------
+    vendor : str
+        Vendor name.
+    """
+    expected_files = {
+        f"warpt/backends/{vendor}.py",
+        f"warpt/backends/power/{vendor}_power.py",
+        f"tests/test_{vendor}_backend.py",
+        "questions.yaml",
+    }
+
+    # Files the agent is allowed to modify beyond the above
+    allowed_files = expected_files | {
+        "warpt/backends/factory.py",
+        "warpt/backends/power/factory.py",
+        "pyproject.toml",
+    }
+
+    click.echo("\nGenerated files:")
+    for rel_path in sorted(expected_files):
+        full_path = _REPO_ROOT / rel_path
+        if full_path.exists():
+            if rel_path == "questions.yaml":
+                doc = _load_questions()
+                count = len(doc.questions)
+                click.echo(f"  {rel_path}: created " f"({count} question(s))")
+            else:
+                lines = full_path.read_text().splitlines()
+                click.echo(f"  {rel_path}: created " f"({len(lines)} lines)")
+        else:
+            click.echo(f"  {rel_path}: MISSING")
+
+    # Check for unexpected modifications via git
+    diff_result = _git_run("diff", "--name-only", "HEAD")
+    untracked = _git_run("ls-files", "--others", "--exclude-standard")
+
+    changed = set()
+    if diff_result.stdout.strip():
+        changed.update(diff_result.stdout.strip().splitlines())
+    if untracked.stdout.strip():
+        changed.update(untracked.stdout.strip().splitlines())
+
+    unexpected = sorted(changed - allowed_files)
+    if unexpected:
+        click.echo("\nWarning: Unexpected file modifications:")
+        for f in unexpected:
+            click.echo(f"  {f}")
+
+
 def run_init(
     vendor: str,
     sdk_docs_text: str,
     vendor_context: str | None = None,
+    system_prompt: str | None = None,
 ) -> None:
     """Run the initial integration pass.
 
@@ -582,6 +599,10 @@ def run_init(
         Loaded SDK documentation text.
     vendor_context : str | None
         Optional hardware context.
+    system_prompt : str | None
+        Pre-built system prompt. If None, one is built
+        automatically. Passing a pre-built prompt avoids
+        building it twice when coming from --dry-run.
     """
     if session_exists(vendor):
         click.echo(
@@ -605,12 +626,13 @@ def run_init(
 
     click.echo(f"Starting {vendor} backend integration...")
 
-    # Build system prompt (instructions only, no SDK docs)
-    system_prompt = build_system_prompt(
-        vendor=vendor,
-        sdk_docs_text="",
-        vendor_context=vendor_context,
-    )
+    # Build system prompt if not pre-built by --dry-run
+    if system_prompt is None:
+        system_prompt = build_system_prompt(
+            vendor=vendor,
+            sdk_docs_text="",
+            vendor_context=vendor_context,
+        )
 
     # Create git branch
     parent_branch = _create_git_branch(vendor)
@@ -628,7 +650,7 @@ def run_init(
     # Build the user prompt (includes SDK docs)
     user_prompt = _build_init_prompt(vendor, sdk_docs_text)
 
-    click.echo("Running agent session (this will take a few minutes)...")
+    click.echo("Running agent session " "(this will take a few minutes)...")
 
     # Run the agent
     session_id, output = _run_claude_session(
@@ -660,17 +682,8 @@ def run_init(
     if output:
         click.echo(f"\nAgent output:\n{output[:2000]}")
 
-    # Print file status
-    generated_files = [
-        f"warpt/backends/{vendor}.py",
-        f"warpt/backends/power/{vendor}_power.py",
-        f"tests/test_{vendor}_backend.py",
-    ]
-    click.echo("\nGenerated files:")
-    for f in generated_files:
-        fpath = _REPO_ROOT / f
-        status = "created" if fpath.exists() else "not created"
-        click.echo(f"  {f}: {status}")
+    # Run post-agent file audit
+    _audit_generated_files(vendor)
 
     # Print question summary
     doc = _load_questions()
@@ -700,13 +713,31 @@ def run_iterate(vendor: str) -> None:
             f"{vendor} --sdk-docs <path>' first."
         )
 
+    # Verify we're on the correct branch
+    branch_name = f"backend/{vendor}"
+    current = _git_run("branch", "--show-current")
+    current_branch = current.stdout.strip()
+    if current_branch != branch_name:
+        raise click.ClickException(
+            f"Expected branch '{branch_name}', "
+            f"but you're on '{current_branch}'.\n"
+            f"Switch to it first: git checkout {branch_name}"
+        )
+
+    # Verify questions.yaml exists
+    if not _questions_path().exists():
+        raise click.ClickException(
+            "questions.yaml not found in the repo root.\n"
+            "This file should have been created during "
+            "'warpt integrate --sdk-docs'. "
+            "You may need to reset and re-run init."
+        )
+
     # Load session
     session_id, metadata = load_session(vendor)
     pass_number = increment_pass(vendor)
 
-    click.echo(
-        f"Iterating {vendor} integration (pass {pass_number})..."
-    )
+    click.echo(f"Iterating {vendor} integration (pass {pass_number})...")
 
     # Check for answered questions
     doc = _load_questions()
@@ -719,9 +750,7 @@ def run_iterate(vendor: str) -> None:
         )
         return
 
-    click.echo(
-        f"Found {len(answered)} answered question(s) to process."
-    )
+    click.echo(f"Found {len(answered)} answered question(s) to process.")
 
     # Build system prompt (re-read source files for current state)
     # For iterate, we don't need the full SDK docs again —
@@ -775,8 +804,7 @@ def run_status(vendor: str | None = None) -> None:
     if not doc.questions:
         click.echo("No questions document found.")
         click.echo(
-            "Start one with: warpt integrate "
-            "--vendor <name> --sdk-docs <path>"
+            "Start one with: warpt integrate " "--vendor <name> --sdk-docs <path>"
         )
         return
 
@@ -784,15 +812,9 @@ def run_status(vendor: str | None = None) -> None:
         click.echo(f"No questions found for vendor: {vendor}")
         return
 
-    click.echo(
-        f"Integration: {doc.metadata.get('vendor', 'unknown')}"
-    )
-    click.echo(
-        f"Pass: {doc.metadata.get('pass_number', '?')}"
-    )
-    click.echo(
-        f"Session: {doc.metadata.get('session_id', 'none')[:16]}..."
-    )
+    click.echo(f"Integration: {doc.metadata.get('vendor', 'unknown')}")
+    click.echo(f"Pass: {doc.metadata.get('pass_number', '?')}")
+    click.echo(f"Session: {doc.metadata.get('session_id', 'none')[:16]}...")
     click.echo()
 
     for q in doc.questions:
@@ -830,9 +852,7 @@ def run_validate(vendor: str) -> None:
     test_file = _REPO_ROOT / "tests" / f"test_{vendor}_backend.py"
 
     if not backend_file.exists():
-        raise click.ClickException(
-            f"Backend file not found: {backend_file}"
-        )
+        raise click.ClickException(f"Backend file not found: {backend_file}")
 
     results: dict[str, bool] = {}
 
@@ -851,13 +871,7 @@ def run_validate(vendor: str) -> None:
         click.echo("  Ruff: clean")
 
     # Run power backend ruff if exists
-    power_file = (
-        _REPO_ROOT
-        / "warpt"
-        / "backends"
-        / "power"
-        / f"{vendor}_power.py"
-    )
+    power_file = _REPO_ROOT / "warpt" / "backends" / "power" / f"{vendor}_power.py"
     if power_file.exists():
         click.echo(f"Running ruff on {power_file.name}...")
         ruff_power = subprocess.run(
@@ -901,6 +915,4 @@ def run_validate(vendor: str) -> None:
     if all_pass:
         click.echo("\nAll checks passed!")
     else:
-        click.echo(
-            "\nSome checks failed. Fix issues and re-run."
-        )
+        click.echo("\nSome checks failed. Fix issues and re-run.")

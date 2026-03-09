@@ -57,9 +57,7 @@ def save_session(
     meta.setdefault("pass_count", 1)
     meta["last_run"] = datetime.now(UTC).isoformat()
 
-    (vdir / "metadata.json").write_text(
-        json.dumps(meta, indent=2)
-    )
+    (vdir / "metadata.json").write_text(json.dumps(meta, indent=2))
 
     return vdir
 
@@ -157,8 +155,6 @@ def increment_pass(vendor: str) -> int:
     metadata["last_run"] = datetime.now(UTC).isoformat()
 
     vdir = _vendor_dir(vendor)
-    (vdir / "metadata.json").write_text(
-        json.dumps(metadata, indent=2)
-    )
+    (vdir / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
-    return metadata["pass_count"]
+    return int(metadata["pass_count"])
