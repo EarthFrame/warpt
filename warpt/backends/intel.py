@@ -60,6 +60,14 @@ class IntelBackend(AcceleratorBackend):
         """Get Intel driver version."""
         raise NotImplementedError("Intel backend not yet implemented")
 
+    def get_topology(self) -> str:
+        """Get GPU interconnect topology."""
+        raise NotImplementedError("Intel backend not yet implemented")
+
+    def get_distributed_backend(self) -> str:
+        """Get torch.distributed backend name."""
+        raise NotImplementedError("Intel backend not yet implemented")
+
     def shutdown(self):
         """Cleanup and shutdown Intel backend."""
         raise NotImplementedError("Intel backend not yet implemented")

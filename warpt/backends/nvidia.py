@@ -293,6 +293,39 @@ class NvidiaBackend(AcceleratorBackend):
         except pynvml.NVMLError:
             return None
 
+    def get_topology(self) -> str:
+        """Detect GPU interconnect topology via nvidia-smi, with pynvml fallback."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "topo", "-m"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                output = result.stdout
+                if "NV" in output:
+                    return "NVLink"
+                elif "PIX" in output or "PXB" in output or "PHB" in output:
+                    return "PCIe"
+                return "unknown"
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+        # pynvml fallback
+        try:
+            h0 = pynvml.nvmlDeviceGetHandleByIndex(0)
+            link_type = pynvml.nvmlDeviceGetNvLinkState(h0, 0)
+            return "NVLink" if link_type else "PCIe"
+        except pynvml.NVMLError:
+            return "unknown"
+
+    def get_distributed_backend(self) -> str:
+        """Return the torch.distributed backend for NVIDIA GPUs."""
+        return "nccl"
+
     def shutdown(self):
         """Cleanup and shutdown NVML."""
         try:
