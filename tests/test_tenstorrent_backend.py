@@ -17,6 +17,7 @@ from warpt.models.power_models import PowerDomain, PowerSource
 # Helpers: build fake device dicts matching _discover_devices() output
 # ---------------------------------------------------------------------------
 
+
 def _make_fake_devices(count=2):
     """Build a list of fake device dicts matching ``_discover_devices()`` output.
 
@@ -25,31 +26,33 @@ def _make_fake_devices(count=2):
     """
     devs = []
     if count >= 1:
-        devs.append({
-            "name": "tenstorrent!0",
-            "tt_dir": Path(
-                "/sys/devices/pci0000:60/0000:60:03.1/0000:61:00.0"
-                "/tenstorrent/tenstorrent!0"
-            ),
-            "hwmon_dir": Path(
-                "/sys/devices/pci0000:60/0000:60:03.1/0000:61:00.0"
-                "/hwmon/hwmon0"
-            ),
-            "pci_bdf": "0000:61:00.0",
-        })
+        devs.append(
+            {
+                "name": "tenstorrent!0",
+                "tt_dir": Path(
+                    "/sys/devices/pci0000:60/0000:60:03.1/0000:61:00.0"
+                    "/tenstorrent/tenstorrent!0"
+                ),
+                "hwmon_dir": Path(
+                    "/sys/devices/pci0000:60/0000:60:03.1/0000:61:00.0" "/hwmon/hwmon0"
+                ),
+                "pci_bdf": "0000:61:00.0",
+            }
+        )
     if count >= 2:
-        devs.append({
-            "name": "tenstorrent!1",
-            "tt_dir": Path(
-                "/sys/devices/pci0000:80/0000:80:03.1/0000:81:00.0"
-                "/tenstorrent/tenstorrent!1"
-            ),
-            "hwmon_dir": Path(
-                "/sys/devices/pci0000:80/0000:80:03.1/0000:81:00.0"
-                "/hwmon/hwmon1"
-            ),
-            "pci_bdf": "0000:81:00.0",
-        })
+        devs.append(
+            {
+                "name": "tenstorrent!1",
+                "tt_dir": Path(
+                    "/sys/devices/pci0000:80/0000:80:03.1/0000:81:00.0"
+                    "/tenstorrent/tenstorrent!1"
+                ),
+                "hwmon_dir": Path(
+                    "/sys/devices/pci0000:80/0000:80:03.1/0000:81:00.0" "/hwmon/hwmon1"
+                ),
+                "pci_bdf": "0000:81:00.0",
+            }
+        )
     return devs
 
 
@@ -653,9 +656,7 @@ class TestFactoryTenstorrentFallthrough:
         mock_nvidia.NvidiaBackend.side_effect = RuntimeError("No NVML")
 
         mock_tt = MagicMock()
-        mock_tt.TenstorrentBackend.return_value.is_available.return_value = (
-            False
-        )
+        mock_tt.TenstorrentBackend.return_value.is_available.return_value = False
 
         mock_amd = MagicMock()
         mock_amd.AMDBackend.return_value.is_available.return_value = False
@@ -757,12 +758,14 @@ class TestTenstorrentEdgeCases:
 
     def test_device_without_hwmon(self):
         """Device without hwmon dir returns None for telemetry."""
-        dev_no_hwmon = [{
-            "name": "tenstorrent!0",
-            "tt_dir": Path("/sys/devices/fake/tenstorrent/tenstorrent!0"),
-            "hwmon_dir": None,
-            "pci_bdf": "0000:99:00.0",
-        }]
+        dev_no_hwmon = [
+            {
+                "name": "tenstorrent!0",
+                "tt_dir": Path("/sys/devices/fake/tenstorrent/tenstorrent!0"),
+                "hwmon_dir": None,
+                "pci_bdf": "0000:99:00.0",
+            }
+        ]
         with patch(
             "warpt.backends.tenstorrent._discover_devices",
             return_value=dev_no_hwmon,
