@@ -29,6 +29,9 @@ def test_get_accelerator_backend_none_available():
     mock_nvidia = MagicMock()
     mock_nvidia.NvidiaBackend.return_value.is_available.return_value = False
 
+    mock_tt = MagicMock()
+    mock_tt.TenstorrentBackend.return_value.is_available.return_value = False
+
     mock_amd = MagicMock()
     mock_amd.AMDBackend.return_value.is_available.return_value = False
 
@@ -37,6 +40,7 @@ def test_get_accelerator_backend_none_available():
 
     modules = {
         "warpt.backends.nvidia": mock_nvidia,
+        "warpt.backends.tenstorrent": mock_tt,
         "warpt.backends.amd": mock_amd,
         "warpt.backends.intel": mock_intel,
     }
@@ -53,6 +57,10 @@ def test_nvidia_fail_falls_through_to_amd():
     mock_nvidia = MagicMock()
     mock_nvidia.NvidiaBackend.side_effect = RuntimeError("NVML not found")
 
+    # Make Tenstorrent unavailable
+    mock_tt = MagicMock()
+    mock_tt.TenstorrentBackend.return_value.is_available.return_value = False
+
     # Make AMD available
     mock_amd = MagicMock()
     mock_amd_instance = MagicMock()
@@ -61,6 +69,7 @@ def test_nvidia_fail_falls_through_to_amd():
 
     modules = {
         "warpt.backends.nvidia": mock_nvidia,
+        "warpt.backends.tenstorrent": mock_tt,
         "warpt.backends.amd": mock_amd,
     }
 
