@@ -111,6 +111,15 @@ for i in range(backend.get_device_count()):
     print(f"       Power: {backend.get_power_usage(i)}W")
 ```
 
+## Not Yet Implemented
+
+The following sysfs attributes from the SDK guide are not yet covered by the backend:
+
+- **`tt_ttflash_ver`** — The tt-flash utility version. Noted as "may not be present on all cards" in the guide.
+- **PCIe performance counters** (`pcie_perf_counters/` subdirectory) — Cumulative 32-bit counters for read/write data words across NOC 0 and NOC 1. The guide notes these "may not be present on all devices or firmware versions," and PCI counter accuracy is uncertain when DMA is used.
+
+These can be added in a future pass if needed.
+
 ## Stress Testing
 
 warpt includes 25 stress tests across 5 categories. Here's what can run on Tenstorrent systems:
