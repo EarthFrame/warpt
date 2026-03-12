@@ -30,7 +30,7 @@ def _find_free_port() -> int:
     """Find a free TCP port for distributed communication."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
-        return s.getsockname()[1]
+        return int(s.getsockname()[1])
 
 
 def _percentile(sorted_vals: list[float], p: float) -> float:
@@ -459,7 +459,7 @@ class GPUMultiScalingTest(StressTest):
         try:
             import torch
 
-            return torch.cuda.device_count()
+            return int(torch.cuda.device_count())
         except ImportError:
             return 0
 
@@ -519,7 +519,7 @@ class GPUMultiScalingTest(StressTest):
             import torch
             import torch.distributed as dist
 
-            return torch.cuda.device_count() >= 2 and dist.is_nccl_available()
+            return bool(torch.cuda.device_count() >= 2 and dist.is_nccl_available())
         except ImportError:
             return False
 
@@ -769,6 +769,8 @@ class GPUMultiScalingTest(StressTest):
                 "comm_benchmarks": rank0_comm,
                 "per_gpu": per_gpu_metrics,
             },
+            max_temp_across_gpus=None,
+            total_power=None,
         )
 
     def teardown(self) -> None:
