@@ -5,7 +5,7 @@ to measure realistic performance for fluid simulation applications.
 """
 
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
@@ -23,11 +23,22 @@ class GPUCFDSimulationTest(StressTest):
     This test measures performance for fluid simulation applications.
     """
 
+    # Mesh size defaults based on GPU VRAM (GB → cells).
+    # Each cell uses ~56 bytes base + ~114 bytes solver overhead ≈ 170 bytes.
+    # Thresholds use ~90% of advertised sizes to account for reserved VRAM.
+    _VRAM_MESH_DEFAULTS: ClassVar[dict[float, int]] = {
+        3.5: 2_000_000,
+        7.0: 5_000_000,
+        14.0: 15_000_000,
+        28.0: 30_000_000,
+        56.0: 60_000_000,
+    }
+
     _PARAM_FIELDS = ("mesh_size", "device_id", "burnin_seconds", "solver_iterations")
 
     def __init__(
         self,
-        mesh_size: int = 1000000,
+        mesh_size: int | None = None,
         device_id: int = 0,
         burnin_seconds: int = DEFAULT_BURNIN_SECONDS,
         solver_iterations: int = 100,
@@ -37,7 +48,8 @@ class GPUCFDSimulationTest(StressTest):
 
         Args:
             mesh_size: Number of mesh cells to simulate.
-                Default 1M cells (typical for single GPU CFD).
+                If None, auto-selects based on GPU VRAM
+                (2M for 4GB, 5M for 8GB, 15M for 16GB, 30M for 32GB, 60M for 64GB+).
             device_id: GPU device ID to test. Default 0.
             burnin_seconds: Warmup duration before measurement.
             solver_iterations: Number of solver iterations per solve.
@@ -45,13 +57,35 @@ class GPUCFDSimulationTest(StressTest):
             backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
                 If None, defaults to NVIDIA/CUDA.
         """
-        self.mesh_size = mesh_size
         self.device_id = device_id
+        self.mesh_size = (
+            mesh_size if mesh_size is not None else self._default_mesh_size()
+        )
         self.burnin_seconds = burnin_seconds
         self.solver_iterations = solver_iterations
         self.backend = backend
         self._device = None
         self._gpu_name = None
+
+    def _default_mesh_size(self) -> int:
+        """Select mesh size based on GPU VRAM."""
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                return 2_000_000
+            vram_gb = torch.cuda.get_device_properties(self.device_id).total_memory / (
+                1024**3
+            )
+        except (ImportError, RuntimeError):
+            return 2_000_000
+
+        # Find the largest tier that fits
+        result = 2_000_000
+        for vram_threshold, cells in sorted(self._VRAM_MESH_DEFAULTS.items()):
+            if vram_gb >= vram_threshold:
+                result = cells
+        return result
 
     # -------------------------------------------------------------------------
     # Identity & Metadata
@@ -301,8 +335,13 @@ class GPUCFDSimulationTest(StressTest):
         solver_times = []
         test_start_time = time.time()
 
+        # Split duration: 50% solver, 25% gradients, 25% flux
+        solver_duration = duration * 0.5
+        gradient_duration = duration * 0.25
+        flux_duration = duration * 0.25
+
         # Run solver multiple times to collect statistics
-        while (time.time() - test_start_time) < duration:
+        while (time.time() - test_start_time) < solver_duration:
             solver_start = time.perf_counter()
 
             # Simulate conjugate gradient solver
@@ -382,10 +421,7 @@ class GPUCFDSimulationTest(StressTest):
         gradient_times = []
         gradient_start_time = time.time()
 
-        # Run gradient computations for remaining test duration
-        remaining_time = duration - (gradient_start_time - test_start_time)
-
-        while (time.time() - gradient_start_time) < remaining_time / 2:
+        while (time.time() - gradient_start_time) < gradient_duration:
             grad_start = time.perf_counter()
 
             # Compute pressure gradients in X, Y, Z directions
@@ -457,10 +493,7 @@ class GPUCFDSimulationTest(StressTest):
         flux_times = []
         flux_start_time = time.time()
 
-        # Run flux calculations for remaining test duration
-        remaining_time_flux = duration - (flux_start_time - test_start_time)
-
-        while (time.time() - flux_start_time) < remaining_time_flux / 2:
+        while (time.time() - flux_start_time) < flux_duration:
             flux_iter_start = time.perf_counter()
 
             # Flux calculations: Sequential read + write operations
@@ -480,7 +513,7 @@ class GPUCFDSimulationTest(StressTest):
             momentum_flux = velocity * velocity[:, 0:1]  # Broadcast multiply
 
             # Energy flux (combines pressure and velocity)
-            energy_flux = (pressure + pressure) * velocity[:, 0]
+            _ = (pressure + pressure) * velocity[:, 0]  # energy flux
 
             # Update fields (memory writes)
             # This simulates updating cell values based on fluxes
@@ -533,11 +566,8 @@ class GPUCFDSimulationTest(StressTest):
             f"bandwidth={memory_bandwidth_gbps:.1f} GB/s"
         )
 
-        # Clean up
-        del x, r, p, ap, r_new
-        del grad_x, grad_y, grad_z
-        del mass_flux_x, mass_flux_y, mass_flux_z
-        del momentum_flux, energy_flux, pressure_update, velocity_update
+        # Clean up GPU memory
+        del pressure, velocity, gradients, residual
         torch.cuda.empty_cache()
 
         # =====================================================================
@@ -546,18 +576,27 @@ class GPUCFDSimulationTest(StressTest):
 
         test_elapsed = time.time() - test_start_time
 
-        # Calculate cell updates per second
-        # Each test iteration processes all cells
-        total_iterations = num_solves + num_gradient_ops + num_flux_ops
-        total_cell_updates = total_iterations * self.mesh_size
-        cell_updates_per_sec = (
-            total_cell_updates / test_elapsed if test_elapsed > 0 else 0
+        # Per-phase rates
+        solver_elapsed = num_solves * avg_solver_time / 1000 if num_solves else 0
+        solves_per_sec = num_solves / solver_elapsed if solver_elapsed > 0 else 0
+
+        gradient_elapsed = (
+            num_gradient_ops * avg_gradient_time / 1000 if num_gradient_ops else 0
+        )
+        gradient_ops_per_sec = (
+            num_gradient_ops / gradient_elapsed if gradient_elapsed > 0 else 0
         )
 
+        flux_elapsed = num_flux_ops * avg_flux_time / 1000 if num_flux_ops else 0
+        flux_ops_per_sec = num_flux_ops / flux_elapsed if flux_elapsed > 0 else 0
+
+        self.logger.info(f"\nCompleted in {test_elapsed:.1f}s")
+        self.logger.info(f"Solver: {solves_per_sec:.1f} solves/sec")
+        self.logger.info(f"Gradients: {gradient_ops_per_sec:.0f} ops/sec")
         self.logger.info(
-            f"\nOverall: {total_cell_updates:,} cell updates in {test_elapsed:.1f}s"
+            f"Flux: {flux_ops_per_sec:.0f} ops/sec, "
+            f"{memory_bandwidth_gbps:.1f} GB/s"
         )
-        self.logger.info(f"Performance: {cell_updates_per_sec / 1e6:.1f}M cells/sec")
 
         return {
             "test_name": self.get_name(),
@@ -567,11 +606,9 @@ class GPUCFDSimulationTest(StressTest):
             "gpu_name": self._gpu_name,
             "burnin_seconds": self.burnin_seconds,
             "solver_iterations": self.solver_iterations,
-            # Overall performance
-            "cell_updates_per_sec": cell_updates_per_sec,
-            "total_cell_updates": total_cell_updates,
             # Solver metrics
             "num_solves": num_solves,
+            "solves_per_sec": solves_per_sec,
             "avg_solver_time_ms": avg_solver_time,
             "min_solver_time_ms": min_solver_time,
             "max_solver_time_ms": max_solver_time,
@@ -580,6 +617,7 @@ class GPUCFDSimulationTest(StressTest):
             "p99_solver_time_ms": p99_solver,
             # Gradient metrics
             "num_gradient_ops": num_gradient_ops,
+            "gradient_ops_per_sec": gradient_ops_per_sec,
             "avg_gradient_time_ms": avg_gradient_time,
             "min_gradient_time_ms": min_gradient_time,
             "max_gradient_time_ms": max_gradient_time,
@@ -588,6 +626,7 @@ class GPUCFDSimulationTest(StressTest):
             "p99_gradient_time_ms": p99_gradient,
             # Flux/memory metrics
             "num_flux_ops": num_flux_ops,
+            "flux_ops_per_sec": flux_ops_per_sec,
             "avg_flux_time_ms": avg_flux_time,
             "min_flux_time_ms": min_flux_time,
             "max_flux_time_ms": max_flux_time,

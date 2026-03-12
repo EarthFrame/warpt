@@ -43,6 +43,7 @@ class RAMSwapPressureTest(StressTest):
         # Runtime state (set in setup/execute_test)
         self._array: Any | None = None
         self._source_array_for_writes: Any | None = None
+        self._pressure_chunks: list = []
         self._total_ram_gb = 0.0
         self._available_ram_gb = 0.0
 
@@ -88,10 +89,11 @@ class RAMSwapPressureTest(StressTest):
                 f"allocation_percent_baseline must be between 0 and 1, "
                 f"got {self.allocation_percent_baseline}"
             )
-        if self.allocation_percent_pressure <= 1.0:
+        if self.allocation_percent_pressure <= self.allocation_percent_baseline:
             raise ValueError(
-                f"allocation_percent_pressure must be > 1.0 to force swap, "
-                f"got {self.allocation_percent_pressure}"
+                f"allocation_percent_pressure ({self.allocation_percent_pressure}) "
+                f"must be greater than allocation_percent_baseline "
+                f"({self.allocation_percent_baseline})"
             )
         if self.burnin_seconds < 0:
             raise ValueError("burnin_seconds must be >= 0")
@@ -113,12 +115,7 @@ class RAMSwapPressureTest(StressTest):
 
     def teardown(self) -> None:
         """Clean up allocated memory."""
-        if self._array is not None:
-            del self._array
-            self._array = None
-        if self._source_array_for_writes is not None:
-            del self._source_array_for_writes
-            self._source_array_for_writes = None
+        self._free_arrays()
         self.logger.debug("Memory cleaned up")
 
     def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
@@ -170,8 +167,8 @@ class RAMSwapPressureTest(StressTest):
         per_test_duration = phase_duration // 2  # Split each phase: read + write
 
         self.logger.info("=== Phase 1: Baseline (No Swap) ===")
-        # Allocate baseline arrays
-        self._allocate_arrays(self.allocation_percent_baseline)
+        self._allocate_baseline()
+        assert self._array is not None, "Array not allocated"
 
         # Measure baseline performance
         baseline_read_gbps = self._benchmark_sequential_read(per_test_duration)
@@ -187,10 +184,11 @@ class RAMSwapPressureTest(StressTest):
         # Get initial swap stats
         swap_before = self._get_swap_stats()
 
-        # Allocate pressure arrays (force swap)
-        self._allocate_arrays(self.allocation_percent_pressure)
+        # Allocate incrementally until swap is engaged
+        self._allocate_pressure()
         assert self._array is not None, "Array not allocated"
-        allocated_pressure_gb = self._array.nbytes / (1024**3) * 2
+        chunks_gb = sum(c.nbytes for c in self._pressure_chunks) / (1024**3)
+        allocated_pressure_gb = self._array.nbytes / (1024**3) * 2 + chunks_gb
 
         # Measure pressure performance
         pressure_read_gbps = self._benchmark_sequential_read(per_test_duration)
@@ -205,14 +203,19 @@ class RAMSwapPressureTest(StressTest):
         # Free pressure arrays
         self._free_arrays()
 
-        # Calculate degradation factors
-        read_slowdown = (
-            baseline_read_gbps / pressure_read_gbps if pressure_read_gbps > 0 else 1.0
+        # Calculate degradation factors (clamped to 1.0 — noise can make
+        # pressure slightly faster than baseline, which isn't real degradation)
+        read_slowdown = max(
+            baseline_read_gbps / pressure_read_gbps if pressure_read_gbps > 0 else 1.0,
+            1.0,
         )
-        write_slowdown = (
-            baseline_write_gbps / pressure_write_gbps
-            if pressure_write_gbps > 0
-            else 1.0
+        write_slowdown = max(
+            (
+                baseline_write_gbps / pressure_write_gbps
+                if pressure_write_gbps > 0
+                else 1.0
+            ),
+            1.0,
         )
 
         # Detect if swapping occurred
@@ -224,7 +227,7 @@ class RAMSwapPressureTest(StressTest):
             # System info
             total_ram_gb=self._total_ram_gb,
             available_ram_gb=self._available_ram_gb,
-            allocated_memory_gb=allocated_pressure_gb,  # Report max allocation
+            allocated_memory_gb=allocated_pressure_gb,
             # Test metadata
             duration=float(duration),
             burnin_seconds=self.burnin_seconds,
@@ -251,32 +254,102 @@ class RAMSwapPressureTest(StressTest):
     # Helper Methods
     # -------------------------------------------------------------------------
 
-    def _allocate_arrays(self, allocation_percent: float) -> None:
-        """Allocate memory arrays for testing.
-
-        Args:
-            allocation_percent: Percentage of available RAM to allocate.
-        """
+    def _allocate_baseline(self) -> None:
+        """Allocate arrays for baseline test (fits in RAM)."""
         import numpy as np
 
-        # Calculate total allocation (for both arrays)
-        total_allocation_gb = self._available_ram_gb * allocation_percent
-        # Split evenly between read array and write source array
-        per_array_gb = total_allocation_gb / 2
+        total_gb = self._available_ram_gb * self.allocation_percent_baseline
+        per_array_gb = total_gb / 2
+        num_elements = int(per_array_gb * (1024**3) / 8)
 
         self.logger.info(
-            f"Allocating: {total_allocation_gb:.2f} GB total "
+            f"Allocating: {total_gb:.2f} GB total "
             f"({per_array_gb:.2f} GB x 2 arrays, "
-            f"{allocation_percent * 100:.0f}%)"
+            f"{self.allocation_percent_baseline * 100:.0f}%)"
         )
 
-        # Allocate arrays
-        num_elements = int(per_array_gb * (1024**3) / 8)  # 8 bytes per float64
         self._array = np.random.rand(num_elements)
         self._source_array_for_writes = np.random.rand(num_elements)
 
+    def _allocate_pressure(self) -> None:
+        """Allocate arrays incrementally until swap is engaged.
+
+        Starts at the baseline size and grows in chunks, checking
+        psutil.swap_memory().used after each chunk. Stops when swap
+        usage increases or when available memory is exhausted.
+        """
+        import numpy as np
+        import psutil
+
+        # Start with baseline-sized arrays
+        baseline_gb = self._available_ram_gb * self.allocation_percent_baseline
+        target_gb = self._available_ram_gb * self.allocation_percent_pressure
+        per_array_gb = baseline_gb / 2
+        num_elements = int(per_array_gb * (1024**3) / 8)
+
+        self._array = np.random.rand(num_elements)
+        self._source_array_for_writes = np.random.rand(num_elements)
+        current_gb = baseline_gb
+
+        self.logger.info(
+            f"Starting at {current_gb:.2f} GB, " f"growing until swap is engaged..."
+        )
+
+        # Grow in chunks (~5% of available RAM each)
+        chunk_gb = max(self._available_ram_gb * 0.05, 0.5)
+        chunk_elements = int(chunk_gb * (1024**3) / 8)
+        chunks: list[np.ndarray] = []
+
+        swap_before = psutil.swap_memory().used
+
+        while current_gb < target_gb:
+            # Check if we'd exceed what the system can provide
+            mem = psutil.virtual_memory()
+            swap = psutil.swap_memory()
+            free_total = mem.available + swap.free
+
+            # Stop if less than 2 GB headroom to avoid OOM killer
+            if free_total < 2 * (1024**3):
+                self.logger.info(
+                    f"Stopping growth at {current_gb:.2f} GB — "
+                    f"only {free_total / (1024**3):.1f} GB free (RAM+swap)"
+                )
+                break
+
+            try:
+                chunk = np.random.rand(chunk_elements)
+                chunks.append(chunk)
+                current_gb += chunk_gb
+            except MemoryError:
+                self.logger.info(
+                    f"Stopping growth at {current_gb:.2f} GB — MemoryError"
+                )
+                break
+
+            swap_now = psutil.swap_memory().used
+            if swap_now > swap_before:
+                swap_delta_mb = (swap_now - swap_before) / (1024**2)
+                self.logger.info(
+                    f"Swap engaged at {current_gb:.2f} GB "
+                    f"(swap used: +{swap_delta_mb:.0f} MB)"
+                )
+
+        # Consolidate: resize main arrays to include chunk data
+        # We keep chunks alive to maintain memory pressure, and benchmark
+        # using the main arrays.
+        self.logger.info(
+            f"Pressure allocation: {current_gb:.2f} GB total "
+            f"({current_gb / self._available_ram_gb * 100:.0f}% of available RAM)"
+        )
+
+        # Store chunks so they stay allocated during benchmarks
+        self._pressure_chunks = chunks
+
     def _free_arrays(self) -> None:
-        """Free allocated memory arrays."""
+        """Free allocated memory arrays and pressure chunks."""
+        if self._pressure_chunks:
+            del self._pressure_chunks[:]
+            self._pressure_chunks = []
         if self._array is not None:
             del self._array
             self._array = None

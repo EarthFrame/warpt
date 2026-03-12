@@ -194,6 +194,19 @@ class AcceleratorBackend(ABC):
         pass
 
     @abstractmethod
+    def get_topology(self) -> str:
+        """Get GPU interconnect topology.
+
+        E.g., 'NVLink', 'PCIe', 'Infinity Fabric', 'Xe Link'.
+        """
+        pass
+
+    @abstractmethod
+    def get_distributed_backend(self) -> str:
+        """Get torch.distributed backend name (e.g., 'nccl', 'gloo', 'ccl')."""
+        pass
+
+    @abstractmethod
     def shutdown(self):
         """Cleanup and shutdown the GPU backend.
 
