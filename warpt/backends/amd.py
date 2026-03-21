@@ -60,6 +60,14 @@ class AMDBackend(AcceleratorBackend):
         """Get AMD driver version."""
         raise NotImplementedError("AMD backend not yet implemented")
 
+    def get_topology(self) -> str:
+        """Get GPU interconnect topology."""
+        raise NotImplementedError("AMD backend not yet implemented")
+
+    def get_distributed_backend(self) -> str:
+        """Get torch.distributed backend name."""
+        raise NotImplementedError("AMD backend not yet implemented")
+
     def shutdown(self):
         """Cleanup and shutdown AMD backend."""
         raise NotImplementedError("AMD backend not yet implemented")
