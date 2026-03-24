@@ -68,6 +68,10 @@ integrate = [
     "markdownify>=0.11.0",
 ]
 
+daemon = [
+    "duckdb>=1.0.0",
+]
+
 [project.scripts]
 warpt = "warpt.cli:warpt"
 
@@ -91,6 +95,7 @@ packages = [
     "warpt.version",
     "warpt.integrate",
     "warpt.integrate.loaders",
+    "warpt.daemon",
 ]
 
 [tool.ruff]

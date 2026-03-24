@@ -86,8 +86,18 @@ def version(verbose):
     default=False,
     help="Run the CLI monitor output instead of the curses dashboard",
 )
-def monitor(interval, duration, no_tui):
+@click.option(
+    "--json",
+    "output_json",
+    is_flag=True,
+    default=False,
+    help="Output JSON lines instead of human-readable text (requires --no-tui)",
+)
+def monitor(interval, duration, no_tui, output_json):
     """Monitor system performance in real-time."""
+    if output_json and not no_tui:
+        raise click.ClickException("--json requires --no-tui")
+
     if not no_tui:
         try:
             from warpt.commands.monitor_tui import run_monitor_tui
@@ -100,7 +110,11 @@ def monitor(interval, duration, no_tui):
     from warpt.commands.monitor_cmd import run_monitor
 
     try:
-        run_monitor(interval_seconds=interval, duration_seconds=duration)
+        run_monitor(
+            interval_seconds=interval,
+            duration_seconds=duration,
+            output_json=output_json,
+        )
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 

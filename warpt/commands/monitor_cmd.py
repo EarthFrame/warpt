@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime
 
@@ -9,13 +10,19 @@ from warpt.monitoring import ResourceSnapshot, SystemMonitorDaemon
 from warpt.utils.env import get_env
 
 
-def run_monitor(interval_seconds: float, duration_seconds: float | None) -> None:
+def run_monitor(
+    interval_seconds: float,
+    duration_seconds: float | None,
+    output_json: bool = False,
+) -> None:
     """Run the live system monitor until interrupted or duration elapses.
 
     Args:
         interval_seconds: Sampling interval in seconds. Must be positive.
         duration_seconds: Optional time limit in seconds. If None, runs until
             interrupted by the user.
+        output_json: If True, emit one JSON object per line instead of
+            human-readable text.
     """
     if interval_seconds <= 0:
         raise ValueError("interval_seconds must be greater than zero")
@@ -29,7 +36,10 @@ def run_monitor(interval_seconds: float, duration_seconds: float | None) -> None
         while True:
             snapshot = daemon.get_latest_snapshot()
             if snapshot and snapshot.timestamp != last_timestamp:
-                print(_format_snapshot(snapshot), flush=True)
+                if output_json:
+                    print(json.dumps(snapshot.to_dict()), flush=True)
+                else:
+                    print(_format_snapshot(snapshot), flush=True)
                 last_timestamp = snapshot.timestamp
 
             if duration_seconds is not None:
