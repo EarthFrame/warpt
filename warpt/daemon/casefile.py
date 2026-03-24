@@ -125,7 +125,7 @@ class CaseFile:
     Parameters
     ----------
     db_path
-        Path to the DuckDB file, or \":memory:\" for in-memory databases.
+        Path to the DuckDB file, or ``":memory:"`` for in-memory databases.
     """
 
     def __init__(self, db_path: str = "~/.warpt/warpt.db") -> None:

@@ -38,9 +38,7 @@ def test_json_output_is_valid_json() -> None:
     captured = StringIO()
 
     with (
-        patch(
-            "warpt.commands.monitor_cmd.SystemMonitorDaemon"
-        ) as mock_daemon_cls,
+        patch("warpt.commands.monitor_cmd.SystemMonitorDaemon") as mock_daemon_cls,
         patch("sys.stdout", captured),
     ):
         daemon_instance = mock_daemon_cls.return_value
@@ -73,9 +71,7 @@ def test_json_output_contains_all_snapshot_fields() -> None:
     captured = StringIO()
 
     with (
-        patch(
-            "warpt.commands.monitor_cmd.SystemMonitorDaemon"
-        ) as mock_daemon_cls,
+        patch("warpt.commands.monitor_cmd.SystemMonitorDaemon") as mock_daemon_cls,
         patch("sys.stdout", captured),
     ):
         daemon_instance = mock_daemon_cls.return_value
@@ -120,9 +116,7 @@ def test_default_output_is_not_json() -> None:
     captured = StringIO()
 
     with (
-        patch(
-            "warpt.commands.monitor_cmd.SystemMonitorDaemon"
-        ) as mock_daemon_cls,
+        patch("warpt.commands.monitor_cmd.SystemMonitorDaemon") as mock_daemon_cls,
         patch("sys.stdout", captured),
     ):
         daemon_instance = mock_daemon_cls.return_value

@@ -105,8 +105,7 @@ def test_vitals_struct_array_round_trips() -> None:
     )
 
     rows = cf.query(
-        "SELECT UNNEST(gpus).gpu_guid, UNNEST(gpus).utilization_pct "
-        "FROM vitals"
+        "SELECT UNNEST(gpus).gpu_guid, UNNEST(gpus).utilization_pct " "FROM vitals"
     )
 
     assert len(rows) == 2
