@@ -552,6 +552,11 @@ def carbon(subcommand, label, region, interval, limit, days, output_json):
     run_carbon(subcommand, label, region, interval, limit, days, output_json)
 
 
+# Register daemon command group
+from warpt.commands.daemon_cmd import daemon  # noqa: E402
+
+warpt.add_command(daemon)
+
 # Register integrate command group (requires optional deps)
 try:
     from warpt.integrate.cli import integrate

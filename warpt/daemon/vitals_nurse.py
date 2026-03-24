@@ -14,9 +14,9 @@ from typing import Any
 from warpt.daemon.casefile import CaseFile
 
 DEFAULT_GPU_THRESHOLDS: dict[str, dict[str, float]] = {
-    "utilization_percent": {"value": 80.0, "sustained_seconds": 300.0},
-    "memory_utilization_percent": {"value": 85.0, "sustained_seconds": 300.0},
-    "temperature_c": {"value": 80.0, "sustained_seconds": 300.0},
+    "utilization_percent": {"value": 80.0, "sustained_seconds": 15.0},
+    "memory_utilization_percent": {"value": 85.0, "sustained_seconds": 15.0},
+    "temperature_c": {"value": 80.0, "sustained_seconds": 15.0},
 }
 
 
@@ -41,7 +41,7 @@ class VitalsNurse:
         self,
         casefile: CaseFile,
         buffer_size: int = 60,
-        heartbeat_interval: float = 300.0,
+        heartbeat_interval: float = 30.0,
         poll_interval: float = 5.0,
         gpu_thresholds: dict[str, dict[str, float]] | None = None,
     ) -> None:
