@@ -70,6 +70,8 @@ integrate = [
 
 daemon = [
     "duckdb>=1.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.28.0",
 ]
 
 [project.scripts]
@@ -96,6 +98,7 @@ packages = [
     "warpt.integrate",
     "warpt.integrate.loaders",
     "warpt.daemon",
+    "warpt.daemon.agents",
 ]
 
 [tool.ruff]

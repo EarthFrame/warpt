@@ -52,6 +52,24 @@ def start():
         click.echo("Daemon is already running.")
         return
 
+    # First-run: check for intelligence config
+    from pathlib import Path
+
+    config_path = Path(warpt_dir) / "config.yaml"
+    if not config_path.exists():
+        click.echo("No intelligence config found.")
+        if click.confirm(
+            "Would you like to set up AI diagnostics? (requires Ollama)",
+            default=False,
+        ):
+            from warpt.commands.er_cmd import er_wizard
+
+            er_wizard(warpt_dir)
+        else:
+            click.echo(
+                "Tip: run 'warpt daemon er' later to enable intelligence."
+            )
+
     # Launch daemon as a detached subprocess
     cmd = [sys.executable, "-m", "warpt.daemon.daemon_process", warpt_dir]
     kwargs: dict = {
@@ -80,6 +98,18 @@ def stop():
     warpt_dir = _get_warpt_dir()
     result = send_stop(warpt_dir=warpt_dir)
     click.echo(result)
+
+
+@daemon.command()
+def er():
+    """Run the ER intelligence setup wizard."""
+    err = check_duckdb()
+    if err:
+        raise click.ClickException(err)
+
+    from warpt.commands.er_cmd import er_wizard
+
+    er_wizard(_get_warpt_dir())
 
 
 @daemon.command()
