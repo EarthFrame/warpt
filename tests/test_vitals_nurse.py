@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from warpt.daemon.vitals_nurse import VitalsNurse
+from warpt.daemon.vitals_nurse import DEFAULT_GPU_THRESHOLDS, VitalsNurse
 
 
 def _sample_snapshot(ts: str = "2026-03-23T14:00:00") -> dict:
@@ -195,6 +195,8 @@ def _breach_snapshot(
 
 def test_threshold_breach_fires_after_sustained_duration() -> None:
     """Callback fires only after the breach is sustained for the configured duration."""
+    sustained = DEFAULT_GPU_THRESHOLDS["utilization_percent"]["sustained_seconds"]
+
     casefile = MagicMock()
     callback = MagicMock()
     nurse = VitalsNurse(casefile=casefile, heartbeat_interval=9999.0)
@@ -208,17 +210,17 @@ def test_threshold_breach_fires_after_sustained_duration() -> None:
         return fake_time[0]
 
     with patch("warpt.daemon.vitals_nurse.time.monotonic", side_effect=mock_monotonic):
-        # First snapshot at t=100 — breach starts but not yet sustained
+        # First snapshot — breach starts but not yet sustained
         nurse.feed_snapshot(_breach_snapshot(ts="2026-03-23T14:00:00"))
         callback.assert_not_called()
 
-        # Second snapshot at t=200 — still under 300s sustained
-        fake_time[0] = 200.0
+        # Second snapshot — halfway through sustained period, should not fire
+        fake_time[0] = 100.0 + sustained / 2
         nurse.feed_snapshot(_breach_snapshot(ts="2026-03-23T14:00:01"))
         callback.assert_not_called()
 
-        # Third snapshot at t=401 — over 300s sustained, should fire
-        fake_time[0] = 401.0
+        # Third snapshot — past sustained duration, should fire
+        fake_time[0] = 100.0 + sustained + 1.0
         nurse.feed_snapshot(_breach_snapshot(ts="2026-03-23T14:00:02"))
         callback.assert_called_once()
 
@@ -234,41 +236,45 @@ def test_threshold_breach_resets_when_metric_drops() -> None:
     """Breach timer resets if metric drops, requiring fresh sustained period."""
     from unittest.mock import patch
 
+    sustained = DEFAULT_GPU_THRESHOLDS["utilization_percent"]["sustained_seconds"]
+    t0 = 100.0
+
     casefile = MagicMock()
     callback = MagicMock()
     nurse = VitalsNurse(casefile=casefile, heartbeat_interval=9999.0)
     nurse.set_on_threshold_breach(callback)
 
-    fake_time = [100.0]
+    fake_time = [t0]
 
     def mock_monotonic() -> float:
         return fake_time[0]
 
     with patch("warpt.daemon.vitals_nurse.time.monotonic", side_effect=mock_monotonic):
-        # t=100: breach starts (95% > 80%)
+        # Breach starts (95% > 80%)
         nurse.feed_snapshot(_breach_snapshot(gpu_util=95.0))
 
-        # t=250: still breaching, 150s elapsed — not enough
-        fake_time[0] = 250.0
+        # Still breaching, halfway through — not enough
+        fake_time[0] = t0 + sustained / 2
         nurse.feed_snapshot(_breach_snapshot(gpu_util=90.0))
         callback.assert_not_called()
 
-        # t=260: metric drops below threshold — reset
-        fake_time[0] = 260.0
+        # Metric drops below threshold — reset
+        fake_time[0] = t0 + sustained / 2 + 1.0
         nurse.feed_snapshot(_breach_snapshot(gpu_util=70.0))
         callback.assert_not_called()
 
-        # t=270: breach starts again from scratch
-        fake_time[0] = 270.0
+        # Breach starts again from scratch
+        t_restart = t0 + sustained / 2 + 2.0
+        fake_time[0] = t_restart
         nurse.feed_snapshot(_breach_snapshot(gpu_util=95.0))
 
-        # t=500: only 230s since new breach start — should NOT fire
-        fake_time[0] = 500.0
+        # Halfway through new sustained period — should NOT fire
+        fake_time[0] = t_restart + sustained / 2
         nurse.feed_snapshot(_breach_snapshot(gpu_util=95.0))
         callback.assert_not_called()
 
-        # t=571: 301s since new breach start at t=270 — should fire
-        fake_time[0] = 571.0
+        # Past sustained duration since restart — should fire
+        fake_time[0] = t_restart + sustained + 1.0
         nurse.feed_snapshot(_breach_snapshot(gpu_util=95.0))
         callback.assert_called_once()
 

@@ -12,6 +12,7 @@ from typing import Any
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.charge_nurse import ChargeNurse
 from warpt.daemon.vitals_nurse import VitalsNurse
+from warpt.utils.logger import Logger
 
 DEFAULT_WARPT_DIR = os.path.expanduser("~/.warpt")
 
@@ -41,12 +42,17 @@ class DaemonProcess:
         self._warpt_dir.mkdir(parents=True, exist_ok=True)
         self._write_pid()
 
+        log = Logger.get("daemon")
+        log.info("Daemon starting...")
+
         self._casefile = CaseFile(self._db_path)
         self._charge_nurse = ChargeNurse(casefile=self._casefile)
         self._vitals_nurse = VitalsNurse(casefile=self._casefile)
         self._vitals_nurse.set_on_threshold_breach(self._charge_nurse.handle_breach)
+        log.info("Wired VitalsNurse -> ChargeNurse")
         self._vitals_nurse.start()
 
+        log.info("Daemon ready, waiting for stop signal")
         self._stop_event.wait()
         self._shutdown()
 
@@ -104,11 +110,14 @@ class DaemonProcess:
 
     def _shutdown(self) -> None:
         """Clean up resources."""
+        log = Logger.get("daemon")
+        log.info("Daemon shutting down...")
         if self._vitals_nurse:
             self._vitals_nurse.stop()
         if self._casefile:
             self._casefile.close()
         self._remove_pid()
+        log.info("Daemon stopped.")
 
 
 def send_stop(warpt_dir: str = DEFAULT_WARPT_DIR) -> str:
@@ -136,6 +145,8 @@ def send_stop(warpt_dir: str = DEFAULT_WARPT_DIR) -> str:
 
 if __name__ == "__main__":
     import signal as _sig
+
+    Logger.configure(level=os.environ.get("WARPT_LOG_LEVEL", "INFO"))
 
     warpt_dir = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_WARPT_DIR
     dp = DaemonProcess(warpt_dir=warpt_dir)

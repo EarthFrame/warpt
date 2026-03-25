@@ -7,6 +7,8 @@ from typing import Any
 
 import duckdb
 
+from warpt.utils.logger import Logger
+
 _SCHEMA_V1 = """\
 -- schema_migrations
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -135,6 +137,8 @@ class CaseFile:
             db_path = str(resolved)
 
         self._conn = duckdb.connect(db_path)
+        self._log = Logger.get("daemon.casefile")
+        self._log.info("CaseFile opened: %s", db_path)
         self._apply_migrations()
 
     def _current_version(self) -> int:
@@ -153,6 +157,7 @@ class CaseFile:
         for version in sorted(_MIGRATIONS):
             if version > current:
                 self._conn.execute(_MIGRATIONS[version])
+                self._log.info("Applied migration v%d", version)
 
     def query(self, sql: str, params: list[Any] | None = None) -> list[tuple]:
         """Execute a query and return all rows.
@@ -190,3 +195,4 @@ class CaseFile:
     def close(self) -> None:
         """Close the database connection."""
         self._conn.close()
+        self._log.info("CaseFile closed.")

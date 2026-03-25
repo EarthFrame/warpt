@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from warpt.daemon.casefile import CaseFile
+from warpt.utils.logger import Logger
 
 
 class ChargeNurse:
@@ -19,6 +20,7 @@ class ChargeNurse:
 
     def __init__(self, casefile: CaseFile) -> None:
         self._casefile = casefile
+        self._log = Logger.get("daemon.charge_nurse")
 
     def handle_breach(self, event: dict[str, Any]) -> None:
         """Process a threshold breach event from VitalsNurse.
@@ -57,6 +59,9 @@ class ChargeNurse:
             """,
             [severity, gpu_guid, summary, json.dumps(metadata), case_id],
         )
+        self._log.info(
+            "Event created: %s [severity=%s, case_id=%s]", summary, severity, case_id
+        )
 
     def _find_or_create_case(
         self, metric: str, gpu_guid: str | None, summary: str
@@ -75,6 +80,7 @@ class ChargeNurse:
                 [gpu_guid, metric],
             )
             if rows:
+                self._log.info("Reusing case #%s", rows[0][0])
                 return rows[0][0]
 
         self._casefile.execute(
@@ -85,7 +91,9 @@ class ChargeNurse:
             [summary],
         )
         rows = self._casefile.query("SELECT max(case_id) FROM cases")
-        return rows[0][0]
+        new_id = rows[0][0]
+        self._log.info("Opened new case #%s: %s", new_id, summary)
+        return new_id
 
     @staticmethod
     def _compute_severity(value: float, threshold: float) -> str:

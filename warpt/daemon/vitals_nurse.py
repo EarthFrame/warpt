@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from warpt.daemon.casefile import CaseFile
+from warpt.utils.logger import Logger
 
 DEFAULT_GPU_THRESHOLDS: dict[str, dict[str, float]] = {
     "utilization_percent": {"value": 80.0, "sustained_seconds": 15.0},
@@ -56,6 +57,7 @@ class VitalsNurse:
         self._stop_event = threading.Event()
         self._last_heartbeat: float = 0.0
         self._gpu_thresholds = gpu_thresholds or DEFAULT_GPU_THRESHOLDS
+        self._log = Logger.get("daemon.vitals_nurse")
         # Tracks when each (metric, gpu_guid) breach started: monotonic time
         self._breach_start: dict[tuple[str, str], float] = {}
         # Tracks which (metric, gpu_guid) breaches have already fired
@@ -104,6 +106,11 @@ class VitalsNurse:
     def start(self) -> None:
         """Start the subprocess and polling thread."""
         self._stop_event.clear()
+        self._log.info(
+            "VitalsNurse started (poll=%.1fs, heartbeat=%.1fs)",
+            self._poll_interval,
+            self._heartbeat_interval,
+        )
         self._process = subprocess.Popen(
             ["warpt", "monitor", "--no-tui", "--json"],
             stdout=subprocess.PIPE,
@@ -123,6 +130,7 @@ class VitalsNurse:
             self._thread.join(timeout=5)
         self._process = None
         self._thread = None
+        self._log.info("VitalsNurse stopped.")
 
     def _poll_loop(self) -> None:
         """Read JSON lines from the subprocess stdout."""
@@ -138,6 +146,7 @@ class VitalsNurse:
                 snapshot = json.loads(line)
                 self.feed_snapshot(snapshot)
             except json.JSONDecodeError:
+                self._log.debug("Skipping unparseable JSON line")
                 continue
 
     def _check_thresholds(self, snapshot: dict[str, Any]) -> None:
@@ -162,6 +171,13 @@ class VitalsNurse:
                         and key not in self._breach_fired
                     ):
                         self._breach_fired.add(key)
+                        self._log.warning(
+                            "Threshold breach: %s at %.1f (threshold %.1f, sustained %.1fs)",
+                            metric,
+                            current_value,
+                            rule["value"],
+                            elapsed,
+                        )
                         event = {
                             "metric": metric,
                             "value": current_value,
@@ -184,6 +200,7 @@ class VitalsNurse:
             if not guid or guid in self._known_gpus:
                 continue
             self._known_gpus.add(guid)
+            self._log.info("Registered GPU: %s (%s)", gpu.get("model", "Unknown"), guid)
             now = datetime.now().isoformat()
             self._casefile.execute(
                 """
@@ -202,6 +219,7 @@ class VitalsNurse:
             return
         self._last_heartbeat = now
         self._write_vitals(snapshot, "heartbeat")
+        self._log.debug("Heartbeat written")
 
     def _write_vitals(self, snapshot: dict[str, Any], collection_type: str) -> None:
         """Write a snapshot row to the vitals table."""
