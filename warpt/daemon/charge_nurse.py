@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+import queue
+import threading
+from collections.abc import Callable
 from typing import Any
 
 from warpt.daemon.casefile import CaseFile
 from warpt.utils.logger import Logger
+
+_SENTINEL = None  # Placed on queue to signal worker to exit
 
 
 class ChargeNurse:
@@ -16,11 +21,29 @@ class ChargeNurse:
     ----------
     casefile
         CaseFile instance for database writes.
+    pipeline_fn
+        Optional callable ``(case_id, event) -> None`` dispatched
+        asynchronously via a single worker thread. When ``None``,
+        only synchronous DB work is performed (Phase 1 behavior).
     """
 
-    def __init__(self, casefile: CaseFile) -> None:
+    def __init__(
+        self,
+        casefile: CaseFile,
+        pipeline_fn: Callable[[int, dict], None] | None = None,
+    ) -> None:
         self._casefile = casefile
         self._log = Logger.get("daemon.charge_nurse")
+        self._pipeline_fn = pipeline_fn
+        self._queue: queue.Queue | None = None
+        self._worker: threading.Thread | None = None
+
+        if pipeline_fn is not None:
+            self._queue = queue.Queue()
+            self._worker = threading.Thread(
+                target=self._worker_loop, name="charge-nurse-pipeline", daemon=True
+            )
+            self._worker.start()
 
     def handle_breach(self, event: dict[str, Any]) -> None:
         """Process a threshold breach event from VitalsNurse.
@@ -62,6 +85,37 @@ class ChargeNurse:
         self._log.info(
             "Event created: %s [severity=%s, case_id=%s]", summary, severity, case_id
         )
+
+        if self._queue is not None:
+            self._queue.put((case_id, event))
+            self._log.info("Pipeline enqueued for case #%s", case_id)
+
+    def shutdown(self, timeout: float = 30.0) -> None:
+        """Drain the pipeline queue and join the worker thread.
+
+        Parameters
+        ----------
+        timeout
+            Maximum seconds to wait for the worker to finish.
+        """
+        if self._queue is None or self._worker is None:
+            return
+        self._queue.put(_SENTINEL)
+        self._worker.join(timeout=timeout)
+        if self._worker.is_alive():
+            self._log.warning("Pipeline worker did not finish within %.1fs", timeout)
+
+    def _worker_loop(self) -> None:
+        """Consume pipeline work items from the queue until sentinel."""
+        while True:
+            item = self._queue.get()  # type: ignore[union-attr]
+            if item is _SENTINEL:
+                break
+            case_id, event = item
+            try:
+                self._pipeline_fn(case_id, event)  # type: ignore[misc]
+            except Exception:
+                self._log.exception("Pipeline failed for case #%s", case_id)
 
     def _find_or_create_case(
         self, metric: str, gpu_guid: str | None, summary: str

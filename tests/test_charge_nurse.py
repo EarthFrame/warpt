@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.charge_nurse import ChargeNurse
 
@@ -110,4 +113,105 @@ def test_different_gpu_creates_separate_case() -> None:
     cases = cf.query("SELECT case_id FROM cases ORDER BY case_id")
     assert len(cases) == 2  # Two distinct cases
 
+    cf.close()
+
+
+# --- Slice 2: pipeline_fn=None preserves Phase 1 behavior ---
+
+
+def test_breach_without_pipeline_works_as_before() -> None:
+    """ChargeNurse with pipeline_fn=None still creates events+cases."""
+    cf = CaseFile(":memory:")
+    nurse = ChargeNurse(casefile=cf, pipeline_fn=None)
+
+    nurse.handle_breach(_breach_event())
+
+    events = cf.query("SELECT kind FROM events")
+    assert len(events) == 1
+    cases = cf.query("SELECT status FROM cases")
+    assert len(cases) == 1
+    assert cases[0][0] == "open"
+
+    cf.close()
+
+
+# --- Slice 3: pipeline dispatch ---
+
+
+def test_breach_with_pipeline_dispatches_async() -> None:
+    """When pipeline_fn is set, handle_breach dispatches it asynchronously."""
+    cf = CaseFile(":memory:")
+    calls: list[tuple] = []
+    call_event = threading.Event()
+
+    def mock_pipeline(case_id: int, event: dict) -> None:
+        calls.append((case_id, event))
+        call_event.set()
+
+    nurse = ChargeNurse(casefile=cf, pipeline_fn=mock_pipeline)
+    evt = _breach_event()
+    nurse.handle_breach(evt)
+
+    # Wait for async dispatch
+    assert call_event.wait(timeout=2.0), "pipeline_fn was not called within timeout"
+    assert len(calls) == 1
+    assert calls[0][0] >= 1  # valid case_id
+    assert calls[0][1]["metric"] == "utilization_percent"
+
+    nurse.shutdown()
+    cf.close()
+
+
+# --- Slice 4: single-flight queuing ---
+
+
+def test_single_flight_queues_concurrent_breaches() -> None:
+    """Two rapid breaches are processed sequentially by the single worker."""
+    cf = CaseFile(":memory:")
+    order: list[int] = []
+    lock = threading.Lock()
+
+    def slow_pipeline(case_id: int, _event: dict) -> None:
+        time.sleep(0.1)
+        with lock:
+            order.append(case_id)
+
+    nurse = ChargeNurse(casefile=cf, pipeline_fn=slow_pipeline)
+    nurse.handle_breach(_breach_event(gpu_guid="GPU-first"))
+    nurse.handle_breach(_breach_event(gpu_guid="GPU-second"))
+
+    nurse.shutdown(timeout=5.0)
+
+    assert len(order) == 2
+    # Both completed (sequential order guaranteed by single worker)
+    cf.close()
+
+
+# --- Slice 5: shutdown ---
+
+
+def test_shutdown_waits_for_active_pipeline() -> None:
+    """Shutdown waits for an in-flight pipeline to complete."""
+    cf = CaseFile(":memory:")
+    completed = threading.Event()
+
+    def slow_pipeline(_case_id: int, _event: dict) -> None:
+        time.sleep(0.2)
+        completed.set()
+
+    nurse = ChargeNurse(casefile=cf, pipeline_fn=slow_pipeline)
+    nurse.handle_breach(_breach_event())
+    time.sleep(0.05)  # Let worker pick it up
+
+    nurse.shutdown(timeout=5.0)
+
+    assert completed.is_set(), "Pipeline was interrupted before completion"
+    cf.close()
+
+
+def test_shutdown_without_pipeline_is_noop() -> None:
+    """Shutdown with no pipeline configured doesn't crash."""
+    cf = CaseFile(":memory:")
+    nurse = ChargeNurse(casefile=cf)
+    nurse.shutdown()  # Should not raise
     cf.close()

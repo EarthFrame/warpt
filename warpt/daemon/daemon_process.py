@@ -9,8 +9,13 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from warpt.daemon.agents.attending import Attending
+from warpt.daemon.agents.chart_nurse import ChartNurse
+from warpt.daemon.agents.ollama_client import OllamaClient
+from warpt.daemon.agents.scribe import Scribe
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.charge_nurse import ChargeNurse
+from warpt.daemon.config import load_config
 from warpt.daemon.vitals_nurse import VitalsNurse
 from warpt.utils.logger import Logger
 
@@ -45,9 +50,17 @@ class DaemonProcess:
         log = Logger.get("daemon")
         log.info("Daemon starting...")
 
+        config = load_config(str(self._warpt_dir))
         self._casefile = CaseFile(self._db_path)
-        self._charge_nurse = ChargeNurse(casefile=self._casefile)
         self._vitals_nurse = VitalsNurse(casefile=self._casefile)
+
+        pipeline_fn = None
+        if config.get("intelligence_enabled"):
+            pipeline_fn = self._build_pipeline(config, log)
+
+        self._charge_nurse = ChargeNurse(
+            casefile=self._casefile, pipeline_fn=pipeline_fn
+        )
         self._vitals_nurse.set_on_threshold_breach(self._charge_nurse.handle_breach)
         log.info("Wired VitalsNurse -> ChargeNurse")
         self._vitals_nurse.start()
@@ -55,6 +68,41 @@ class DaemonProcess:
         log.info("Daemon ready, waiting for stop signal")
         self._stop_event.wait()
         self._shutdown()
+
+    def _build_pipeline(self, config: dict, log: Any) -> Any:
+        """Create intelligence agents and return the pipeline closure."""
+        ollama_url = config.get("ollama_url", "http://localhost:11434")
+        models = config.get("models", {})
+
+        chart_client = OllamaClient(
+            model=models.get("chart_nurse", "llama3:8b"), ollama_url=ollama_url
+        )
+        attending_client = OllamaClient(
+            model=models.get("attending", "llama3:70b"), ollama_url=ollama_url
+        )
+
+        chart_nurse = ChartNurse(casefile=self._casefile, ollama_client=chart_client)
+        attending = Attending(
+            casefile=self._casefile,
+            ollama_client=attending_client,
+            vitals_nurse=self._vitals_nurse,
+            config=config,
+        )
+        scribe = Scribe(casefile=self._casefile)
+        log.info("Intelligence pipeline enabled")
+
+        def pipeline_fn(case_id: int, event: dict) -> None:
+            gpu_guid = event.get("gpu_guid", "")
+            metric = event.get("metric", "")
+            value = event.get("value", 0.0)
+            try:
+                chart_result = chart_nurse.analyze(gpu_guid, metric, value)
+                attending.diagnose(chart_result, case_id)
+                scribe.report(case_id)
+            except Exception:
+                log.exception("Pipeline failed for case #%s", case_id)
+
+        return pipeline_fn
 
     def stop(self) -> None:
         """Signal the daemon to stop."""
@@ -112,6 +160,8 @@ class DaemonProcess:
         """Clean up resources."""
         log = Logger.get("daemon")
         log.info("Daemon shutting down...")
+        if self._charge_nurse:
+            self._charge_nurse.shutdown()
         if self._vitals_nurse:
             self._vitals_nurse.stop()
         if self._casefile:

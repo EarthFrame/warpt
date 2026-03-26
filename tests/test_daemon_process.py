@@ -5,6 +5,8 @@ from __future__ import annotations
 import threading
 from unittest.mock import patch
 
+import yaml
+
 from warpt.daemon.daemon_process import DaemonProcess, send_stop
 
 
@@ -143,3 +145,101 @@ def test_cli_daemon_status_when_not_running(tmp_path) -> None:
     result = runner.invoke(warpt, ["daemon", "status"], env={"WARPT_DIR": str(pid_dir)})
     assert result.exit_code == 0
     assert "not running" in result.output.lower() or "stopped" in result.output.lower()
+
+
+# --- Slice 6: DaemonProcess wires intelligence when enabled ---
+
+
+def test_daemon_wires_intelligence_when_enabled(tmp_path) -> None:
+    """With intelligence_enabled=true, agents are created and pipeline wired."""
+    pid_dir = tmp_path / ".warpt"
+    pid_dir.mkdir()
+
+    # Write config with intelligence enabled
+    config_path = pid_dir / "config.yaml"
+    config_path.write_text(yaml.dump({"intelligence_enabled": True}))
+
+    with (
+        patch("warpt.daemon.daemon_process.VitalsNurse"),
+        patch("warpt.daemon.daemon_process.CaseFile"),
+        patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
+        patch("warpt.daemon.daemon_process.OllamaClient") as mock_ollama_cls,
+        patch("warpt.daemon.daemon_process.ChartNurse") as mock_chart_cls,
+        patch("warpt.daemon.daemon_process.Attending") as mock_attending_cls,
+        patch("warpt.daemon.daemon_process.Scribe") as mock_scribe_cls,
+    ):
+        dp = DaemonProcess(warpt_dir=str(pid_dir))
+
+        t = threading.Thread(target=dp.run, daemon=True)
+        t.start()
+        dp.stop()
+        t.join(timeout=2)
+
+        # OllamaClient created twice (chart_nurse model + attending model)
+        assert mock_ollama_cls.call_count == 2
+        mock_chart_cls.assert_called_once()
+        mock_attending_cls.assert_called_once()
+        mock_scribe_cls.assert_called_once()
+
+        # ChargeNurse was given a pipeline_fn (not None)
+        cn_call_kwargs = mock_cn_cls.call_args
+        assert cn_call_kwargs.kwargs.get("pipeline_fn") is not None or (
+            len(cn_call_kwargs.args) > 1 and cn_call_kwargs.args[1] is not None
+        )
+
+
+# --- Slice 7: DaemonProcess skips intelligence when disabled ---
+
+
+def test_daemon_skips_intelligence_when_disabled(tmp_path) -> None:
+    """With intelligence_enabled=false (default), no agents are created."""
+    pid_dir = tmp_path / ".warpt"
+    pid_dir.mkdir()
+
+    with (
+        patch("warpt.daemon.daemon_process.VitalsNurse"),
+        patch("warpt.daemon.daemon_process.CaseFile"),
+        patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
+        patch("warpt.daemon.daemon_process.OllamaClient") as mock_ollama_cls,
+        patch("warpt.daemon.daemon_process.ChartNurse") as mock_chart_cls,
+        patch("warpt.daemon.daemon_process.Attending") as mock_attending_cls,
+        patch("warpt.daemon.daemon_process.Scribe") as mock_scribe_cls,
+    ):
+        dp = DaemonProcess(warpt_dir=str(pid_dir))
+
+        t = threading.Thread(target=dp.run, daemon=True)
+        t.start()
+        dp.stop()
+        t.join(timeout=2)
+
+        mock_ollama_cls.assert_not_called()
+        mock_chart_cls.assert_not_called()
+        mock_attending_cls.assert_not_called()
+        mock_scribe_cls.assert_not_called()
+
+        # ChargeNurse gets pipeline_fn=None
+        cn_call_kwargs = mock_cn_cls.call_args
+        assert cn_call_kwargs.kwargs.get("pipeline_fn") is None
+
+
+# --- Slice 8: Daemon shutdown calls charge_nurse.shutdown ---
+
+
+def test_daemon_shutdown_calls_charge_nurse_shutdown(tmp_path) -> None:
+    """Daemon shutdown drains the pipeline via ChargeNurse.shutdown()."""
+    pid_dir = tmp_path / ".warpt"
+    pid_dir.mkdir()
+
+    with (
+        patch("warpt.daemon.daemon_process.VitalsNurse"),
+        patch("warpt.daemon.daemon_process.CaseFile"),
+        patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
+    ):
+        dp = DaemonProcess(warpt_dir=str(pid_dir))
+
+        t = threading.Thread(target=dp.run, daemon=True)
+        t.start()
+        dp.stop()
+        t.join(timeout=2)
+
+        mock_cn_cls.return_value.shutdown.assert_called_once()
