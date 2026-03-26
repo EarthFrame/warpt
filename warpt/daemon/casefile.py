@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS cases (
     updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
     observation            TEXT,
     hypothesis             TEXT,
-    confidence_pct         TINYINT,
+    confidence_pct         DOUBLE,
     recommended_action     VARCHAR,
     reasoning_chain        TEXT,
     historical_context     TEXT,
