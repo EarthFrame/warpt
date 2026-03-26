@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from warpt.daemon.agents.ollama_client import OllamaClient
+from warpt.daemon.agents.prompts import ATTENDING_SYSTEM_PROMPT_TEMPLATE
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.vitals_nurse import VitalsNurse
 from warpt.utils.logger import Logger
@@ -28,22 +29,6 @@ _TRIAGE_LABELS = {
     "compute": "Compute",
     "storage_io": "Storage / IO",
 }
-
-_SYSTEM_PROMPT_TEMPLATE = """\
-You are a hardware diagnostics attending physician analyzing GPU telemetry.
-You receive a Chart Nurse analysis (historical baselines, deviation data) and
-a current vitals snapshot. Produce a diagnosis.
-
-Triage priority (analyze in this order):
-{triage_order}
-
-Respond with ONLY valid JSON:
-{{
-  "hypothesis": "concise diagnosis statement",
-  "confidence": <int 0-100>,
-  "recommended_action": "what the operator should do",
-  "reasoning": "step-by-step reasoning following triage order"
-}}"""
 
 
 class Attending:
@@ -121,7 +106,8 @@ class Attending:
         for i, key in enumerate(triage_order, 1):
             label = _TRIAGE_LABELS.get(key, key)
             triage_lines.append(f"{i}. {label}")
-        return _SYSTEM_PROMPT_TEMPLATE.format(triage_order="\n".join(triage_lines))
+        triage_text = "\n".join(triage_lines)
+        return ATTENDING_SYSTEM_PROMPT_TEMPLATE.format(triage_order=triage_text)
 
     def _build_user_prompt(
         self, chart_nurse_result: dict[str, Any], snapshot: dict[str, Any] | None

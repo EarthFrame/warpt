@@ -6,15 +6,9 @@ from datetime import datetime
 from typing import Any
 
 from warpt.daemon.agents.ollama_client import OllamaClient
+from warpt.daemon.agents.prompts import CHART_NURSE_SYSTEM_PROMPT
 from warpt.daemon.casefile import CaseFile
 from warpt.utils.logger import Logger
-
-_SYSTEM_PROMPT = """\
-You are a hardware diagnostics expert analyzing GPU telemetry data.
-Given baseline statistics and current readings, provide a concise interpretation
-of what the data suggests about the GPU's health and behavior.
-Focus on: whether the current value is anomalous, possible causes, and severity.
-Keep your response under 200 words."""
 
 
 class ChartNurse:
@@ -80,7 +74,7 @@ class ChartNurse:
         import json
 
         interpretation = self._client.generate(
-            json.dumps(stats, default=str), _SYSTEM_PROMPT
+            json.dumps(stats, default=str), CHART_NURSE_SYSTEM_PROMPT
         )
 
         return {
