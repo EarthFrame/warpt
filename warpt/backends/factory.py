@@ -3,7 +3,7 @@
 This factory auto-detects which GPU vendor is present on the system and
 returns the appropriate backend implementation.
 
-Priority order: NVIDIA → AMD → Intel
+Priority order: NVIDIA → Tenstorrent → AMD → Intel
 """
 
 from warpt.backends.base import AcceleratorBackend
@@ -24,6 +24,16 @@ def get_accelerator_backend() -> AcceleratorBackend:
         from warpt.backends.nvidia import NvidiaBackend
 
         backend = NvidiaBackend()
+        if backend.is_available():
+            return backend
+    except Exception:
+        pass
+
+    # Priority 2: Tenstorrent (sysfs-based, no third-party SDK)
+    try:
+        from warpt.backends.tenstorrent import TenstorrentBackend
+
+        backend = TenstorrentBackend()
         if backend.is_available():
             return backend
     except Exception:
