@@ -82,10 +82,28 @@ class Attending:
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(chart_nurse_result, snapshot)
 
-        self._log.debug("Calling LLM for diagnosis")
-        raw_response = self._client.generate(user_prompt, system_prompt)
+        # Retry generate+parse cycle up to 3 times on malformed output.
+        # Connection errors (RuntimeError) bubble up immediately.
+        max_parse_attempts = 3
+        diagnosis = None
+        for attempt in range(max_parse_attempts):
+            self._log.debug("Calling LLM for diagnosis (attempt %d)", attempt + 1)
+            raw_response = self._client.generate(user_prompt, system_prompt)
+            diagnosis = self._try_parse(raw_response)
+            if diagnosis is not None:
+                break
+            self._log.warning(
+                "Malformed LLM response (attempt %d/%d), retrying",
+                attempt + 1,
+                max_parse_attempts,
+            )
 
-        diagnosis = self._parse_response(raw_response)
+        if diagnosis is None:
+            self._log.warning(
+                "All %d parse attempts failed, using fallback",
+                max_parse_attempts,
+            )
+            diagnosis = self._fallback_response(raw_response)
 
         # Write diagnosis to case
         self._update_case(case_id, chart_nurse_result, diagnosis)
@@ -119,8 +137,8 @@ class Attending:
         }
         return json.dumps(prompt_data, default=str)
 
-    def _parse_response(self, raw: str) -> dict[str, Any]:
-        """Parse LLM JSON response, falling back on malformed output."""
+    def _try_parse(self, raw: str) -> dict[str, Any] | None:
+        """Try to parse LLM JSON response. Returns None on failure."""
         try:
             parsed = json.loads(raw)
             return {
@@ -129,14 +147,18 @@ class Attending:
                 "recommended_action": parsed["recommended_action"],
                 "reasoning": parsed["reasoning"],
             }
-        except (json.JSONDecodeError, KeyError) as e:
-            self._log.warning("Malformed LLM response, using fallback: %s", e)
-            return {
-                "hypothesis": "Unable to parse LLM diagnosis",
-                "confidence_pct": CONFIDENCE_SENTINEL,
-                "recommended_action": "Review Chart Nurse analysis manually",
-                "reasoning": f"LLM returned unparseable response: {raw[:200]}",
-            }
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    def _fallback_response(self, raw: str) -> dict[str, Any]:
+        """Return fallback diagnosis when all parse attempts fail."""
+        self._log.warning("Malformed LLM response, using fallback")
+        return {
+            "hypothesis": "Unable to parse LLM diagnosis",
+            "confidence_pct": CONFIDENCE_SENTINEL,
+            "recommended_action": "Review Chart Nurse analysis manually",
+            "reasoning": f"LLM returned unparseable response: {raw[:200]}",
+        }
 
     def _update_case(
         self,

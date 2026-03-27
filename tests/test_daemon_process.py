@@ -225,6 +225,43 @@ def test_daemon_skips_intelligence_when_disabled(tmp_path) -> None:
 # --- Slice 8: Daemon shutdown calls charge_nurse.shutdown ---
 
 
+def test_daemon_pipeline_uses_run_intelligence_pipeline(tmp_path) -> None:
+    """_build_pipeline returns a closure that calls run_intelligence_pipeline."""
+    pid_dir = tmp_path / ".warpt"
+    pid_dir.mkdir()
+
+    config_path = pid_dir / "config.yaml"
+    config_path.write_text(yaml.dump({"intelligence_enabled": True}))
+
+    with (
+        patch("warpt.daemon.daemon_process.VitalsNurse"),
+        patch("warpt.daemon.daemon_process.CaseFile"),
+        patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
+        patch("warpt.daemon.daemon_process.OllamaClient"),
+        patch("warpt.daemon.daemon_process.ChartNurse"),
+        patch("warpt.daemon.daemon_process.Attending"),
+        patch("warpt.daemon.daemon_process.Scribe"),
+        patch("warpt.daemon.daemon_process.run_intelligence_pipeline") as mock_pipeline,
+    ):
+        dp = DaemonProcess(warpt_dir=str(pid_dir))
+
+        t = threading.Thread(target=dp.run, daemon=True)
+        t.start()
+        dp.stop()
+        t.join(timeout=2)
+
+        # Get the pipeline_fn passed to ChargeNurse
+        cn_call = mock_cn_cls.call_args
+        pipeline_fn = cn_call.kwargs.get("pipeline_fn")
+        assert pipeline_fn is not None
+
+        # Call the closure and verify it delegates to run_intelligence_pipeline
+        pipeline_fn(42, {"gpu_guid": "GPU-1", "metric": "temp", "value": 90.0})
+        mock_pipeline.assert_called_once()
+        call_kwargs = mock_pipeline.call_args
+        assert call_kwargs.kwargs["case_id"] == 42
+
+
 def test_daemon_shutdown_calls_charge_nurse_shutdown(tmp_path) -> None:
     """Daemon shutdown drains the pipeline via ChargeNurse.shutdown()."""
     pid_dir = tmp_path / ".warpt"

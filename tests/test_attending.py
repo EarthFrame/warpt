@@ -192,3 +192,44 @@ def test_prompt_includes_chart_nurse_and_vitals():
 
     assert "current_vitals_snapshot" in prompt_data
     assert prompt_data["current_vitals_snapshot"]["cpu_utilization_percent"] == 45.0
+
+
+def test_attending_retries_malformed_then_succeeds():
+    """diagnose() retries on malformed LLM output, uses valid response."""
+    cf = CaseFile(":memory:")
+    cf.execute("INSERT INTO cases (title, status) VALUES ('Test', 'open')")
+    case_id = cf.query("SELECT max(case_id) FROM cases")[0][0]
+
+    garbage = "not json at all"
+    client = OllamaClient.__new__(OllamaClient)
+    client.model = "llama3:70b"
+    # First call returns garbage, second returns valid JSON
+    client.generate = MagicMock(side_effect=[garbage, _VALID_LLM_RESPONSE])
+
+    vitals = VitalsNurse(casefile=cf, heartbeat_interval=9999)
+    vitals.feed_snapshot(_SNAPSHOT)
+
+    attending = Attending(
+        casefile=cf, ollama_client=client, vitals_nurse=vitals, config=_CONFIG
+    )
+    result = attending.diagnose(_CHART_NURSE_RESULT, case_id)
+
+    # Should have the real hypothesis from the second attempt
+    assert result["hypothesis"] == "Sustained compute load from training job"
+    assert client.generate.call_count == 2
+
+
+def test_attending_persistent_malformed_uses_fallback():
+    """diagnose() uses fallback after exhausting malformed retries."""
+    cf = CaseFile(":memory:")
+    cf.execute("INSERT INTO cases (title, status) VALUES ('Test', 'open')")
+    case_id = cf.query("SELECT max(case_id) FROM cases")[0][0]
+
+    garbage = "still not json"
+    attending, client = _make_attending(cf, garbage)
+    result = attending.diagnose(_CHART_NURSE_RESULT, case_id)
+
+    # Fallback used
+    assert "Unable to parse" in result["hypothesis"]
+    # Called 3 times (default retries)
+    assert client.generate.call_count == 3

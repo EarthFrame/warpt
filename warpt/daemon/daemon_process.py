@@ -12,6 +12,7 @@ from typing import Any
 from warpt.daemon.agents.attending import Attending
 from warpt.daemon.agents.chart_nurse import ChartNurse
 from warpt.daemon.agents.ollama_client import OllamaClient
+from warpt.daemon.agents.pipeline import run_intelligence_pipeline
 from warpt.daemon.agents.scribe import Scribe
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.charge_nurse import ChargeNurse
@@ -82,7 +83,7 @@ class DaemonProcess:
         )
 
         chart_nurse = ChartNurse(casefile=self._casefile, ollama_client=chart_client)
-        attending = Attending(
+        attending_agent = Attending(
             casefile=self._casefile,
             ollama_client=attending_client,
             vitals_nurse=self._vitals_nurse,
@@ -92,15 +93,15 @@ class DaemonProcess:
         log.info("Intelligence pipeline enabled")
 
         def pipeline_fn(case_id: int, event: dict) -> None:
-            gpu_guid = event.get("gpu_guid", "")
-            metric = event.get("metric", "")
-            value = event.get("value", 0.0)
-            try:
-                chart_result = chart_nurse.analyze(gpu_guid, metric, value)
-                attending.diagnose(chart_result, case_id)
-                scribe.report(case_id)
-            except Exception:
-                log.exception("Pipeline failed for case #%s", case_id)
+            run_intelligence_pipeline(
+                case_id=case_id,
+                event=event,
+                chart_nurse=chart_nurse,
+                attending=attending_agent,
+                scribe=scribe,
+                casefile=self._casefile,
+                log=log,
+            )
 
         return pipeline_fn
 

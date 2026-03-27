@@ -211,3 +211,28 @@ def test_full_output_contract_with_interpretation():
 
     # LLM was called exactly once
     client.generate.assert_called_once()
+
+
+def test_analyze_without_llm_returns_analytics():
+    """analyze_without_llm() returns baselines with interpretation=None."""
+    cf = CaseFile(":memory:")
+    client = OllamaClient.__new__(OllamaClient)
+    client.model = "llama3:8b"
+    client.generate = MagicMock(return_value="should not be called")
+
+    _seed_vitals(cf, GPU_GUID, [50.0, 50.0, 50.0])
+
+    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    result = nurse.analyze_without_llm(GPU_GUID, "utilization_pct", 75.0)
+
+    # Baselines should be present
+    assert result["baseline"]["1h_avg"] is not None
+    assert abs(result["baseline"]["1h_avg"] - 50.0) < 1.0
+
+    # Deviation computed
+    assert result["deviation_pct"] == 50.0
+
+    # No LLM call
+    assert result["interpretation"] is None
+    assert result["model_used"] is None
+    client.generate.assert_not_called()

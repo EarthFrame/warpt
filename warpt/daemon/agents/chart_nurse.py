@@ -90,6 +90,39 @@ class ChartNurse:
             "model_used": self._client.model,
         }
 
+    def analyze_without_llm(
+        self, gpu_guid: str, metric: str, current_value: float
+    ) -> dict[str, Any]:
+        """Return analytics dict without an LLM call.
+
+        Same structure as ``analyze()`` but with ``interpretation=None``
+        and ``model_used=None``.
+        """
+        baseline = self._rolling_averages(gpu_guid, metric)
+        hour_profile = self._hourly_profile(gpu_guid, metric)
+        prior_cases = self._prior_cases(gpu_guid)
+        event_count = self._event_count_7d(gpu_guid)
+
+        deviation_pct = None
+        if baseline["1h_avg"] and baseline["1h_avg"] > 0:
+            deviation_pct = round(
+                ((current_value - baseline["1h_avg"]) / baseline["1h_avg"]) * 100,
+                1,
+            )
+
+        return {
+            "gpu_guid": gpu_guid,
+            "metric": metric,
+            "current_value": current_value,
+            "baseline": baseline,
+            "current_hour_profile": hour_profile,
+            "deviation_pct": deviation_pct,
+            "prior_cases": prior_cases,
+            "event_count_7d": event_count,
+            "interpretation": None,
+            "model_used": None,
+        }
+
     def _rolling_averages(self, gpu_guid: str, metric: str) -> dict[str, float | None]:
         """Compute 1h, 24h, and 7d rolling averages for a GPU metric."""
         result: dict[str, float | None] = {

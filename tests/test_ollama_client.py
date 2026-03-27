@@ -7,6 +7,7 @@ import requests
 
 from warpt.daemon.agents.ollama_client import (
     OllamaClient,
+    OllamaPermanentError,
     get_installed_models,
     retry_generate,
 )
@@ -107,3 +108,33 @@ def test_retry_generate_exhausts_retries():
             retry_generate(client, "test prompt", retries=3)
 
     assert client.generate.call_count == 3
+
+
+def test_permanent_error_not_retried():
+    """retry_generate() re-raises OllamaPermanentError without retrying."""
+    client = OllamaClient(model="llama3:8b")
+    client.generate = MagicMock(side_effect=OllamaPermanentError("model not found"))
+
+    with patch("warpt.daemon.agents.ollama_client.time.sleep"):
+        with pytest.raises(OllamaPermanentError, match="model not found"):
+            retry_generate(client, "test prompt", retries=3)
+
+    # Only called once — no retries on permanent error
+    assert client.generate.call_count == 1
+
+
+def test_generate_raises_permanent_on_404():
+    """generate() raises OllamaPermanentError when Ollama returns HTTP 404."""
+    client = OllamaClient(model="nonexistent:model")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    http_error = requests.HTTPError(response=mock_resp)
+    mock_resp.raise_for_status.side_effect = http_error
+
+    with patch(
+        "warpt.daemon.agents.ollama_client.requests.post",
+        return_value=mock_resp,
+    ):
+        with pytest.raises(OllamaPermanentError, match="not found"):
+            client.generate("hello")

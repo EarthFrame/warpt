@@ -12,6 +12,14 @@ OLLAMA_CONNECTION_ERROR = "Cannot connect to Ollama. Is it running? Try: ollama 
 OLLAMA_TIMEOUT_ERROR = "Ollama request timed out."
 OLLAMA_HTTP_ERROR = "Ollama HTTP error: {error}"
 OLLAMA_UNEXPECTED_RESPONSE = "Unexpected response from Ollama."
+OLLAMA_MODEL_NOT_FOUND = (
+    "Model not found (HTTP 404). Is it pulled? " "Try: ollama pull {model}"
+)
+
+
+class OllamaPermanentError(RuntimeError):
+    """Non-retryable error (e.g. model not found)."""
+
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 
@@ -69,6 +77,10 @@ class OllamaClient:
         except requests.Timeout as e:
             raise RuntimeError(OLLAMA_TIMEOUT_ERROR) from e
         except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                raise OllamaPermanentError(
+                    OLLAMA_MODEL_NOT_FOUND.format(model=self.model)
+                ) from e
             raise RuntimeError(OLLAMA_HTTP_ERROR.format(error=e)) from e
         except KeyError as e:
             raise RuntimeError(OLLAMA_UNEXPECTED_RESPONSE) from e
@@ -151,6 +163,8 @@ def retry_generate(
     for attempt in range(retries):
         try:
             return client.generate(prompt, system_prompt)
+        except OllamaPermanentError:
+            raise
         except RuntimeError as e:
             last_err = e
             if attempt < retries - 1:
