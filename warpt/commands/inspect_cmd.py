@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 import click
@@ -12,6 +13,13 @@ if TYPE_CHECKING:
     from warpt.daemon.casefile import CaseFile
 
 SEPARATOR = "=" * 60
+
+
+def _fmt_ts(ts: object) -> str:
+    """Format a timestamp to second precision."""
+    if isinstance(ts, datetime):
+        return ts.strftime("%Y-%m-%d %H:%M:%S")
+    return str(ts).split(".")[0]
 
 
 def show_case(cf: CaseFile, case_id: int) -> None:
@@ -44,7 +52,7 @@ def show_case(cf: CaseFile, case_id: int) -> None:
     click.echo(SEPARATOR)
     click.echo()
     click.echo(f"{'STATUS:':<13}{status}")
-    click.echo(f"{'OPENED:':<13}{opened_at}")
+    click.echo(f"{'OPENED:':<13}{_fmt_ts(opened_at)}")
     click.echo(f"{'GPU:':<13}{gpu_guid}")
 
     if hypothesis:
@@ -76,7 +84,10 @@ def show_case(cf: CaseFile, case_id: int) -> None:
     if events:
         click.echo("\n--- EVENTS ---")
         for severity, ts, summary in events:
-            click.echo(f"  [{severity.upper()}] {ts} — {summary}")
+            click.echo(
+                f"  [{severity.upper()}] {_fmt_ts(ts)}"
+                f" — {summary}"
+            )
 
     if not hypothesis:
         click.echo("\n--- DIAGNOSIS PENDING ---")
@@ -169,10 +180,10 @@ def list_cases(cf: CaseFile) -> None:
         return
 
     click.echo(
-        f" {'ID':>3} | {'Status':<8} | {'Opened':<21} | Title"
+        f" {'ID':>3} | {'Status':<8} | {'Opened':<19} | Title"
     )
     click.echo(
-        f"-----+----------+-----------------------+{'─' * 34}"
+        f"-----+----------+---------------------+{'─' * 34}"
     )
     for cid, status, opened_at, title in rows:
         title_trunc = (
@@ -181,6 +192,6 @@ def list_cases(cf: CaseFile) -> None:
             else (title or "")
         )
         click.echo(
-            f" {cid:>3} | {status:<8} | {opened_at!s:<21}"
+            f" {cid:>3} | {status:<8} | {_fmt_ts(opened_at):<19}"
             f" | {title_trunc}"
         )

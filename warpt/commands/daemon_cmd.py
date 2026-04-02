@@ -124,8 +124,12 @@ def inspect(case_id, list_all):
     if err:
         raise click.ClickException(err)
 
+    import logging
+
     from warpt.commands.inspect_cmd import list_cases, show_case, show_latest
     from warpt.daemon.casefile import CaseFile
+
+    logging.getLogger("warpt").setLevel(logging.WARNING)
 
     warpt_dir = _get_warpt_dir()
     db_path = os.path.join(warpt_dir, "warpt.db")
