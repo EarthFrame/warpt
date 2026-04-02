@@ -125,6 +125,10 @@ def inspect(case_id, list_all):
         raise click.ClickException(err)
 
     import logging
+    import shutil
+    import tempfile
+
+    import duckdb
 
     from warpt.commands.inspect_cmd import list_cases, show_case, show_latest
     from warpt.daemon.casefile import CaseFile
@@ -133,7 +137,21 @@ def inspect(case_id, list_all):
 
     warpt_dir = _get_warpt_dir()
     db_path = os.path.join(warpt_dir, "warpt.db")
-    cf = CaseFile(db_path, read_only=True)
+
+    # Try read-only first; if the daemon holds the lock, copy the DB
+    # to a temp file and query that instead.
+    try:
+        cf = CaseFile(db_path, read_only=True)
+        tmp_path = None
+    except duckdb.IOException:
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+        os.close(tmp_fd)
+        shutil.copy2(db_path, tmp_path)
+        wal_path = db_path + ".wal"
+        if os.path.exists(wal_path):
+            shutil.copy2(wal_path, tmp_path + ".wal")
+        cf = CaseFile(tmp_path, read_only=True)
+
     try:
         if list_all:
             list_cases(cf)
@@ -143,6 +161,11 @@ def inspect(case_id, list_all):
             show_latest(cf)
     finally:
         cf.close()
+        if tmp_path:
+            os.unlink(tmp_path)
+            wal_tmp = tmp_path + ".wal"
+            if os.path.exists(wal_tmp):
+                os.unlink(wal_tmp)
 
 
 @daemon.command()
