@@ -17,16 +17,16 @@ def _seed_case(cf: CaseFile, **overrides) -> int:
         "confidence_pct": -1.23,
         "recommended_action": "Monitor system temperature and adjust thermal settings.",
         "observation": json.dumps({
+            "current_value": 100.0,
             "baseline": {
-                "avg_1h": 67.3,
-                "avg_24h": 60.8,
-                "avg_7d": 60.8,
-                "deviation_pct": 48.6,
-                "current_value": 100.0,
+                "1h_avg": 67.3,
+                "24h_avg": 60.8,
+                "7d_avg": 60.8,
             },
+            "deviation_pct": 48.6,
             "interpretation": (
                 "The current GPU utilization is 100%, "
-                "which is significantly higher than baseline."
+                "significantly higher than baseline."
             ),
         }),
         "reasoning_chain": repr([
@@ -93,6 +93,8 @@ def test_show_case_contains_sections(capsys) -> None:
     assert "RECOMMENDED ACTION" in out
     assert "BASELINE" in out
     assert "67.3%" in out
+    assert "48.6%" in out   # deviation
+    assert "100.0%" in out  # current value
     assert "LLM INTERPRETATION (llama3:8b)" in out
     assert "TRIAGE REASONING" in out
     assert "Thermal / Power" in out

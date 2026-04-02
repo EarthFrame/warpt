@@ -94,26 +94,23 @@ def _print_observation(observation: str, model: str | None) -> None:
     except (json.JSONDecodeError, TypeError):
         return
 
-    baseline = obs.get("baseline")
-    if baseline:
+    baseline = obs.get("baseline", {})
+    deviation = obs.get("deviation_pct")
+    current = obs.get("current_value")
+    if baseline or deviation is not None or current is not None:
         click.echo("\n--- BASELINE ---")
-        labels = [
-            ("1h avg", "avg_1h"),
-            ("24h avg", "avg_24h"),
-            ("7d avg", "avg_7d"),
-            ("Deviation", "deviation_pct"),
-            ("Current", "current_value"),
-        ]
-        for label, key in labels:
+        for label, key in [
+            ("1h avg", "1h_avg"),
+            ("24h avg", "24h_avg"),
+            ("7d avg", "7d_avg"),
+        ]:
             val = baseline.get(key)
             if val is not None:
-                suffix = (
-                    "%" if "pct" in key or "avg" in key.lower()
-                    else ""
-                )
-                click.echo(
-                    f"  {label + ':':<14}{val:.1f}{suffix}"
-                )
+                click.echo(f"  {label + ':':<14}{val:.1f}%")
+        if deviation is not None:
+            click.echo(f"  {'Deviation:':<14}{deviation:.1f}%")
+        if current is not None:
+            click.echo(f"  {'Current:':<14}{current:.1f}%")
 
     interpretation = obs.get("interpretation")
     if interpretation:
