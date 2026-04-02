@@ -169,6 +169,23 @@ class ChargeNurse:
         sustained_seconds: float,
     ) -> str:
         """Build a human-readable one-liner for the event."""
-        duration_min = int(sustained_seconds // 60)
         gpu_prefix = f"{gpu_guid}: " if gpu_guid else ""
-        return f"{gpu_prefix}{metric} at {value:.1f}% for {duration_min}m"
+        duration = _format_duration(sustained_seconds)
+        return f"{gpu_prefix}{metric} at {value:.1f}% for {duration}"
+
+
+def _format_duration(seconds: float) -> str:
+    """Format seconds into the most relevant human-readable duration."""
+    total = int(seconds)
+    if total < 60:
+        return f"{total}s"
+    h, remainder = divmod(total, 3600)
+    m, s = divmod(remainder, 60)
+    parts = []
+    if h:
+        parts.append(f"{h}h")
+    if m:
+        parts.append(f"{m}m")
+    if s:
+        parts.append(f"{s}s")
+    return " ".join(parts)
