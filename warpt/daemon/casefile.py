@@ -130,16 +130,20 @@ class CaseFile:
         Path to the DuckDB file, or ``":memory:"`` for in-memory databases.
     """
 
-    def __init__(self, db_path: str = "~/.warpt/warpt.db") -> None:
+    def __init__(
+        self, db_path: str = "~/.warpt/warpt.db", read_only: bool = False,
+    ) -> None:
         if db_path != ":memory:":
             resolved = Path(db_path).expanduser()
-            resolved.parent.mkdir(parents=True, exist_ok=True)
+            if not read_only:
+                resolved.parent.mkdir(parents=True, exist_ok=True)
             db_path = str(resolved)
 
-        self._conn = duckdb.connect(db_path)
+        self._conn = duckdb.connect(db_path, read_only=read_only)
         self._log = Logger.get("daemon.casefile")
-        self._log.info("CaseFile opened: %s", db_path)
-        self._apply_migrations()
+        self._log.info("CaseFile opened: %s (read_only=%s)", db_path, read_only)
+        if not read_only:
+            self._apply_migrations()
 
     def _current_version(self) -> int:
         """Return the highest applied migration version, or 0 if none."""

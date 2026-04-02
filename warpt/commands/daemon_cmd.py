@@ -113,6 +113,35 @@ def er():
 
 
 @daemon.command()
+@click.option(
+    "--case", "case_id", type=int, default=None,
+    help="Show a specific case by ID.",
+)
+@click.option("--list", "list_all", is_flag=True, help="List all cases.")
+def inspect(case_id, list_all):
+    """Inspect cases from the warpt database."""
+    err = check_duckdb()
+    if err:
+        raise click.ClickException(err)
+
+    from warpt.commands.inspect_cmd import list_cases, show_case, show_latest
+    from warpt.daemon.casefile import CaseFile
+
+    warpt_dir = _get_warpt_dir()
+    db_path = os.path.join(warpt_dir, "warpt.db")
+    cf = CaseFile(db_path, read_only=True)
+    try:
+        if list_all:
+            list_cases(cf)
+        elif case_id is not None:
+            show_case(cf, case_id)
+        else:
+            show_latest(cf)
+    finally:
+        cf.close()
+
+
+@daemon.command()
 def status():
     """Show daemon status and key stats."""
     err = check_duckdb()
