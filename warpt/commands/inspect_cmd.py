@@ -170,11 +170,23 @@ def show_latest(cf: CaseFile) -> None:
 
 
 def list_cases(cf: CaseFile) -> None:
-    """Print a summary table of all cases."""
+    """Print a summary table of all cases and DB table stats."""
+    # Table stats
+    tables = cf.query(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'main' ORDER BY table_name"
+    )
+    click.echo("TABLES")
+    for (name,) in tables:
+        count = cf.query(f"SELECT COUNT(*) FROM {name}")[0][0]
+        click.echo(f"  {name:<20} {count:>6} rows")
+
+    # Cases
     rows = cf.query(
         "SELECT case_id, status, opened_at, title "
         "FROM cases ORDER BY case_id"
     )
+    click.echo()
     if not rows:
         click.echo("No cases found.")
         return
