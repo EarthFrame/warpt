@@ -45,7 +45,7 @@ def run_intelligence_pipeline(
         except OllamaPermanentError:
             log.warning("Chart Nurse permanent error, skipping retries")
             break
-        except RuntimeError as e:
+        except Exception as e:
             if attempt < retries - 1:
                 delay = backoff * (2**attempt)
                 log.warning(
@@ -61,7 +61,16 @@ def run_intelligence_pipeline(
 
     if not llm_succeeded:
         # Fall back to analytics without LLM
-        chart_result = chart_nurse.analyze_without_llm(gpu_guid, metric, value)
+        try:
+            chart_result = chart_nurse.analyze_without_llm(gpu_guid, metric, value)
+        except Exception as e:
+            log.warning("Chart Nurse analytics fallback failed: %s", e)
+            chart_result = {
+                "gpu_guid": gpu_guid,
+                "metric": metric,
+                "current_value": value,
+                "deviation_pct": None,
+            }
         _write_degraded_observation(
             casefile, case_id, chart_result, "Chart Nurse LLM unavailable"
         )
@@ -79,7 +88,7 @@ def run_intelligence_pipeline(
                 casefile, case_id, chart_result, "Attending unavailable"
             )
             break
-        except RuntimeError as e:
+        except Exception as e:
             if attempt < retries - 1:
                 delay = backoff * (2**attempt)
                 log.warning(

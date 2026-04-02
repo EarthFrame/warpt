@@ -8,6 +8,7 @@ from typing import Any
 from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.agents.prompts import CHART_NURSE_SYSTEM_PROMPT
 from warpt.daemon.casefile import CaseFile
+from warpt.daemon.gpu_fields import SNAPSHOT_TO_DB
 from warpt.utils.logger import Logger
 
 
@@ -125,6 +126,7 @@ class ChartNurse:
 
     def _rolling_averages(self, gpu_guid: str, metric: str) -> dict[str, float | None]:
         """Compute 1h, 24h, and 7d rolling averages for a GPU metric."""
+        column = SNAPSHOT_TO_DB.get(metric, metric)
         result: dict[str, float | None] = {
             "1h_avg": None,
             "24h_avg": None,
@@ -138,7 +140,7 @@ class ChartNurse:
         for key, interval in intervals.items():
             rows = self._casefile.query(
                 f"""
-                SELECT AVG(g.{metric})
+                SELECT AVG(g.{column})
                 FROM vitals, UNNEST(gpus) AS t(g)
                 WHERE g.gpu_guid = ?
                   AND ts > current_timestamp - INTERVAL '{interval}'
@@ -151,10 +153,11 @@ class ChartNurse:
 
     def _hourly_profile(self, gpu_guid: str, metric: str) -> dict[str, Any] | None:
         """Compute mean and stddev for the current hour-of-day."""
+        column = SNAPSHOT_TO_DB.get(metric, metric)
         current_hour = datetime.now().hour
         rows = self._casefile.query(
             f"""
-            SELECT AVG(g.{metric}) AS mean, STDDEV(g.{metric}) AS stddev
+            SELECT AVG(g.{column}) AS mean, STDDEV(g.{column}) AS stddev
             FROM vitals, UNNEST(gpus) AS t(g)
             WHERE g.gpu_guid = ?
               AND EXTRACT(HOUR FROM ts) = ?

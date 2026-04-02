@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from warpt.daemon.casefile import CaseFile
+from warpt.daemon.gpu_fields import SNAPSHOT_TO_DB
 from warpt.utils.logger import Logger
 
 DEFAULT_GPU_THRESHOLDS: dict[str, dict[str, float]] = {
@@ -225,19 +226,11 @@ class VitalsNurse:
         """Write a snapshot row to the vitals table."""
         gpu_structs = []
         for gpu in snapshot.get("gpu_usage", []):
-            gpu_structs.append(
-                {
-                    "gpu_guid": gpu.get("guid"),
-                    "gpu_index": gpu.get("index"),
-                    "utilization_pct": gpu.get("utilization_percent"),
-                    "mem_utilization_pct": gpu.get("memory_utilization_percent"),
-                    "power_w": gpu.get("power_watts"),
-                    "temperature_c": None,
-                    "mem_used_bytes": None,
-                    "mem_total_bytes": None,
-                    "throttle_reasons": None,
-                }
-            )
+            gpu_struct = {
+                db_col: gpu.get(snap_key) for snap_key, db_col in SNAPSHOT_TO_DB.items()
+            }
+            gpu_struct["throttle_reasons"] = gpu.get("throttle_reasons")
+            gpu_structs.append(gpu_struct)
 
         self._casefile.execute(
             """
