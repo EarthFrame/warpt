@@ -54,12 +54,17 @@ def er_wizard(warpt_dir: str) -> None:
         click.echo("You can install models later: ollama pull llama3:8b")
 
     # Chart Nurse model selection
-    click.echo(f"\nChart Nurse model (current: {config['models']['chart_nurse']})")
+    label = "installed" if models else "default"
+    click.echo(
+        f"\nChart Nurse model ({label}: {config['models']['chart_nurse']})"
+    )
     chart_model = _prompt_model_choice(models, config["models"]["chart_nurse"])
     config["models"]["chart_nurse"] = chart_model
 
     # Attending model selection
-    click.echo(f"\nAttending model (current: {config['models']['attending']})")
+    click.echo(
+        f"\nAttending model ({label}: {config['models']['attending']})"
+    )
     attending_model = _prompt_model_choice(models, config["models"]["attending"])
     config["models"]["attending"] = attending_model
 
@@ -70,6 +75,14 @@ def er_wizard(warpt_dir: str) -> None:
     click.echo("\nIntelligence enabled. Config saved.")
     click.echo(f"  Chart Nurse model: {chart_model}")
     click.echo(f"  Attending model:   {attending_model}")
+    if not models:
+        click.echo(
+            "\nNote: Models are not yet installed. "
+            "Pull them with Ollama before starting the daemon:"
+        )
+        click.echo(f"  ollama pull {chart_model}")
+        if attending_model != chart_model:
+            click.echo(f"  ollama pull {attending_model}")
 
 
 def _get_installed_models(ollama_url: str) -> list[str] | None:

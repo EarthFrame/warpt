@@ -40,24 +40,29 @@ class TestRunner:
 
     def __init__(self) -> None:
         """Initialize the test runner."""
-        self._tests: list[type[StressTest]] = []
+        self._tests: list[tuple[type[StressTest], str]] = []
         self._test_configs: dict[str, dict[str, Any]] = {}
 
     def add_test(
         self,
         test_cls: type[StressTest],
         config: dict[str, Any] | None = None,
+        run_key: str | None = None,
     ) -> None:
         """Add a test class to run.
 
         Args:
             test_cls: The StressTest subclass to run.
             config: Optional configuration overrides for this test.
+            run_key: Unique key for this run.  Defaults to the class name.
+                     Use a custom key to queue the same test class multiple
+                     times with different configs (e.g. different device_ids).
         """
-        if test_cls not in self._tests:
-            self._tests.append(test_cls)
+        key = run_key or test_cls.__name__
+        if key not in {k for _, k in self._tests}:
+            self._tests.append((test_cls, key))
         if config:
-            self._test_configs[test_cls.__name__] = config
+            self._test_configs[key] = config
 
     def add_tests(
         self,
@@ -99,23 +104,21 @@ class TestRunner:
         """
         results = TestResults()
 
-        for test_cls in self._tests:
-            test_name = test_cls.__name__
-
+        for test_cls, run_key in self._tests:
             try:
                 # Instantiate test with config if provided
-                config = self._test_configs.get(test_name, {})
+                config = self._test_configs.get(run_key, {})
                 test = self._instantiate_test(test_cls, config)
 
                 if test is None:
-                    results.add_error(test_name, "Failed to instantiate test")
+                    results.add_error(run_key, "Failed to instantiate test")
                     if stop_on_error:
                         break
                     continue
 
                 # Check availability
                 if skip_unavailable and not test.is_available():
-                    results.add_error(test_name, "Test not available on this system")
+                    results.add_error(run_key, "Test not available on this system")
                     continue
 
                 # Run the test
@@ -133,10 +136,10 @@ class TestRunner:
                 else:
                     result_dict = {"result": str(result)}
 
-                results.add_result(test_name, result_dict)
+                results.add_result(run_key, result_dict)
 
             except Exception as e:
-                results.add_error(test_name, str(e))
+                results.add_error(run_key, str(e))
                 if stop_on_error:
                     break
 
@@ -191,9 +194,10 @@ class TestRunner:
         """
         results = TestResults()
 
-        for test_cls in self._tests:
+        for test_cls, run_key in self._tests:
             try:
-                test = self._instantiate_test(test_cls, {})
+                config = self._test_configs.get(run_key, {})
+                test = self._instantiate_test(test_cls, config)
                 if test is None:
                     continue
 
@@ -202,7 +206,7 @@ class TestRunner:
 
                 if not test.is_available():
                     results.add_error(
-                        test_cls.__name__, "Test not available on this system"
+                        run_key, "Test not available on this system"
                     )
                     continue
 
@@ -215,10 +219,10 @@ class TestRunner:
                 else:
                     result_dict = {"result": str(result)}
 
-                results.add_result(test_cls.__name__, result_dict)
+                results.add_result(run_key, result_dict)
 
             except Exception as e:
-                results.add_error(test_cls.__name__, str(e))
+                results.add_error(run_key, str(e))
 
         return results
 
