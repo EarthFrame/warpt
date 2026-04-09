@@ -38,7 +38,7 @@ CATEGORY_MAP: dict[str, TestCategory | str] = {
 
 def _resolve_category_enum(name: str) -> TestCategory | None:
     """Return the TestCategory enum for the CLI name if available."""
-    value = CATEGORY_MAP.get(name)
+    value = CATEGORY_MAP.get(name.lower())
     if isinstance(value, TestCategory):
         return value
     return None
@@ -116,6 +116,7 @@ def list_tests(
 ) -> None:
     """List available stress tests."""
     if category:
+        category = category.lower()
         if category not in CATEGORY_MAP:
             valid = ", ".join(sorted(CATEGORY_MAP.keys()))
             click.echo(f"Error: Unknown category '{category}'. Valid: {valid}")
@@ -290,7 +291,7 @@ def run_stress(
 
             # Test by category
             elif "category" in test_spec:
-                cat_name = test_spec["category"]
+                cat_name = test_spec["category"].lower()
                 if cat_name not in CATEGORY_MAP:
                     click.echo(f"Warning: Unknown category '{cat_name}', skipping.")
                     continue
@@ -326,6 +327,7 @@ def run_stress(
 
     elif categories:
         for cat in categories:
+            cat = cat.lower()
             if cat not in CATEGORY_MAP:
                 valid = ", ".join(sorted(CATEGORY_MAP.keys()))
                 click.echo(f"Error: Unknown category '{cat}'. Valid: {valid}")
@@ -366,8 +368,9 @@ def run_stress(
             unique_tests.append(t)
     tests_to_run = unique_tests
 
-    # Apply CLI device_id to tests without config
-    if device_ids:
+    # Apply CLI device_id for single device (multi-device expansion happens
+    # after all config modifications so expanded entries inherit everything).
+    if device_ids and len(device_ids) == 1:
         for test_cls in tests_to_run:
             name = test_cls.__name__
             if name not in configs:
@@ -441,17 +444,39 @@ def run_stress(
             if "read_ratio" in test_params and "read_ratio" not in configs[name]:
                 configs[name]["read_ratio"] = read_ratio
 
+    # Build the final run list.  When multiple device IDs are passed,
+    # expand single-GPU tests so they run once per device.
+    # GPUMultiScalingTest manages its own devices and is not expanded.
+    run_list: list[tuple[type, str]] = []
+
+    if device_ids and len(device_ids) > 1:
+        for test_cls in tests_to_run:
+            name = test_cls.__name__
+            base_cfg = configs.get(name, {})
+            if name == "GPUMultiScalingTest":
+                run_list.append((test_cls, name))
+            else:
+                for did in device_ids:
+                    run_key = f"{name} (GPU {did})"
+                    run_list.append((test_cls, run_key))
+                    cfg = dict(base_cfg)
+                    cfg["device_id"] = did
+                    configs[run_key] = cfg
+    else:
+        for test_cls in tests_to_run:
+            run_list.append((test_cls, test_cls.__name__))
+
     # Display what we're running
     click.echo("\n" + "=" * 60)
     click.echo("  WARPT STRESS TEST")
     click.echo("=" * 60)
     if config:
         click.echo(f"\nConfig: {config}")
-    click.echo(f"\nTests to run: {len(tests_to_run)}")
-    for t in tests_to_run:
-        test_cfg = configs.get(t.__name__, {})
+    click.echo(f"\nTests to run: {len(run_list)}")
+    for _cls, run_key in run_list:
+        test_cfg = configs.get(run_key, {})
         dur = test_cfg.get("duration", cfg_duration)
-        click.echo(f"  • {t.__name__} ({dur}s)")
+        click.echo(f"  • {run_key} ({dur}s)")
     click.echo(f"\nDefault duration: {cfg_duration}s")
     click.echo(f"Default warmup: {cfg_warmup}s")
     if device_ids:
@@ -460,9 +485,9 @@ def run_stress(
 
     # Run tests
     runner = TestRunner()
-    for test_cls in tests_to_run:
-        test_config = configs.get(test_cls.__name__, {})
-        runner.add_test(test_cls, test_config)
+    for test_cls, run_key in run_list:
+        test_config = configs.get(run_key, {})
+        runner.add_test(test_cls, test_config, run_key=run_key)
 
     try:
         from warpt.carbon.tracker import CarbonTracker

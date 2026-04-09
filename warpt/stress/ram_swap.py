@@ -268,8 +268,17 @@ class RAMSwapPressureTest(StressTest):
             f"{self.allocation_percent_baseline * 100:.0f}%)"
         )
 
-        self._array = np.random.rand(num_elements)
-        self._source_array_for_writes = np.random.rand(num_elements)
+        try:
+            self._array = np.random.rand(num_elements)
+            self._source_array_for_writes = np.random.rand(num_elements)
+        except MemoryError as exc:
+            self._array = None
+            self._source_array_for_writes = None
+            raise RuntimeError(
+                f"Failed to allocate {total_gb:.2f} GB for baseline — "
+                f"system ran out of memory. Reduce allocation_percent_baseline "
+                f"(currently {self.allocation_percent_baseline * 100:.0f}%)."
+            ) from exc
 
     def _allocate_pressure(self) -> None:
         """Allocate arrays incrementally until swap is engaged.
@@ -386,6 +395,7 @@ class RAMSwapPressureTest(StressTest):
         start_time = time.time()
         bytes_read = 0
         iter_count = 0
+        next_log = start_time + 5  # Log progress every 5 seconds
 
         while (time.time() - start_time) < duration:
             # Sequential read: sum forces reading all elements
@@ -394,6 +404,17 @@ class RAMSwapPressureTest(StressTest):
             _ = np.sum(self._array)
             bytes_read += self._array.nbytes
             iter_count += 1
+
+            now = time.time()
+            if now >= next_log:
+                elapsed_so_far = now - start_time
+                gb_so_far = bytes_read / (1024**3)
+                bw = gb_so_far / elapsed_so_far
+                self.logger.info(
+                    f"  Read progress: {elapsed_so_far:.0f}/{duration}s "
+                    f"({bw:.2f} GB/s, {iter_count} iters)"
+                )
+                next_log = now + 5
 
         elapsed = time.time() - start_time
         gb_read = bytes_read / (1024**3)
@@ -422,6 +443,7 @@ class RAMSwapPressureTest(StressTest):
         start_time = time.time()
         bytes_written = 0
         iter_count = 0
+        next_log = start_time + 5  # Log progress every 5 seconds
 
         while (time.time() - start_time) < duration:
             # Sequential write: copy from pre-allocated source array
@@ -430,6 +452,17 @@ class RAMSwapPressureTest(StressTest):
             self._array[:] = self._source_array_for_writes
             bytes_written += self._array.nbytes
             iter_count += 1
+
+            now = time.time()
+            if now >= next_log:
+                elapsed_so_far = now - start_time
+                gb_so_far = bytes_written / (1024**3)
+                bw = gb_so_far / elapsed_so_far
+                self.logger.info(
+                    f"  Write progress: {elapsed_so_far:.0f}/{duration}s "
+                    f"({bw:.2f} GB/s, {iter_count} iters)"
+                )
+                next_log = now + 5
 
         elapsed = time.time() - start_time
         gb_written = bytes_written / (1024**3)

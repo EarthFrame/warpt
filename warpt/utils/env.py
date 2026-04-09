@@ -125,23 +125,19 @@ def _log_access(
 
 # Overloads for proper type hints
 @overload
-def get_env(name: str, *, default: T, as_type: type[T], log: bool = ...) -> T:
-    ...
+def get_env(name: str, *, default: T, as_type: type[T], log: bool = ...) -> T: ...
 
 
 @overload
-def get_env(name: str, *, default: T, log: bool = ...) -> T:
-    ...
+def get_env(name: str, *, default: T, log: bool = ...) -> T: ...
 
 
 @overload
-def get_env(name: str, *, as_type: type[T], log: bool = ...) -> T | None:
-    ...
+def get_env(name: str, *, as_type: type[T], log: bool = ...) -> T | None: ...
 
 
 @overload
-def get_env(name: str, *, log: bool = ...) -> str | None:
-    ...
+def get_env(name: str, *, log: bool = ...) -> str | None: ...
 
 
 def get_env(

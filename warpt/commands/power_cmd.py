@@ -37,10 +37,13 @@ def run_power(
 
     if not monitor.initialize():
         print("No power sources available on this system.")
-        print("\nPossible reasons:")
-        print("  - Linux: Need read access to /sys/class/powercap/intel-rapl/")
-        print("  - macOS: Need passwordless sudo for powermetrics")
-        print("  - No supported GPUs detected")
+        reasons = monitor.get_unavailable_reasons()
+        if reasons:
+            print("\nBackends checked:")
+            for reason in reasons:
+                print(f"  - {reason}")
+        print("\nTroubleshooting:")
+        print("  warpt power --sources    Show detailed source diagnostics")
         return
 
     sources = monitor.get_available_sources()
@@ -214,6 +217,12 @@ def show_power_sources() -> None:
 
     if not sources:
         print("No power sources available.")
+        reasons = monitor.get_unavailable_reasons()
+        if reasons:
+            print()
+            print("Backends checked:")
+            for reason in reasons:
+                print(f"  - {reason}")
         print()
         print("Troubleshooting:")
         print("  Linux:")

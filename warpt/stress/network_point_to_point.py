@@ -154,6 +154,34 @@ class NetworkPointToPointTest(StressTest):
         if self.timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be greater than 0")
 
+        # Pre-check: warn if using default localhost with no server
+        localhost_ips = {"127.0.0.1", "::1", "localhost"}
+        if all(ip in localhost_ips or ip.startswith("127.") for ip in self.target_ips):
+            # Quick connectivity check
+            if not self._check_connectivity(self.target_ips[0], self.port):
+                raise ValueError(
+                    f"Cannot connect to {self.target_ips[0]}:{self.port}. "
+                    f"Network tests require a target server.\n\n"
+                    f"  Options:\n"
+                    f"    1. Run with --target <remote-ip> to test "
+                    f"against a remote host\n"
+                    f"    2. Start a local echo server: "
+                    f'python -c "import warpt.stress.network_point_to_point"\n'
+                    f"    3. Use 'warpt stress -t NetworkLoopbackTest' "
+                    f"for local-only testing"
+                )
+        else:
+            # Check connectivity to remote targets
+            unreachable = []
+            for ip in self.target_ips:
+                if not self._check_connectivity(ip, self.port):
+                    unreachable.append(ip)
+            if unreachable:
+                self.logger.warning(
+                    f"Cannot reach: {', '.join(unreachable)} on port {self.port}. "
+                    f"These targets will fail during the test."
+                )
+
         self.logger.info(f"Targets: {', '.join(self.target_ips)}")
         self.logger.info(f"Mode: {self.test_mode}")
         self.logger.info(
@@ -287,6 +315,27 @@ class NetworkPointToPointTest(StressTest):
             "targets": self.target_ips,
             "results": results,
         }
+
+    @staticmethod
+    def _check_connectivity(ip: str, port: int, timeout: float = 2.0) -> bool:
+        """Quick TCP connectivity check.
+
+        Args:
+            ip: Target IP address.
+            port: Target port.
+            timeout: Connection timeout in seconds.
+
+        Returns:
+            True if connection succeeded, False otherwise.
+        """
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            sock.connect((ip, port))
+            sock.close()
+            return True
+        except (TimeoutError, ConnectionRefusedError, OSError):
+            return False
 
     def _test_latency(self, target_ip: str, iterations: int = 10) -> dict[str, Any]:
         """Measure network latency via TCP ping-pong.

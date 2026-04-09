@@ -150,9 +150,22 @@ class NetworkBidirectionalTest(StressTest):
         if resolved_ip in localhost_addresses or resolved_ip.startswith("127."):
             raise ValueError(
                 f"Cannot test to localhost ({self.target_ip}). "
-                "Bidirectional test requires a remote target."
+                "Bidirectional test requires a remote target.\n\n"
+                "  Options:\n"
+                "    1. Run with --target <remote-ip>\n"
+                "    2. Use 'warpt stress -t NetworkLoopbackTest' "
+                "for local-only testing"
             )
         self.target_ip = resolved_ip
+
+        # Pre-check connectivity to remote target
+        if not self._check_connectivity(self.target_ip, self.port):
+            raise ValueError(
+                f"Cannot connect to {self.target_ip}:{self.port} — "
+                f"connection refused or timed out.\n\n"
+                f"  Ensure a server is running on the target:\n"
+                f"    target$ iperf3 -s -p {self.port}"
+            )
 
         # Validate duration
         if self.duration <= 0:
@@ -208,6 +221,18 @@ class NetworkBidirectionalTest(StressTest):
         if duration_seconds > 0:
             self.logger.debug(f"Warming up for {duration_seconds}s...")
             self._warmup_connection()
+
+    @staticmethod
+    def _check_connectivity(ip: str, port: int, timeout: float = 2.0) -> bool:
+        """Quick TCP connectivity check."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            sock.connect((ip, port))
+            sock.close()
+            return True
+        except (TimeoutError, ConnectionRefusedError, OSError):
+            return False
 
     def _warmup_connection(self) -> None:
         """Send warmup packets to prime TCP connection."""
