@@ -2,6 +2,38 @@
 
 You are on a Lambda Labs instance with multiple NVIDIA GPUs. This directory contains everything needed to run warpt multi-GPU stress tests and daemon monitoring, capture detailed results, and push them back to the repo.
 
+## CRITICAL: Issue Tracking
+
+**When anything goes wrong — a script fails, a test errors, an import breaks, a command hangs, anything unexpected — you MUST document it immediately in `lambda/results/ISSUES.md`.**
+
+For every issue, record:
+1. **What failed** — the exact command or step
+2. **Error output** — full traceback or error message (copy it verbatim)
+3. **Environment context** — GPU count, Python version, any relevant nvidia-smi output
+4. **What you tried** — any workarounds or debugging steps attempted
+5. **Root cause** (if identified) — why it failed
+6. **Fix needed** — what code changes are required, with file paths and line numbers
+
+Format each issue like this:
+```markdown
+### Issue N: <short title>
+**Status:** open | worked-around | blocked
+**Step:** setup / stress / daemon / push
+**Command:** `the exact command that failed`
+**Error:**
+\```
+paste full error output here
+\```
+**Context:** <GPU count, relevant versions, etc>
+**Tried:** <what you attempted>
+**Root cause:** <if known>
+**Fix needed:** <specific code changes with file:line references>
+```
+
+Do NOT silently skip failures. Do NOT just retry and move on without documenting. The whole point is to capture what breaks so we can fix it off-machine. Even if you work around an issue, still document it.
+
+After documenting, commit and push `ISSUES.md` along with any partial results so nothing is lost.
+
 ## Quick Start
 
 ```bash
@@ -11,7 +43,7 @@ bash lambda/setup.sh
 # 2. Run all tests (stress + daemon)
 bash lambda/run.sh
 
-# 3. Push results back
+# 3. Push results back (always include ISSUES.md)
 git add lambda/results/
 git commit -m "lambda multi-gpu results $(date +%Y%m%d_%H%M%S)"
 git push origin lambda-multigpu
@@ -156,11 +188,11 @@ db.sql("SELECT case_id, status, title, opened_at FROM cases").show()
 
 ## Pushing Results
 
-After tests complete:
+After tests complete (or if blocked mid-run):
 ```bash
 git add lambda/results/
 git commit -m "lambda multi-gpu results $(date +%Y%m%d_%H%M%S)"
 git push origin lambda-multigpu
 ```
 
-The `.gitignore` excludes temp PID files and the daemon's working `warpt_home/` directory. The DuckDB copy, all CSVs, JSONs, and logs are tracked.
+**Always push even if tests failed partway through.** Partial results + ISSUES.md are more valuable than nothing. The `.gitignore` excludes temp PID files and the daemon's working `warpt_home/` directory. The DuckDB copy, all CSVs, JSONs, and logs are tracked.
