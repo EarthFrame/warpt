@@ -1,0 +1,4 @@
+# Keep results dir tracked but ignore temp files
+results/**/.dmon_pid
+results/**/.smi_periodic_pid
+results/**/warpt_home/

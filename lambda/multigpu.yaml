@@ -1,0 +1,28 @@
+# warpt stress config for Lambda Labs multi-GPU instances
+# Usage: warpt stress --config lambda/multigpu.yaml
+
+defaults:
+  duration: 120
+  warmup: 10
+
+tests:
+  - name: GPUMultiScalingTest
+    duration: 180
+
+  - name: GPUMatMulTest
+    duration: 120
+
+  - name: GPUComputeTest
+    duration: 120
+
+  - name: GPUFP64ComputeTest
+    duration: 90
+
+  - name: GPUPrecisionTest
+    duration: 90
+
+  - name: GPUMemoryTest
+    duration: 90
+
+  - name: GPUCFDSimulationTest
+    duration: 120
