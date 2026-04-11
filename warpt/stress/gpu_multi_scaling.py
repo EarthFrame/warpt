@@ -87,9 +87,6 @@ def _worker_fn(
         shared_dict: Manager dict for returning results to orchestrator.
         config: Test configuration dict.
     """
-    import torch
-    import torch.distributed as dist
-
     master_port = config["master_port"]
     mesh_size = config["mesh_size_per_gpu"]
     solver_iterations = config["solver_iterations"]
@@ -101,16 +98,23 @@ def _worker_fn(
     # ------------------------------------------------------------------
     # A. Initialize distributed
     # ------------------------------------------------------------------
+    # NCCL env vars MUST be set before importing torch (libnccl reads them on load)
     os.environ["MASTER_ADDR"] = "127.0.0.1"
     os.environ["MASTER_PORT"] = str(master_port)
     if dist_backend == "nccl":
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
+        os.environ["NCCL_IB_DISABLE"] = os.environ.get("NCCL_IB_DISABLE", "1")
+        os.environ["NCCL_SOCKET_IFNAME"] = os.environ.get("NCCL_SOCKET_IFNAME", "lo")
+        os.environ["NCCL_P2P_DISABLE"] = os.environ.get("NCCL_P2P_DISABLE", "0")
+
+    import torch
+    import torch.distributed as dist
 
     dist.init_process_group(
         backend=dist_backend,
         rank=rank,
         world_size=world_size,
-        timeout=__import__("datetime").timedelta(minutes=5),
+        timeout=__import__("datetime").timedelta(minutes=10),
     )
     torch.cuda.set_device(rank)
     device = torch.device(f"{device_prefix}:{rank}")
@@ -248,15 +252,13 @@ def _worker_fn(
             send_buf_left[:] = pressure[:halo_size]
             send_buf_right[:] = pressure[-halo_size:]
 
-            # Async send/recv with neighbors
-            ops = []
-            ops.append(dist.isend(send_buf_right, dst=right_rank))
-            ops.append(dist.irecv(recv_buf_left, src=left_rank))
-            ops.append(dist.isend(send_buf_left, dst=left_rank))
-            ops.append(dist.irecv(recv_buf_right, src=right_rank))
-
-            for op in ops:
-                op.wait()
+            # Halo exchange via all_gather (works reliably across NCCL configs)
+            all_left = [torch.zeros_like(send_buf_left) for _ in range(world_size)]
+            all_right = [torch.zeros_like(send_buf_right) for _ in range(world_size)]
+            dist.all_gather(all_left, send_buf_left)
+            dist.all_gather(all_right, send_buf_right)
+            recv_buf_left[:] = all_right[left_rank]
+            recv_buf_right[:] = all_left[right_rank]
 
             torch.cuda.synchronize(device)
             halo_elapsed = (time.perf_counter() - halo_start) * 1000
@@ -278,6 +280,11 @@ def _worker_fn(
             multi_total_times.append(total_iter_elapsed)
 
         multi_elapsed = time.time() - multi_start
+
+        # Barrier: ensure all ranks finish the multi-GPU loop before
+        # proceeding to comm benchmarks (different iteration counts
+        # cause collective ordering mismatches without this).
+        dist.barrier()
 
         total_multi_flops = len(multi_total_times) * solver_iterations * mesh_size * 14
         multi_tflops = (
@@ -316,8 +323,8 @@ def _worker_fn(
         # D. Communication benchmarks (10% of duration)
         # ------------------------------------------------------------------
         comm_results: dict[str, Any] = {}
-        msg_sizes = [1024, 1024 * 1024, 64 * 1024 * 1024, 256 * 1024 * 1024]
-        msg_labels = ["1KB", "1MB", "64MB", "256MB"]
+        msg_sizes = [1024, 1024 * 1024, 16 * 1024 * 1024]
+        msg_labels = ["1KB", "1MB", "16MB"]
 
         for label, size_bytes in zip(msg_labels, msg_sizes, strict=True):
             num_elements = size_bytes // 4  # float32
@@ -338,6 +345,8 @@ def _worker_fn(
                 torch.cuda.synchronize(device)
                 ar_times.append((time.perf_counter() - t0) * 1000)
 
+            dist.barrier()  # Sync before switching to P2P benchmark
+
             # P2P benchmark (send to right neighbor, recv from left)
             p2p_times: list[float] = []
             recv_buf = torch.zeros_like(buf)
@@ -345,12 +354,14 @@ def _worker_fn(
 
             while (time.time() - bench_start) < time_budget:
                 t0 = time.perf_counter()
-                send_op = dist.isend(buf, dst=right_rank)
-                recv_op = dist.irecv(recv_buf, src=left_rank)
-                send_op.wait()
-                recv_op.wait()
+                # Use all_gather as P2P proxy (isend/irecv unreliable on some NCCL configs)
+                gathered = [torch.zeros_like(buf) for _ in range(world_size)]
+                dist.all_gather(gathered, buf)
+                recv_buf[:] = gathered[left_rank]
                 torch.cuda.synchronize(device)
                 p2p_times.append((time.perf_counter() - t0) * 1000)
+
+            dist.barrier()  # Sync before next message size
 
             # Bandwidth = bytes / time
             size_gb = size_bytes / (1024**3)

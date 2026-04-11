@@ -1,0 +1,140 @@
+{
+  "timestamp": "2026-04-10T23:47:47.041412",
+  "run_dir": "/home/ubuntu/warpt/lambda/results/20260410_234416",
+  "file_count": 33,
+  "total_size_bytes": 7794076,
+  "files": {
+    "nvidia_smi_final.txt": {
+      "size_bytes": 4265,
+      "size_human": "4.2 KB"
+    },
+    "environment.json": {
+      "size_bytes": 1503,
+      "size_human": "1.5 KB"
+    },
+    "system_info.txt": {
+      "size_bytes": 6276,
+      "size_human": "6.1 KB"
+    },
+    "daemon_workload.log": {
+      "size_bytes": 2164,
+      "size_human": "2.1 KB"
+    },
+    "nccl_env.txt": {
+      "size_bytes": 19,
+      "size_human": "0.0 KB"
+    },
+    "daemon_status_periodic.log": {
+      "size_bytes": 804,
+      "size_human": "0.8 KB"
+    },
+    "daemon_status_start.log": {
+      "size_bytes": 27,
+      "size_human": "0.0 KB"
+    },
+    "nvlink.txt": {
+      "size_bytes": 1672,
+      "size_human": "1.6 KB"
+    },
+    "warpt_list.txt": {
+      "size_bytes": 5324,
+      "size_human": "5.2 KB"
+    },
+    "nvidia_smi_full_query.txt": {
+      "size_bytes": 89700,
+      "size_human": "87.6 KB"
+    },
+    "gpu_details.csv": {
+      "size_bytes": 1490,
+      "size_human": "1.5 KB"
+    },
+    "daemon_status_end.log": {
+      "size_bytes": 27,
+      "size_human": "0.0 KB"
+    },
+    "nvidia_smi.txt": {
+      "size_bytes": 4265,
+      "size_human": "4.2 KB"
+    },
+    "warpt.db": {
+      "size_bytes": 3682304,
+      "size_human": "3596.0 KB"
+    },
+    "topology.txt": {
+      "size_bytes": 1142,
+      "size_human": "1.1 KB"
+    },
+    "daemon_cases.log": {
+      "size_bytes": 446,
+      "size_human": "0.4 KB"
+    },
+    "smi_logs/periodic_smi.log": {
+      "size_bytes": 147086,
+      "size_human": "143.6 KB"
+    },
+    "smi_logs/dmon.csv": {
+      "size_bytes": 145684,
+      "size_human": "142.3 KB"
+    },
+    "warpt_home/config.yaml": {
+      "size_bytes": 28,
+      "size_human": "0.0 KB"
+    },
+    "warpt_home/warpt.db": {
+      "size_bytes": 3682304,
+      "size_human": "3596.0 KB"
+    },
+    "db_dumps/schema_migrations.json": {
+      "size_bytes": 118,
+      "size_human": "0.1 KB"
+    },
+    "db_dumps/gpu_profiles.json": {
+      "size_bytes": 3002,
+      "size_human": "2.9 KB"
+    },
+    "db_dumps/cases.json": {
+      "size_bytes": 640,
+      "size_human": "0.6 KB"
+    },
+    "db_dumps/gpu_profiles.csv": {
+      "size_bytes": 1157,
+      "size_human": "1.1 KB"
+    },
+    "db_dumps/vitals.csv": {
+      "size_bytes": 4162,
+      "size_human": "4.1 KB"
+    },
+    "db_dumps/events.json": {
+      "size_bytes": 469,
+      "size_human": "0.5 KB"
+    },
+    "db_dumps/cases.csv": {
+      "size_bytes": 426,
+      "size_human": "0.4 KB"
+    },
+    "db_dumps/schema_migrations.csv": {
+      "size_bytes": 85,
+      "size_human": "0.1 KB"
+    },
+    "db_dumps/cases_detail.json": {
+      "size_bytes": 640,
+      "size_human": "0.6 KB"
+    },
+    "db_dumps/events_detail.json": {
+      "size_bytes": 469,
+      "size_human": "0.5 KB"
+    },
+    "db_dumps/events.csv": {
+      "size_bytes": 386,
+      "size_human": "0.4 KB"
+    },
+    "db_dumps/db_summary.json": {
+      "size_bytes": 93,
+      "size_human": "0.1 KB"
+    },
+    "db_dumps/vitals.json": {
+      "size_bytes": 5899,
+      "size_human": "5.8 KB"
+    }
+  }
+}

@@ -1,0 +1,2 @@
+event_id,ts,kind,severity,gpu_guid,summary,metadata,case_id,triggered_by
+1,2026-04-10 23:44:58.034794,threshold_breach,critical,GPU-eb2cb393-3c11-90d9-ba08-4baba2996d30,GPU-eb2cb393-3c11-90d9-ba08-4baba2996d30: utilization_percent at 100.0% for 15s,"{""metric"": ""utilization_percent"", ""value"": 100.0, ""threshold"": 80.0, ""sustained_seconds"": 15.780023643001186}",1,vitals_nurse

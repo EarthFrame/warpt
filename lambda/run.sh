@@ -66,7 +66,7 @@ info = {
         {
             'index': i,
             'name': torch.cuda.get_device_name(i),
-            'vram_gb': round(torch.cuda.get_device_properties(i).total_mem / (1024**3), 2),
+            'vram_gb': round(torch.cuda.get_device_properties(i).total_memory / (1024**3), 2),
             'compute_capability': f'{torch.cuda.get_device_properties(i).major}.{torch.cuda.get_device_properties(i).minor}',
             'multi_processor_count': torch.cuda.get_device_properties(i).multi_processor_count,
         }
@@ -152,8 +152,8 @@ run_stress() {
 
     warpt stress \
         -t GPUMatMulTest \
-        -t GPUComputeTest \
-        -t GPUMemoryTest \
+        -t GPUMemoryBandwidthTest \
+        -t GPUMemoryBandwidthTest \
         -t GPUFP64ComputeTest \
         -t GPUPrecisionTest \
         --device-id "${GPU_IDS}" \
@@ -211,10 +211,10 @@ YAMLEOF
     start_gpu_monitor
 
     # Run GPU workload to generate vitals + trigger thresholds
-    echo "  Running GPU workload (GPUComputeTest + GPUMatMulTest, 90s)..."
+    echo "  Running GPU workload (GPUMemoryBandwidthTest + GPUMatMulTest, 90s)..."
     GPU_IDS=$(seq -s, 0 $((GPU_COUNT - 1)))
     warpt stress \
-        -t GPUComputeTest \
+        -t GPUMemoryBandwidthTest \
         -t GPUMatMulTest \
         --device-id "${GPU_IDS}" \
         --duration 90 \

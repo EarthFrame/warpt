@@ -1,0 +1,691 @@
+errors: null
+metadata:
+  timestamp_end: '2026-04-10T23:36:11.432964+00:00'
+  timestamp_start: '2026-04-10T23:14:17.422283+00:00'
+  warpt_version: 0.3.0
+results:
+  GPUFP64ComputeTest (GPU 0):
+    avg_fp64_tflops: 7.068488184407236
+    avg_iteration_time_ms: 155.54182765803384
+    burnin_seconds: 5
+    device_id: 0
+    duration: 30.021376371383667
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 193
+    matrix_size: 8192
+    max_iteration_time_ms: 165.90426699985983
+    min_iteration_time_ms: 151.71237499998824
+    p50_iteration_time_ms: 155.80731200043374
+    p95_iteration_time_ms: 156.15153099952295
+    p99_iteration_time_ms: 156.16189200045483
+    peak_fp64_tflops: 7.247343058047078
+    test_name: GPUFP64ComputeTest
+    total_flops: 212205744160768
+  GPUFP64ComputeTest (GPU 1):
+    avg_fp64_tflops: 7.00929843163773
+    avg_iteration_time_ms: 156.85693217706861
+    burnin_seconds: 5
+    device_id: 1
+    duration: 30.1180260181427
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 192
+    matrix_size: 8192
+    max_iteration_time_ms: 157.8421129997878
+    min_iteration_time_ms: 153.11974200085388
+    p50_iteration_time_ms: 156.8306509998365
+    p95_iteration_time_ms: 157.830601000569
+    p99_iteration_time_ms: 157.83990599993558
+    peak_fp64_tflops: 7.180730671358292
+    test_name: GPUFP64ComputeTest
+    total_flops: 211106232532992
+  GPUFP64ComputeTest (GPU 2):
+    avg_fp64_tflops: 6.851703793295709
+    avg_iteration_time_ms: 160.46459357753545
+    burnin_seconds: 5
+    device_id: 2
+    duration: 30.008400917053223
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 187
+    matrix_size: 8192
+    max_iteration_time_ms: 161.64342799947917
+    min_iteration_time_ms: 156.1646899999687
+    p50_iteration_time_ms: 160.81326599942258
+    p95_iteration_time_ms: 161.3413049999508
+    p99_iteration_time_ms: 161.53280900016398
+    peak_fp64_tflops: 7.040718537437756
+    test_name: GPUFP64ComputeTest
+    total_flops: 205608674394112
+  GPUFP64ComputeTest (GPU 3):
+    avg_fp64_tflops: 7.099393495514245
+    avg_iteration_time_ms: 154.8658730824632
+    burnin_seconds: 5
+    device_id: 3
+    duration: 30.045560359954834
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 194
+    matrix_size: 8192
+    max_iteration_time_ms: 156.1544079995656
+    min_iteration_time_ms: 151.1030159999791
+    p50_iteration_time_ms: 154.5060629996442
+    p95_iteration_time_ms: 156.14213999924687
+    p99_iteration_time_ms: 156.15287899981922
+    peak_fp64_tflops: 7.276569699814279
+    test_name: GPUFP64ComputeTest
+    total_flops: 213305255788544
+  GPUFP64ComputeTest (GPU 4):
+    avg_fp64_tflops: 6.9290880411390985
+    avg_iteration_time_ms: 158.6716815052425
+    burnin_seconds: 5
+    device_id: 4
+    duration: 30.1493079662323
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 190
+    matrix_size: 8192
+    max_iteration_time_ms: 159.5814430002065
+    min_iteration_time_ms: 154.62570399995457
+    p50_iteration_time_ms: 158.80265800024063
+    p95_iteration_time_ms: 159.56587299933744
+    p99_iteration_time_ms: 159.58022199993138
+    peak_fp64_tflops: 7.11079464366625
+    test_name: GPUFP64ComputeTest
+    total_flops: 208907209277440
+  GPUFP64ComputeTest (GPU 5):
+    avg_fp64_tflops: 7.0368493267904455
+    avg_iteration_time_ms: 156.24235472541324
+    burnin_seconds: 5
+    device_id: 5
+    duration: 30.156357526779175
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 193
+    matrix_size: 8192
+    max_iteration_time_ms: 157.84116299982998
+    min_iteration_time_ms: 152.5589079992642
+    p50_iteration_time_ms: 156.35042500070995
+    p95_iteration_time_ms: 157.3690989998795
+    p99_iteration_time_ms: 157.8337669998291
+    peak_fp64_tflops: 7.2071283296109
+    test_name: GPUFP64ComputeTest
+    total_flops: 212205744160768
+  GPUFP64ComputeTest (GPU 6):
+    avg_fp64_tflops: 6.78455202677285
+    avg_iteration_time_ms: 162.05038811823968
+    burnin_seconds: 5
+    device_id: 6
+    duration: 30.14335536956787
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 186
+    matrix_size: 8192
+    max_iteration_time_ms: 163.50033300022915
+    min_iteration_time_ms: 158.8570220001202
+    p50_iteration_time_ms: 161.73509800046304
+    p95_iteration_time_ms: 163.2521869996708
+    p99_iteration_time_ms: 163.3787200007646
+    peak_fp64_tflops: 6.921391411801538
+    test_name: GPUFP64ComputeTest
+    total_flops: 204509162766336
+  GPUFP64ComputeTest (GPU 7):
+    avg_fp64_tflops: 6.970008612724842
+    avg_iteration_time_ms: 157.7350561151791
+    burnin_seconds: 5
+    device_id: 7
+    duration: 30.130051851272583
+    gpu_name: Tesla V100-SXM2-16GB
+    matmul_count: 191
+    matrix_size: 8192
+    max_iteration_time_ms: 191.02216699957353
+    min_iteration_time_ms: 153.88810400054354
+    p50_iteration_time_ms: 157.82969199972285
+    p95_iteration_time_ms: 157.88237299966568
+    p99_iteration_time_ms: 158.38120899934438
+    peak_fp64_tflops: 7.1448773439441196
+    test_name: GPUFP64ComputeTest
+    total_flops: 210006720905216
+  GPUMatMulTest (GPU 0):
+    burnin_seconds: 5
+    device_id: 0
+    duration: 30.077841758728027
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 382
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.963362451114412
+    total_operations: 419987806224384
+  GPUMatMulTest (GPU 1):
+    burnin_seconds: 5
+    device_id: 1
+    duration: 30.003002405166626
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 378
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.851614666309858
+    total_operations: 415590028148736
+  GPUMatMulTest (GPU 2):
+    burnin_seconds: 5
+    device_id: 2
+    duration: 30.053359031677246
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 370
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.535740599533817
+    total_operations: 406794471997440
+  GPUMatMulTest (GPU 3):
+    burnin_seconds: 5
+    device_id: 3
+    duration: 30.04102396965027
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 384
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 14.05367192838477
+    total_operations: 422186695262208
+  GPUMatMulTest (GPU 4):
+    burnin_seconds: 5
+    device_id: 4
+    duration: 30.076716661453247
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 374
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.671447409021143
+    total_operations: 411192250073088
+  GPUMatMulTest (GPU 5):
+    burnin_seconds: 5
+    device_id: 5
+    duration: 30.034637689590454
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 379
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.873630738421266
+    total_operations: 416689472667648
+  GPUMatMulTest (GPU 6):
+    burnin_seconds: 5
+    device_id: 6
+    duration: 30.04026508331299
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 366
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.395244442943302
+    total_operations: 402396693921792
+  GPUMatMulTest (GPU 7):
+    burnin_seconds: 5
+    device_id: 7
+    duration: 30.016696214675903
+    gpu_name: Tesla V100-SXM2-16GB
+    iterations: 377
+    matrix_size: 8192
+    memory_total_gb: 15.7657470703125
+    memory_used_gb: 1.0079345703125
+    precision: fp32
+    test_name: GPU Matrix Multiplication
+    tf32_enabled: true
+    tflops: 13.808667704981113
+    total_operations: 414490583629824
+  GPUMemoryBandwidthTest (GPU 0):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.7223108662052
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 12.25139045480583
+    d2h_iterations: 123
+    data_size_gb: 1.0
+    device_id: gpu_0
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-eb2cb393-3c11-90d9-ba08-4baba2996d30
+    h2d_bandwidth_gbps: 11.523954280993207
+    h2d_iterations: 116
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 1):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.71146644673547
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 12.250551557857332
+    d2h_iterations: 123
+    data_size_gb: 1.0
+    device_id: gpu_1
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-76d48915-8d58-dc57-484d-70b3b1fea508
+    h2d_bandwidth_gbps: 11.522064038713143
+    h2d_iterations: 116
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 2):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.74687838836127
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 12.249306532010396
+    d2h_iterations: 123
+    data_size_gb: 1.0
+    device_id: gpu_2
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-4de1cd1e-b798-29e9-0ae7-de312561a887
+    h2d_bandwidth_gbps: 11.52527703686742
+    h2d_iterations: 116
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 3):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.7673482148613
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 12.250069005843176
+    d2h_iterations: 123
+    data_size_gb: 1.0
+    device_id: gpu_3
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-ec5df313-c3b4-a398-2caf-51236262fd81
+    h2d_bandwidth_gbps: 11.52387266695034
+    h2d_iterations: 116
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 4):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.7568650099042
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 3.0733182552529064
+    d2h_iterations: 31
+    data_size_gb: 1.0
+    device_id: gpu_4
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-9afc8e70-5151-3579-d46d-71123d97ede5
+    h2d_bandwidth_gbps: 2.9708925065909426
+    h2d_iterations: 30
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 5):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.76685215124394
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 3.072992179959007
+    d2h_iterations: 31
+    data_size_gb: 1.0
+    device_id: gpu_5
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-9767af1f-17be-b283-dede-87c444f1bd1a
+    h2d_bandwidth_gbps: 2.97258630974988
+    h2d_iterations: 30
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 6):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.6947782166153
+    d2d_iterations: 4348
+    d2h_bandwidth_gbps: 3.0731007648675193
+    d2h_iterations: 31
+    data_size_gb: 1.0
+    device_id: gpu_6
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-02f65958-5ec8-49bb-736d-decba92cd578
+    h2d_bandwidth_gbps: 2.972514976995424
+    h2d_iterations: 30
+    used_pinned_memory: true
+  GPUMemoryBandwidthTest (GPU 7):
+    burnin_seconds: 5
+    d2d_bandwidth_gbps: 383.7236003349048
+    d2d_iterations: 4349
+    d2h_bandwidth_gbps: 3.0733753850553827
+    d2h_iterations: 31
+    data_size_gb: 1.0
+    device_id: gpu_7
+    duration: 30.0
+    gpu_name: Tesla V100-SXM2-16GB
+    gpu_uuid: GPU-f386aa29-a8b7-68e2-a891-ae12e42a644c
+    h2d_bandwidth_gbps: 2.970502963589195
+    h2d_iterations: 30
+    used_pinned_memory: true
+  GPUPrecisionTest (GPU 0):
+    bf16:
+      avg_time_per_iter: 0.0017383447962389103
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5753
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.88047648381458
+    bf16_speedup: 0.7412348987098422
+    fp16:
+      avg_time_per_iter: 0.0002966183830270735
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33714
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 57.90495755764507
+    fp16_speedup: 4.34403901677706
+    fp32:
+      avg_time_per_iter: 0.00128852182896293
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7761
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.329750799661568
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 1):
+    bf16:
+      avg_time_per_iter: 0.0017451710818305187
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5731
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.841828723166984
+    bf16_speedup: 0.7475628664675122
+    fp16:
+      avg_time_per_iter: 0.0003013451558846351
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33185
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 56.99668484657977
+    fp16_speedup: 4.329338205485825
+    fp32:
+      avg_time_per_iter: 0.001304625096409432
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7666
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.165218825906853
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 2):
+    bf16:
+      avg_time_per_iter: 0.0017926661766094639
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5579
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.58107823090911
+    bf16_speedup: 0.7408166331258739
+    fp16:
+      avg_time_per_iter: 0.00030523835139050165
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 32762
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 56.269714476430856
+    fp16_speedup: 4.35081933585552
+    fp32:
+      avg_time_per_iter: 0.0013280369212744561
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7530
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 12.933130551458834
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 3):
+    bf16:
+      avg_time_per_iter: 0.0017319816926956836
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5774
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.916776229468978
+    bf16_speedup: 0.7419086342127751
+    fp16:
+      avg_time_per_iter: 0.0002961431216696545
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33768
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 57.99788556007504
+    fp16_speedup: 4.339024201759993
+    fp32:
+      avg_time_per_iter: 0.001284972172109385
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7783
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.366573419099613
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 4):
+    bf16:
+      avg_time_per_iter: 0.0017645771266207699
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5668
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.733592610311147
+    bf16_speedup: 0.7457178456347009
+    fp16:
+      avg_time_per_iter: 0.0003017310165623039
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33143
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 56.92379615356323
+    fp16_speedup: 4.361091770783193
+    fp32:
+      avg_time_per_iter: 0.0013158766533199109
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7600
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.05264808572017
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 5):
+    bf16:
+      avg_time_per_iter: 0.0017435583941939818
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5736
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.850931828377352
+    bf16_speedup: 0.7444552219659614
+    fp16:
+      avg_time_per_iter: 0.00029846175723251484
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33506
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 57.54732210672939
+    fp16_speedup: 4.348969742040002
+    fp32:
+      avg_time_per_iter: 0.0012980011513602958
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7705
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.232403424295901
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 6):
+    bf16:
+      avg_time_per_iter: 0.0018027182010411356
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5548
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.527653778655154
+    bf16_speedup: 0.7432788884179775
+    fp16:
+      avg_time_per_iter: 0.00030838852435737343
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 32427
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 55.69492222770298
+    fp16_speedup: 4.344916476360041
+    fp32:
+      avg_time_per_iter: 0.0013399223806007114
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7464
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 12.818410326350271
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+  GPUPrecisionTest (GPU 7):
+    bf16:
+      avg_time_per_iter: 0.00175901939707465
+      dtype: torch.torch.bfloat16
+      hardware_supported: false
+      iterations: 5685
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 9.764346492462863
+    bf16_speedup: 0.7401995705275419
+    fp16:
+      avg_time_per_iter: 0.0003000401353216568
+      dtype: torch.torch.float16
+      hardware_supported: true
+      iterations: 33329
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 57.24459116640142
+    fp16_speedup: 4.339504116235785
+    fp32:
+      avg_time_per_iter: 0.0013020254022642716
+      dtype: torch.torch.float32
+      hardware_supported: true
+      iterations: 7681
+      matrix_size: 2048
+      method: null
+      note: null
+      runtime_supported: true
+      supported: true
+      tflops: 13.191505211903584
+    int8: null
+    int8_speedup: null
+    mixed_precision_ready: true
+    tf32_enabled: true
+summary:
+  failed: 0
+  passed: 32
+  success_rate: 1.0
+  total_tests: 32
