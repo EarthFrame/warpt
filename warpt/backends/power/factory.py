@@ -75,7 +75,8 @@ class PowerMonitor:
                 self._backends.append(rapl)
             else:
                 self._unavailable_reasons.append(
-                    "RAPL: /sys/class/powercap/intel-rapl/ not found or not readable"
+                    rapl.get_unavailable_reason()
+                    or "RAPL: /sys/class/powercap/intel-rapl/ not found or not readable"
                 )
 
         elif self._platform == "Darwin":

@@ -48,6 +48,11 @@ def run_power(
 
     sources = monitor.get_available_sources()
     print(f"Available power sources: {[s.value for s in sources]}")
+    unavailable = monitor.get_unavailable_reasons()
+    if unavailable:
+        print("Unavailable sources:")
+        for reason in unavailable:
+            print(f"  - {reason}")
     print()
 
     if not continuous:
@@ -241,6 +246,13 @@ def show_power_sources() -> None:
     else:
         print(f"Available sources: {[s.value for s in sources]}")
         print()
+
+        unavailable = monitor.get_unavailable_reasons()
+        if unavailable:
+            print("Unavailable sources:")
+            for reason in unavailable:
+                print(f"  - {reason}")
+            print()
 
         # Get a sample reading
         time.sleep(0.5)
