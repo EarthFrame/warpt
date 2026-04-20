@@ -118,9 +118,7 @@ class LinuxRAPLBackend(PowerBackend):
                 )
                 return False
             except OSError as exc:
-                self._unavailable_reason = (
-                    f"RAPL: cannot read {energy_file}: {exc}"
-                )
+                self._unavailable_reason = f"RAPL: cannot read {energy_file}: {exc}"
                 return False
 
         if not energy_files_found:
