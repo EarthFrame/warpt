@@ -141,6 +141,7 @@ dmypy.json
 
 # Internal planning
 feature_considerations.md
+parallel-stress-decisions.md
 
 # Pre-commit
 .pre-commit
