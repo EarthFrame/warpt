@@ -55,6 +55,7 @@ class LinuxRAPLBackend(PowerBackend):
         self._initialized = False
         # name -> (energy_uj, timestamp)
         self._last_readings: dict[str, tuple[int, float]] = {}
+        self._unavailable_reason: str | None = None
 
     def is_available(self) -> bool:
         """Check if RAPL is available on this system.
@@ -62,26 +63,78 @@ class LinuxRAPLBackend(PowerBackend):
         Returns:
             True if RAPL powercap interface exists and is readable.
         """
-        rapl_path = self.POWERCAP_PATH / self.RAPL_PREFIX
-        if not rapl_path.exists():
-            # Also check for AMD-specific path
-            rapl_path = self.POWERCAP_PATH / "amd-rapl"
-            if not rapl_path.exists():
-                return False
+        self._unavailable_reason = None
 
-        # Check if we can read energy values
-        try:
-            for entry in rapl_path.iterdir():
-                if entry.is_dir() and entry.name.startswith(self.RAPL_PREFIX):
-                    energy_file = entry / "energy_uj"
-                    if energy_file.exists():
-                        with open(energy_file) as f:
-                            f.read()
-                        return True
-        except (PermissionError, OSError):
+        # Locate the rapl root — modern kernels expose both Intel and AMD
+        # CPUs under intel-rapl; amd-rapl is the fallback on some kernels.
+        rapl_path: Path | None = None
+        found_prefix: str | None = None
+        for prefix in (self.RAPL_PREFIX, "amd-rapl"):
+            candidate = self.POWERCAP_PATH / prefix
+            if candidate.exists():
+                rapl_path = candidate
+                found_prefix = prefix
+                break
+
+        if rapl_path is None or found_prefix is None:
+            self._unavailable_reason = (
+                f"RAPL: {self.POWERCAP_PATH}/intel-rapl/ not found "
+                "(kernel may lack the intel_rapl_common module, "
+                "or CPU does not expose RAPL counters — common on VMs)"
+            )
             return False
 
+        try:
+            entries = list(rapl_path.iterdir())
+        except PermissionError:
+            self._unavailable_reason = (
+                f"RAPL: permission denied listing {rapl_path} "
+                "(try: sudo chmod +r " + str(rapl_path) + ")"
+            )
+            return False
+        except OSError as exc:
+            self._unavailable_reason = f"RAPL: cannot read {rapl_path}: {exc}"
+            return False
+
+        energy_files_found = False
+        for entry in entries:
+            if not (entry.is_dir() and entry.name.startswith(found_prefix)):
+                continue
+            energy_file = entry / "energy_uj"
+            if not energy_file.exists():
+                continue
+            energy_files_found = True
+            try:
+                with open(energy_file) as f:
+                    f.read()
+                return True
+            except PermissionError:
+                self._unavailable_reason = (
+                    f"RAPL: permission denied reading {energy_file} "
+                    "(energy_uj is root-readable only by default on many "
+                    "distros; try: sudo chmod +r "
+                    f"{rapl_path}/{found_prefix}:*/energy_uj, "
+                    "or run warpt as root)"
+                )
+                return False
+            except OSError as exc:
+                self._unavailable_reason = f"RAPL: cannot read {energy_file}: {exc}"
+                return False
+
+        if not energy_files_found:
+            self._unavailable_reason = (
+                f"RAPL: no energy_uj files under {rapl_path} "
+                "(powercap interface present but exposes no readable domains)"
+            )
         return False
+
+    def get_unavailable_reason(self) -> str | None:
+        """Return the reason RAPL is unavailable, if known.
+
+        Returns:
+            Human-readable reason string, or None if available or not yet checked.
+        """
+        return self._unavailable_reason
 
     def get_source(self) -> PowerSource:
         """Get the power source type.

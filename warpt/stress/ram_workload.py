@@ -271,7 +271,21 @@ class RAMWorkloadSimulationTest(StressTest):
         num_elements = int((ram_gb * (1024**3)) / 8)  # 8 bytes per int64
 
         # Create working set
-        data = np.random.randint(0, 1000000, size=num_elements, dtype=np.int64)
+        try:
+            data = np.random.randint(0, 1000000, size=num_elements, dtype=np.int64)
+        except MemoryError:
+            self.logger.warning(
+                f"Cannot allocate {ram_gb:.2f} GB ({ram_pct * 100:.0f}% RAM) "
+                f"— skipping this level"
+            )
+            return {
+                "ram_pct": ram_pct,
+                "ram_gb": ram_gb,
+                "ops_per_sec": 0.0,
+                "avg_latency_us": 0.0,
+                "duration": 0.0,
+                "error": "MemoryError",
+            }
 
         # Run workload simulation
         latencies = []

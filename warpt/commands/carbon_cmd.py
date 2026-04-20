@@ -55,7 +55,26 @@ def run_carbon(
 
 def _start_tracking(label: str | None, interval: float, region: str) -> None:
     """Start the carbon tracking daemon."""
+    from warpt.backends.power.factory import PowerMonitor
     from warpt.carbon.daemon import start_daemon
+
+    # Pre-check power sources before forking the daemon
+    monitor = PowerMonitor(include_process_attribution=False)
+    monitor.initialize()
+    sources = [s.value for s in monitor.get_available_sources()]
+    unavailable = monitor.get_unavailable_reasons()
+    monitor.cleanup()
+
+    if not sources:
+        print("Warning: no power sources detected.", file=sys.stderr)
+        print(
+            "Carbon tracking will start but power readings may be zero.",
+            file=sys.stderr,
+        )
+        if unavailable:
+            for reason in unavailable:
+                print(f"  - {reason}", file=sys.stderr)
+        print(file=sys.stderr)
 
     effective_label = label or "manual"
     try:
@@ -69,10 +88,22 @@ def _start_tracking(label: str | None, interval: float, region: str) -> None:
     print(_SECTION_SEP)
     print("  carbon tracking started")
     print(_SECTION_SEP)
-    print(f"\n  Session:  {session_id[:8]}...")
+    print(f"\n  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Session:  {session_id[:8]}...")
     print(f"  Label:    {effective_label}")
     print(f"  Region:   {region}")
     print(f"  Interval: {interval}s")
+    if sources:
+        print(f"  Sources:  {', '.join(sources)}")
+    else:
+        print("  Sources:  none (power readings may be zero)")
+    if unavailable:
+        has_cpu = any(s in ("rapl", "powermetrics") for s in sources)
+        if not has_cpu:
+            print("\n  Warning: CPU power not available")
+            for reason in unavailable:
+                if "RAPL" in reason or "powermetrics" in reason:
+                    print(f"    {reason}")
     print("\n  Stop with: warpt carbon stop")
 
 
@@ -97,7 +128,8 @@ def _stop_tracking(output_json: bool) -> None:
     print(_SECTION_SEP)
     print("  carbon tracking stopped")
     print(_SECTION_SEP)
-    print(f"\n  Session:  {session.id[:8]}...")
+    print(f"\n  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Session:  {session.id[:8]}...")
     print(f"  Label:    {session.label}")
     print(f"  Duration: {_format_duration(session.duration_s or 0)}")
     print(f"  Region:   {session.region}")
@@ -135,7 +167,8 @@ def _show_status(output_json: bool) -> None:
     print(_SECTION_SEP)
     print("  carbon tracking active")
     print(_SECTION_SEP)
-    print(f"\n  PID:      {status['pid']}")
+    print(f"\n  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  PID:      {status['pid']}")
     print(f"  Session:  {status.get('session_id', 'unknown')[:8]}...")
     print(f"  Label:    {status.get('label', 'manual')}")
     print(f"  Region:   {status.get('region', 'US')}")
@@ -180,13 +213,13 @@ def _show_history(limit: int, output_json: bool) -> None:
 
     # Table header
     print(
-        f"\n  {'Date':<12} {'Label':<16} {'Duration':<10} "
+        f"\n  {'Date':<20} {'Label':<16} {'Duration':<10} "
         f"{'Avg W':>7} {'mWh':>8} {'gCO2':>8} {'Cost':>8}"
     )
     print(f"  {_HEADING_UNDERLINE * 3}")
 
     for s in sessions:
-        dt = datetime.fromtimestamp(s.start_time).strftime("%Y-%m-%d")
+        dt = datetime.fromtimestamp(s.start_time).strftime("%Y-%m-%d %H:%M:%S")
         label = s.label[:15] if len(s.label) > 15 else s.label
         dur = _format_duration(s.duration_s or 0)
         avg_w = s.metadata.get("avg_power_w", 0)
@@ -195,7 +228,7 @@ def _show_history(limit: int, output_json: bool) -> None:
         cost = s.cost_usd or 0
 
         print(
-            f"  {dt:<12} {label:<16} {dur:<10} "
+            f"  {dt:<20} {label:<16} {dur:<10} "
             f"{avg_w:>7.1f} {energy_mwh:>8.1f} {co2:>8.4f} ${cost:>7.4f}"
         )
 
@@ -217,6 +250,7 @@ def _show_summary(days: int, output_json: bool) -> None:
     print(_SECTION_SEP)
     print(f"  carbon summary (last {days} days)")
     print(_SECTION_SEP)
+    print(f"\n  Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
     if summary.total_sessions == 0:
         print("\n  No sessions recorded in this period.")

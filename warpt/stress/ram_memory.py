@@ -108,10 +108,28 @@ class RAMBandwidthTest(StressTest):
             f"{self.allocation_percent * 100:.0f}%)"
         )
 
+        # Check headroom: leave at least 1 GB free to avoid OOM killer
+        remaining_gb = self._available_ram_gb - total_allocation_gb
+        if remaining_gb < 1.0:
+            raise RuntimeError(
+                f"Allocation of {total_allocation_gb:.2f} GB would leave only "
+                f"{remaining_gb:.2f} GB free (need >= 1 GB headroom). "
+                f"Reduce allocation_percent or free system memory."
+            )
+
         # Allocate memory arrays (each is half of total allocation)
         num_elements = int(self._allocated_gb * (1024**3) / 8)  # 8 bytes per float64
-        self._array = np.random.rand(num_elements)
-        self._source_array_for_writes = np.random.rand(num_elements)
+        try:
+            self._array = np.random.rand(num_elements)
+            self._source_array_for_writes = np.random.rand(num_elements)
+        except MemoryError as exc:
+            self._array = None
+            self._source_array_for_writes = None
+            raise RuntimeError(
+                f"Failed to allocate {total_allocation_gb:.2f} GB — "
+                f"system ran out of memory. Reduce allocation_percent "
+                f"(currently {self.allocation_percent * 100:.0f}%)."
+            ) from exc
         self.logger.debug(f"Allocated {num_elements:,} float64 elements per array")
 
     def teardown(self) -> None:
@@ -173,7 +191,9 @@ class RAMBandwidthTest(StressTest):
         per_test_duration = duration // 2
 
         # Run read and write bandwidth benchmarks
+        self.logger.info(f"Phase 1/2: Sequential Read ({per_test_duration}s)")
         read_bandwidth_gbps = self._benchmark_sequential_read(per_test_duration)
+        self.logger.info(f"Phase 2/2: Sequential Write ({per_test_duration}s)")
         write_bandwidth_gbps = self._benchmark_sequential_write(per_test_duration)
 
         self.logger.info(f"Read: {read_bandwidth_gbps:.2f} GB/s")
@@ -229,12 +249,24 @@ class RAMBandwidthTest(StressTest):
         start_time = time.time()
         bytes_read = 0
         iter_count = 0
+        next_log = start_time + 5  # Log progress every 5 seconds
 
         while (time.time() - start_time) < duration:
             # Sequential read: sum forces reading all elements
             _ = np.sum(self._array)
             bytes_read += self._array.nbytes
             iter_count += 1
+
+            now = time.time()
+            if now >= next_log:
+                elapsed_so_far = now - start_time
+                gb_so_far = bytes_read / (1024**3)
+                bw = gb_so_far / elapsed_so_far
+                self.logger.info(
+                    f"  Read progress: {elapsed_so_far:.0f}/{duration}s "
+                    f"({bw:.2f} GB/s, {iter_count} iters)"
+                )
+                next_log = now + 5
 
         elapsed = time.time() - start_time
         gb_read = bytes_read / (1024**3)
@@ -265,6 +297,7 @@ class RAMBandwidthTest(StressTest):
         start_time = time.time()
         bytes_written = 0
         iter_count = 0
+        next_log = start_time + 5  # Log progress every 5 seconds
 
         while (time.time() - start_time) < duration:
             # Sequential write: copy from pre-allocated source array
@@ -272,6 +305,17 @@ class RAMBandwidthTest(StressTest):
             self._array[:] = self._source_array_for_writes
             bytes_written += self._array.nbytes
             iter_count += 1
+
+            now = time.time()
+            if now >= next_log:
+                elapsed_so_far = now - start_time
+                gb_so_far = bytes_written / (1024**3)
+                bw = gb_so_far / elapsed_so_far
+                self.logger.info(
+                    f"  Write progress: {elapsed_so_far:.0f}/{duration}s "
+                    f"({bw:.2f} GB/s, {iter_count} iters)"
+                )
+                next_log = now + 5
 
         elapsed = time.time() - start_time
         gb_written = bytes_written / (1024**3)

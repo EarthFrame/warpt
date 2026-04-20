@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Warpt CLI - Command-line interface for Warpt."""
 
+import difflib
+
 import click
 
 from warpt.commands.list_cmd import run_list
@@ -8,9 +10,41 @@ from warpt.utils.env import get_env
 from warpt.utils.logger import Logger
 
 
-@click.group()
+class WarptGroup(click.Group):
+    """Click group with 'did you mean' suggestions for unknown commands."""
+
+    def resolve_command(self, ctx, args):
+        """Resolve command with 'did you mean' suggestions on mismatch."""
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            # Suggest close matches for unrecognized commands
+            matches = difflib.get_close_matches(
+                args[0], self.list_commands(ctx), n=3, cutoff=0.5
+            )
+            if matches:
+                suggestion = ", ".join(f"'{m}'" for m in matches)
+                raise click.UsageError(
+                    f"No such command '{args[0]}'. Did you mean: {suggestion}?"
+                ) from exc
+            raise click.UsageError(
+                f"No such command '{args[0]}'."
+                " Run 'warpt --help' for available commands."
+            ) from exc
+
+
+_QUICK_START = """\b
+Quick start:
+  warpt list                       Discover your hardware
+  warpt monitor                    Live system dashboard
+  warpt stress --list              See available stress tests
+  warpt stress -c cpu -d 30        Run CPU stress tests for 30s
+  warpt stress -c accelerator      Run GPU stress tests"""
+
+
+@click.group(cls=WarptGroup, epilog=_QUICK_START)
 def warpt():
-    """Warpt command-line tool for system monitoring and utilities."""
+    """Warpt — hardware discovery, monitoring, stress testing, and diagnostics."""
     # Configure logger at startup if not already configured
     if not Logger.is_configured():
         # Default to INFO level; subcommands can adjust via set_level()

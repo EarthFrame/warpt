@@ -152,3 +152,9 @@ tests/RESULTS.md
 # Integration agent temp files
 .sdk_docs.txt
 questions.yaml
+
+# Internal docs
+TENSTORRENT_INTEGRATION.md
+
+# Claude Code skills
+warpt/skills/
