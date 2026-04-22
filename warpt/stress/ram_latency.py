@@ -5,6 +5,7 @@ This test measures memory access latency across the cache hierarchy
 hardware prefetchers.
 """
 
+import itertools
 import time
 import warnings
 from typing import Any
@@ -15,12 +16,15 @@ from numpy.typing import NDArray
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
 
-
 # ---------------------------------------------------------------------------
 # Sattolo's algorithm  (guaranteed single-cycle permutation)
 # ---------------------------------------------------------------------------
 
-def sattolo_permutation(n: int, rng: np.random.Generator | None = None) -> NDArray[np.int64]:
+
+def sattolo_permutation(
+    n: int,
+    rng: np.random.Generator | None = None,
+) -> NDArray[np.int64]:
     """Return an int64 array of length *n* that forms a single cycle.
 
     Sattolo's algorithm swaps ``arr[i]`` with a uniformly-random element
@@ -43,6 +47,7 @@ def sattolo_permutation(n: int, rng: np.random.Generator | None = None) -> NDArr
 # ---------------------------------------------------------------------------
 # Gradient-based cache-level detection
 # ---------------------------------------------------------------------------
+
 
 def detect_cache_boundaries(
     results: list[dict[str, Any]],
@@ -82,14 +87,12 @@ def detect_cache_boundaries(
     significant.sort(key=lambda t: t[0], reverse=True)
 
     # Pick up to max_boundaries boundary indices (sorted by position)
-    boundary_indices = sorted(
-        [idx for _, idx in significant[:max_boundaries]]
-    )
+    boundary_indices = sorted([idx for _, idx in significant[:max_boundaries]])
 
     # Build plateaus (segments between boundaries)
-    cuts = [0] + boundary_indices + [n]
+    cuts = [0, *boundary_indices, n]
     plateaus: list[float] = []
-    for s, e in zip(cuts[:-1], cuts[1:]):
+    for s, e in itertools.pairwise(cuts):
         segment = latencies[s:e]
         plateaus.append(float(np.median(segment)))
 

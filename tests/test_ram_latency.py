@@ -66,6 +66,7 @@ class TestSattoloPermutation:
         assert not np.any(perm == indices), "Found fixed point(s)"
 
     def test_dtype_is_int64(self):
+        """Output array must be int64."""
         perm = sattolo_permutation(50)
         assert perm.dtype == np.int64
 
@@ -90,7 +91,7 @@ class TestCacheDetection:
 
     def test_clear_boundaries(self):
         """Three clear jumps should give L1 < L2 < L3 < main memory."""
-        # Simulate: L1 ~2ns (4 pts), L2 ~8ns (4 pts), L3 ~25ns (4 pts), mem ~80ns (4 pts)
+        # Simulate: L1 ~2ns, L2 ~8ns, L3 ~25ns, mem ~80ns (4 pts each)
         results = (
             [{"size_kb": 2**i, "latency_ns": 2.0} for i in range(4)]
             + [{"size_kb": 2 ** (i + 4), "latency_ns": 8.0} for i in range(4)]
@@ -137,6 +138,7 @@ class TestCacheDetection:
         assert levels["l1_latency_ns"] <= levels["main_memory_latency_ns"]
 
     def test_single_element(self):
+        """Single data point should not crash."""
         results = [{"size_kb": 1, "latency_ns": 3.0}]
         levels = detect_cache_boundaries(results)
         assert levels["l1_latency_ns"] == pytest.approx(3.0)
@@ -167,6 +169,7 @@ class TestPointerChase:
         assert result == 0  # back to start after full cycle
 
     def test_python_fallback_partial(self):
+        """Partial chase should stop at the correct index."""
         arr = np.array([1, 2, 3, 0], dtype=np.int64)
         result = pointer_chase_python(arr, 2)
         assert result == 2  # 0->1->2

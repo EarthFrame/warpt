@@ -11,7 +11,7 @@ a StressTest module.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -30,7 +30,7 @@ def get_pointer_chase() -> Callable[[NDArray[np.int64], int], int] | None:
 
     The returned callable has signature ``(arr: NDArray[int64], iters: int) -> int``.
     """
-    global _cached_fn, _fn_loaded  # noqa: PLW0603
+    global _cached_fn, _fn_loaded
 
     if _fn_loaded:
         return _cached_fn
@@ -61,6 +61,6 @@ def pointer_chase_python(arr: NDArray[np.int64], iters: int) -> int:
 
 def reset_cache() -> None:
     """Reset the cached function state (for testing)."""
-    global _cached_fn, _fn_loaded  # noqa: PLW0603
+    global _cached_fn, _fn_loaded
     _cached_fn = None
     _fn_loaded = False

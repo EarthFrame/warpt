@@ -319,9 +319,7 @@ class TestResults:
         output.write(
             f"    {label_header:>{label_width}}  {value_header:>{value_width}}\n"
         )
-        output.write(
-            f"    {'─' * label_width}  {'─' * value_width}\n"
-        )
+        output.write(f"    {'─' * label_width}  {'─' * value_width}\n")
         # Rows
         for label, value, fval in zip(labels, values, formatted_values, strict=True):
             if isinstance(value, int | float):
