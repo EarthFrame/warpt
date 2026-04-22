@@ -244,7 +244,9 @@ class RAMBandwidthTest(StressTest):
                 "speed and channel count not available via system_profiler"
             )
         elif platform.system() == "Linux":
-            theoretical_max_note = "dmidecode requires elevated privileges"
+            theoretical_max_note = (
+                "dmidecode not available (try running as root or with sudo cached)"
+            )
         else:
             theoretical_max_note = (
                 "memory spec detection not supported on this platform"
