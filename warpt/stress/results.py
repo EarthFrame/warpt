@@ -266,10 +266,72 @@ class TestResults:
         # Other fields
         for key, value in result.items():
             if key not in key_metrics and key != "test_name":
-                if isinstance(value, float):
+                if self._is_two_col_table(value):
+                    self._format_table_with_bars(output, key, value)
+                elif isinstance(value, float):
                     output.write(f"  {key}: {value:.2f}\n")
                 else:
                     output.write(f"  {key}: {value}\n")
+
+    @staticmethod
+    def _is_two_col_table(value: Any) -> bool:
+        """Check if value is a non-empty list of dicts each with exactly 2 keys."""
+        return (
+            isinstance(value, list)
+            and len(value) > 0
+            and all(isinstance(item, dict) and len(item) == 2 for item in value)
+        )
+
+    @staticmethod
+    def _format_table_with_bars(
+        output: StringIO, field_name: str, rows: list[dict[str, Any]]
+    ) -> None:
+        """Render a list of 2-key dicts as an aligned table with bar chart.
+
+        The first key in each dict is the label column, the second is the
+        numeric value column.  Bars are scaled to 32 characters wide.
+        """
+        bar_width = 32
+        keys = list(rows[0].keys())
+        label_key, value_key = keys[0], keys[1]
+
+        labels = [str(row[label_key]) for row in rows]
+        values = [row[value_key] for row in rows]
+
+        # Column headers — title-case with underscores replaced
+        label_header = label_key.replace("_", " ").title()
+        value_header = value_key.replace("_", " ").title()
+
+        label_width = max(len(label_header), *(len(lb) for lb in labels))
+        max_val = max(abs(v) for v in values if isinstance(v, int | float)) or 1
+
+        # Format numeric values to find the widest string
+        formatted_values: list[str] = []
+        for v in values:
+            if isinstance(v, float):
+                formatted_values.append(f"{v:.2f}")
+            else:
+                formatted_values.append(str(v))
+        value_width = max(len(value_header), *(len(fv) for fv in formatted_values))
+
+        output.write(f"  {field_name}:\n")
+        # Header
+        output.write(
+            f"    {label_header:>{label_width}}  {value_header:>{value_width}}\n"
+        )
+        output.write(f"    {'─' * label_width}  {'─' * value_width}\n")
+        # Rows
+        for label, value, fval in zip(labels, values, formatted_values, strict=True):
+            if isinstance(value, int | float):
+                filled = int(round(abs(value) / max_val * bar_width))
+                bar = "█" * filled
+                output.write(
+                    f"    {label:>{label_width}}  "
+                    f"│{bar:<{bar_width}}│ "
+                    f"{fval:>{value_width}}\n"
+                )
+            else:
+                output.write(f"    {label:>{label_width}}  {fval:>{value_width}}\n")
 
     def _write_output(self, output: str | Path | TextIO, content: str) -> None:
         """Write content to file or stream.

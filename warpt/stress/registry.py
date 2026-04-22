@@ -152,8 +152,12 @@ class TestRegistry:
 
         # Find all StressTest subclasses
         for _name, obj in inspect.getmembers(module, inspect.isclass):
+            try:
+                is_subclass = issubclass(obj, StressTest)
+            except TypeError:
+                continue
             if (
-                issubclass(obj, StressTest)
+                is_subclass
                 and obj is not StressTest
                 and not inspect.isabstract(obj)
                 and obj.__module__ == module_name

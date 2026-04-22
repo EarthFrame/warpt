@@ -5,11 +5,107 @@ This test measures memory access latency across the cache hierarchy
 hardware prefetchers.
 """
 
+import itertools
 import time
+import warnings
 from typing import Any
+
+import numpy as np
+from numpy.typing import NDArray
 
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
+
+# ---------------------------------------------------------------------------
+# Sattolo's algorithm  (guaranteed single-cycle permutation)
+# ---------------------------------------------------------------------------
+
+
+def sattolo_permutation(
+    n: int,
+    rng: np.random.Generator | None = None,
+) -> NDArray[np.int64]:
+    """Return an int64 array of length *n* that forms a single cycle.
+
+    Sattolo's algorithm swaps ``arr[i]`` with a uniformly-random element
+    from ``arr[0..i-1]`` (exclusive of *i*), guaranteeing exactly one
+    cycle of length *n* and no fixed points for n >= 2.
+    """
+    if n < 2:
+        return np.zeros(1, dtype=np.int64)
+
+    if rng is None:
+        rng = np.random.default_rng()
+
+    arr = np.arange(n, dtype=np.int64)
+    for i in range(n - 1, 0, -1):
+        j = int(rng.integers(0, i))  # [0, i) — never equals i
+        arr[i], arr[j] = arr[j], arr[i]
+    return arr
+
+
+# ---------------------------------------------------------------------------
+# Gradient-based cache-level detection
+# ---------------------------------------------------------------------------
+
+
+def detect_cache_boundaries(
+    results: list[dict[str, Any]],
+    min_ratio: float = 1.05,
+    max_boundaries: int = 3,
+) -> dict[str, float]:
+    """Detect cache-level boundaries from a latency curve.
+
+    Computes pairwise ratios between consecutive latency measurements
+    and picks the top *max_boundaries* jumps that exceed *min_ratio*.
+    Uses the median of each plateau for noise resistance.
+
+    Returns dict with keys ``l1_latency_ns``, ``l2_latency_ns``,
+    ``l3_latency_ns``, ``main_memory_latency_ns``.
+    """
+    latencies = [r["latency_ns"] for r in results]
+    n = len(latencies)
+
+    if n < 2:
+        v = latencies[0] if latencies else 0.0
+        return {
+            "l1_latency_ns": v,
+            "l2_latency_ns": v,
+            "l3_latency_ns": v,
+            "main_memory_latency_ns": v,
+        }
+
+    # Compute consecutive ratios
+    ratios: list[tuple[float, int]] = []
+    for i in range(1, n):
+        prev = latencies[i - 1]
+        if prev > 0:
+            ratios.append((latencies[i] / prev, i))
+
+    # Keep only ratios above the noise floor and sort descending
+    significant = [(r, idx) for r, idx in ratios if r >= min_ratio]
+    significant.sort(key=lambda t: t[0], reverse=True)
+
+    # Pick up to max_boundaries boundary indices (sorted by position)
+    boundary_indices = sorted([idx for _, idx in significant[:max_boundaries]])
+
+    # Build plateaus (segments between boundaries)
+    cuts = [0, *boundary_indices, n]
+    plateaus: list[float] = []
+    for s, e in itertools.pairwise(cuts):
+        segment = latencies[s:e]
+        plateaus.append(float(np.median(segment)))
+
+    # Pad / truncate to exactly 4 levels: L1, L2, L3, main memory
+    while len(plateaus) < 4:
+        plateaus.append(plateaus[-1])
+
+    return {
+        "l1_latency_ns": plateaus[0],
+        "l2_latency_ns": plateaus[1],
+        "l3_latency_ns": plateaus[2],
+        "main_memory_latency_ns": plateaus[3],
+    }
 
 
 class RAMLatencyTest(StressTest):
@@ -43,6 +139,7 @@ class RAMLatencyTest(StressTest):
         self.burnin_seconds = burnin_seconds
         self._total_ram_gb = 0.0
         self._available_ram_gb = 0.0
+        self._backend = "python_fallback"
 
     # -------------------------------------------------------------------------
     # Identity & Metadata
@@ -107,6 +204,26 @@ class RAMLatencyTest(StressTest):
         self.logger.info(f"Total RAM: {self._total_ram_gb:.2f} GB")
         self.logger.info(f"Available RAM: {self._available_ram_gb:.2f} GB")
 
+        # Resolve pointer-chase backend
+        from warpt.stress._pointer_chase import get_pointer_chase
+
+        cpp_fn = get_pointer_chase()
+        if cpp_fn is not None:
+            self._chase_fn = cpp_fn
+            self._backend = "cpp"
+            self.logger.info("Using C++ pointer-chase backend")
+        else:
+            from warpt.stress._pointer_chase import pointer_chase_python
+
+            self._chase_fn = pointer_chase_python
+            self._backend = "python_fallback"
+            warnings.warn(
+                "C++ pointer-chase unavailable; falling back to Python "
+                "(latencies will include ~60 ns interpreter overhead)",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
     def teardown(self) -> None:
         """Clean up resources."""
         pass
@@ -119,8 +236,6 @@ class RAMLatencyTest(StressTest):
             iterations: Number of iterations if both duration_seconds and
                 burnin_seconds are 0.
         """
-        import numpy as np
-
         # Use burnin_seconds if no duration specified
         if duration_seconds == 0:
             duration_seconds = self.burnin_seconds
@@ -129,7 +244,6 @@ class RAMLatencyTest(StressTest):
             self.logger.debug(f"Warming up for {duration_seconds}s...")
             start = time.time()
             while (time.time() - start) < duration_seconds:
-                # Warmup with small array (fits in cache)
                 arr = np.arange(1000, dtype=np.int64)
                 _ = arr.sum()
                 del arr
@@ -194,11 +308,13 @@ class RAMLatencyTest(StressTest):
 
         elapsed = time.time() - start_time
 
-        # Identify cache levels (simple heuristic: look for latency jumps)
-        l1_latency = results[0]["latency_ns"]  # Smallest size
-        l2_latency = self._find_cache_level_latency(results, l1_latency * 1.5)
-        l3_latency = self._find_cache_level_latency(results, l2_latency * 1.5)
-        mem_latency = results[-1]["latency_ns"]  # Largest size
+        # Detect cache levels via gradient analysis
+        cache_levels = detect_cache_boundaries(results)
+
+        l1_latency = cache_levels["l1_latency_ns"]
+        l2_latency = cache_levels["l2_latency_ns"]
+        l3_latency = cache_levels["l3_latency_ns"]
+        mem_latency = cache_levels["main_memory_latency_ns"]
 
         # Calculate min/max across all measurements
         all_latencies = [r["latency_ns"] for r in results]
@@ -229,6 +345,8 @@ class RAMLatencyTest(StressTest):
             "max_latency_ns": max_latency,
             # Full latency curve
             "latency_curve": results,
+            # Backend used
+            "backend": self._backend,
         }
 
     # -------------------------------------------------------------------------
@@ -238,9 +356,9 @@ class RAMLatencyTest(StressTest):
     def _measure_latency_for_size(self, size_kb: int) -> float:
         """Measure memory latency for a specific array size.
 
-        Uses pointer-chasing technique: create a random permutation where
-        each element points to the next, forcing dependent loads that
-        defeat hardware prefetchers.
+        Uses pointer-chasing with Sattolo's permutation (guaranteed
+        single cycle) and a C++ chase loop to eliminate interpreter
+        overhead.
 
         Args:
             size_kb: Array size in KB.
@@ -248,8 +366,6 @@ class RAMLatencyTest(StressTest):
         Returns:
             Average latency per access in nanoseconds.
         """
-        import numpy as np
-
         # Calculate number of int64 elements (8 bytes each)
         num_elements = (size_kb * 1024) // 8
 
@@ -257,53 +373,16 @@ class RAMLatencyTest(StressTest):
         if num_elements < 2:
             num_elements = 2
 
-        # Create random permutation for pointer chasing
-        # permutation[i] contains the index of the next element to access
-        permutation = np.arange(num_elements, dtype=np.int64)
-        np.random.shuffle(permutation)
-
-        # Ensure it's a single cycle (last element points to first)
-        permutation[-1] = permutation[0]
+        # Create single-cycle permutation via Sattolo's algorithm
+        permutation = sattolo_permutation(num_elements)
 
         # Warm up the array (load into cache at appropriate level)
         _ = permutation.sum()
 
-        # Pointer chasing loop: each access depends on previous
-        # This defeats prefetchers and measures true random-access latency
-        iterations = self.iterations_per_size
-        index = 0
+        iters = self.iterations_per_size
 
         start_time = time.perf_counter_ns()
-
-        for _ in range(iterations):
-            index = permutation[index]
-
+        _ = self._chase_fn(permutation, iters)
         elapsed_ns = time.perf_counter_ns() - start_time
 
-        # Calculate average latency per access
-        latency_ns = elapsed_ns / iterations
-
-        # Use index to prevent compiler from optimizing away the loop
-        if index < 0:
-            self.logger.debug(f"Impossible: index={index}")
-
-        return latency_ns
-
-    def _find_cache_level_latency(
-        self, results: list[dict[str, Any]], threshold_ns: float
-    ) -> float:
-        """Find latency at a cache level using threshold heuristic.
-
-        Args:
-            results: List of {size_kb, latency_ns} dicts.
-            threshold_ns: Latency threshold to look for.
-
-        Returns:
-            Latency in nanoseconds at the detected cache level.
-        """
-        for result in results:
-            if result["latency_ns"] >= threshold_ns:
-                return float(result["latency_ns"])
-
-        # If no threshold found, return last measurement
-        return float(results[-1]["latency_ns"])
+        return elapsed_ns / iters
