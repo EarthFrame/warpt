@@ -41,7 +41,7 @@ def get_pointer_chase() -> Callable[[NDArray[np.int64], int], int] | None:
         from warpt.stress._pointer_chase_ext import pointer_chase as _cpp_chase
 
         def _chase(arr: NDArray[np.int64], iters: int) -> int:
-            return _cpp_chase(arr.ctypes.data, iters)
+            return int(_cpp_chase(arr.ctypes.data, iters))
 
         _cached_fn = _chase
     except ImportError:
