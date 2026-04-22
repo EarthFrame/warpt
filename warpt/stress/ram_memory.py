@@ -1,6 +1,5 @@
 """RAM memory stress tests."""
 
-import platform
 from typing import Any
 
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
@@ -40,7 +39,6 @@ class RAMBandwidthTest(StressTest):
         # Memory hardware info (populated in setup)
         self._memory_type: str | None = None
         self._memory_speed_mt_s: int | None = None
-        self._memory_channels: int | None = None
 
     # -------------------------------------------------------------------------
     # Identity & Metadata
@@ -143,12 +141,10 @@ class RAMBandwidthTest(StressTest):
 
         ram = RAM()
         self._memory_type, self._memory_speed_mt_s = ram._detect_ddr_info()
-        self._memory_channels = ram._detect_memory_channels()
 
         self.logger.info(
             f"Memory detection: type={self._memory_type}, "
-            f"speed={self._memory_speed_mt_s} MT/s, "
-            f"channels={self._memory_channels}"
+            f"speed={self._memory_speed_mt_s} MT/s"
         )
 
     def teardown(self) -> None:
@@ -218,40 +214,6 @@ class RAMBandwidthTest(StressTest):
         self.logger.info(f"Read: {read_bandwidth_gbps:.2f} GB/s")
         self.logger.info(f"Write: {write_bandwidth_gbps:.2f} GB/s")
 
-        # Compute theoretical max bandwidth
-        theoretical_max_gbps: float | None = None
-        theoretical_max_note: str | None = None
-        read_pct: float | None = None
-        write_pct: float | None = None
-
-        if self._memory_speed_mt_s is not None and self._memory_channels is not None:
-            theoretical_max_gbps = (
-                self._memory_speed_mt_s * self._memory_channels * 8 / 1000
-            )
-            theoretical_max_note = (
-                f"{self._memory_speed_mt_s} MT/s "
-                f"\u00d7 {self._memory_channels}ch "
-                f"\u00d7 8B \u00f7 1000"
-            )
-            read_pct = read_bandwidth_gbps / theoretical_max_gbps * 100
-            write_pct = write_bandwidth_gbps / theoretical_max_gbps * 100
-        elif self._memory_speed_mt_s is not None:
-            theoretical_max_note = "channel count not detected"
-        elif self._memory_channels is not None:
-            theoretical_max_note = "memory speed not detected"
-        elif platform.system() == "Darwin":
-            theoretical_max_note = (
-                "speed and channel count not available via system_profiler"
-            )
-        elif platform.system() == "Linux":
-            theoretical_max_note = (
-                "dmidecode not available (try running as root or with sudo cached)"
-            )
-        else:
-            theoretical_max_note = (
-                "memory spec detection not supported on this platform"
-            )
-
         # Return results (baseline only, no swap pressure)
         return RAMMemoryStressResult(
             # System info
@@ -265,15 +227,9 @@ class RAMBandwidthTest(StressTest):
             # Memory hardware info
             memory_type=self._memory_type,
             memory_speed_mt_s=self._memory_speed_mt_s,
-            memory_channels=self._memory_channels,
-            # Theoretical bandwidth
-            theoretical_max_gbps=theoretical_max_gbps,
-            theoretical_max_note=theoretical_max_note,
             # Baseline metrics (actual measurements)
             baseline_read_gbps=read_bandwidth_gbps,
-            read_pct_of_theoretical=read_pct,
             baseline_write_gbps=write_bandwidth_gbps,
-            write_pct_of_theoretical=write_pct,
         )
 
     # -------------------------------------------------------------------------

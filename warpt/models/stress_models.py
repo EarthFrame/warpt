@@ -318,30 +318,13 @@ class RAMMemoryStressResult(BaseModel):
     memory_speed_mt_s: int | None = Field(
         None, description="Memory speed in MT/s (e.g., 6400)"
     )
-    memory_channels: int | None = Field(
-        None, description="Number of memory channels (e.g., 2)"
-    )
-
-    # Theoretical bandwidth
-    theoretical_max_gbps: float | None = Field(
-        None, ge=0, description="Theoretical max bandwidth in GB/s"
-    )
-    theoretical_max_note: str | None = Field(
-        None, description="Formula string or unavailability reason"
-    )
 
     # Baseline metrics (before swap pressure)
     baseline_read_gbps: float = Field(
         ..., ge=0, description="Baseline read bandwidth in GB/s"
     )
-    read_pct_of_theoretical: float | None = Field(
-        None, ge=0, description="Read bandwidth as % of theoretical max"
-    )
     baseline_write_gbps: float = Field(
         ..., ge=0, description="Baseline write bandwidth in GB/s"
-    )
-    write_pct_of_theoretical: float | None = Field(
-        None, ge=0, description="Write bandwidth as % of theoretical max"
     )
     baseline_latency_ms: float | None = Field(
         None, ge=0, description="Baseline memory access latency in ms"
