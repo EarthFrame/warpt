@@ -256,7 +256,7 @@ class TestResults:
         # Highlight key metrics
         key_metrics = ["tflops", "bandwidth_gbps", "duration", "iterations"]
         for key in key_metrics:
-            if key in result:
+            if key in result and result[key] is not None:
                 value = result[key]
                 if isinstance(value, float):
                     output.write(f"  {key}: {value:.2f}\n")
@@ -266,6 +266,8 @@ class TestResults:
         # Other fields
         for key, value in result.items():
             if key not in key_metrics and key != "test_name":
+                if value is None:
+                    continue
                 if self._is_two_col_table(value):
                     self._format_table_with_bars(output, key, value)
                 elif isinstance(value, float):
