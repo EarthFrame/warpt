@@ -3,20 +3,21 @@
 from io import StringIO
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
-from warpt.stress._pointer_chase import (
+np = pytest.importorskip("numpy")
+
+from warpt.stress._pointer_chase import (  # noqa: E402
     get_pointer_chase,
     pointer_chase_python,
     reset_cache,
 )
-from warpt.stress.ram_latency import (
+from warpt.stress.ram_latency import (  # noqa: E402
     RAMLatencyTest,
     detect_cache_boundaries,
     sattolo_permutation,
 )
-from warpt.utils.logger import Logger
+from warpt.utils.logger import Logger  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
