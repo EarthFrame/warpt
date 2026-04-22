@@ -315,9 +315,6 @@ class RAMMemoryStressResult(BaseModel):
     memory_type: str | None = Field(
         None, description="Memory type (e.g., 'DDR5', 'LPDDR5')"
     )
-    memory_speed_mt_s: int | None = Field(
-        None, description="Memory speed in MT/s (e.g., 6400)"
-    )
 
     # Baseline metrics (before swap pressure)
     baseline_read_gbps: float = Field(

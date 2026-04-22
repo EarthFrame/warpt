@@ -51,8 +51,9 @@ class RAMBandwidthTest(StressTest):
     def get_description(self) -> str:
         """Return one-line description."""
         return (
-            "Measures system RAM sequential read/write bandwidth "
-            "(duration split between both)"
+            "Single-threaded sequential read/write bandwidth. Does not "
+            "saturate all memory channels — results reflect what one "
+            "thread can achieve, not peak hardware capability."
         )
 
     def get_category(self) -> TestCategory:
@@ -140,11 +141,13 @@ class RAMBandwidthTest(StressTest):
         from warpt.backends.ram import RAM
 
         ram = RAM()
-        self._memory_type, self._memory_speed_mt_s = ram._detect_ddr_info()
+        self._memory_type, _ = ram._detect_ddr_info()
 
+        if self._memory_type:
+            self.logger.info(f"Memory type: {self._memory_type}")
         self.logger.info(
-            f"Memory detection: type={self._memory_type}, "
-            f"speed={self._memory_speed_mt_s} MT/s"
+            "Note: single-threaded test — measures bandwidth available to "
+            "one thread, not peak hardware capability across all channels"
         )
 
     def teardown(self) -> None:
@@ -226,7 +229,6 @@ class RAMBandwidthTest(StressTest):
             burnin_seconds=self.burnin_seconds,
             # Memory hardware info
             memory_type=self._memory_type,
-            memory_speed_mt_s=self._memory_speed_mt_s,
             # Baseline metrics (actual measurements)
             baseline_read_gbps=read_bandwidth_gbps,
             baseline_write_gbps=write_bandwidth_gbps,
