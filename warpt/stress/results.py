@@ -230,9 +230,11 @@ class TestResults:
 
         # Individual results
         for test_name, result in data["results"].items():
-            output.write(f"📊 {test_name}\n")
+            mode = result.get("mode")
+            label = f"{test_name} ({mode})" if mode else test_name
+            output.write(f"📊 {label}\n")
             output.write("-" * 40 + "\n")
-            self._format_result_text(output, result)
+            self._format_result_text(output, result, test_name)
             output.write("\n")
 
         # Errors
@@ -246,13 +248,20 @@ class TestResults:
         output.write("=" * 60 + "\n")
         return output.getvalue()
 
-    def _format_result_text(self, output: StringIO, result: dict[str, Any]) -> None:
+    def _format_result_text(
+        self, output: StringIO, result: dict[str, Any], test_name: str = ""
+    ) -> None:
         """Format a single result for text output.
 
         Args:
             output: StringIO to write to.
             result: Result dictionary.
+            test_name: Name of the test class for custom formatting dispatch.
         """
+        if test_name == "RAMBandwidthTest":
+            self._format_ram_bandwidth_text(output, result)
+            return
+
         # Highlight key metrics
         key_metrics = ["tflops", "bandwidth_gbps", "duration", "iterations"]
         for key in key_metrics:
@@ -274,6 +283,32 @@ class TestResults:
                     output.write(f"  {key}: {value:.2f}\n")
                 else:
                     output.write(f"  {key}: {value}\n")
+
+    @staticmethod
+    def _format_ram_bandwidth_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format RAMBandwidthTest result with measurements first, context second."""
+        read = result.get("baseline_read_gbps", 0.0)
+        write = result.get("baseline_write_gbps", 0.0)
+
+        output.write(f"  read:  {read:.2f} GB/s\n")
+        output.write(f"  write: {write:.2f} GB/s\n")
+        output.write("\n")
+
+        # System context line: "124.95 GB DDR5, tested with 60.21 GB"
+        total = result.get("total_ram_gb", 0.0)
+        mem_type = result.get("memory_type")
+        alloc = result.get("allocated_memory_gb", 0.0)
+
+        sys_parts = [f"{total:.2f} GB"]
+        if mem_type:
+            sys_parts.append(mem_type)
+        sys_line = " ".join(sys_parts)
+        output.write(f"  system: {sys_line}, tested with {alloc:.2f} GB\n")
+
+        # Duration line
+        dur = result.get("duration", 0.0)
+        warmup = result.get("burnin_seconds", 0)
+        output.write(f"  duration: {dur:.0f}s, warmup: {warmup}s\n")
 
     @staticmethod
     def _is_two_col_table(value: Any) -> bool:
