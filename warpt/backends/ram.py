@@ -201,47 +201,66 @@ class RAM:
         """Initialize RAM backend."""
         self._info: RAMInfo | None = None
 
-    def _detect_ddr_info(self) -> tuple[str | None, int | None]:
-        """
-        Detect DDR type and speed.
+    def _run_dmidecode(self) -> str | None:
+        """Run dmidecode and return stdout, or None on failure.
 
-        Returns:
-            Tuple of (ddr_type, speed_mhz) or (None, None) if detection fails.
+        Tries without sudo first (works when running as root), then
+        falls back to ``sudo -n`` (non-interactive — succeeds only if
+        the user has cached credentials).  Never prompts for a password.
         """
-        # Try to detect from dmidecode (Linux)
-        if platform.system() == "Linux":
+        if platform.system() != "Linux":
+            return None
+
+        for cmd in [
+            ["dmidecode", "-t", "memory"],
+            ["sudo", "-n", "dmidecode", "-t", "memory"],
+        ]:
             try:
                 result = subprocess.run(
-                    ["sudo", "dmidecode", "-t", "memory"],
+                    cmd,
                     capture_output=True,
                     text=True,
                     timeout=5,
                 )
                 if result.returncode == 0:
-                    lines = result.stdout.split("\n")
-                    ddr_type = None
-                    speed = None
-
-                    for line in lines:
-                        if "Type:" in line and "DDR" in line:
-                            # Extract DDR type (e.g., "DDR4", "DDR5")
-                            for part in line.split():
-                                if "DDR" in part:
-                                    ddr_type = part.strip()
-                                    break
-
-                        if "Configured Memory Speed:" in line or "Speed:" in line:
-                            # Extract speed (e.g., "3200 MT/s")
-                            parts = line.split()
-                            for j, part in enumerate(parts):
-                                if part.isdigit() and j + 1 < len(parts):
-                                    if "MT/s" in parts[j + 1] or "MHz" in parts[j + 1]:
-                                        speed = int(part)
-                                        break
-
-                    return (ddr_type, speed)
+                    return result.stdout
             except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-                pass
+                continue
+
+        return None
+
+    def _detect_ddr_info(self) -> tuple[str | None, int | None]:
+        """
+        Detect DDR type and speed.
+
+        Returns:
+            Tuple of (ddr_type, speed_mt_s) or (None, None) if detection fails.
+        """
+        # Try dmidecode on Linux
+        dmidecode_output = self._run_dmidecode()
+        if dmidecode_output is not None:
+            lines = dmidecode_output.split("\n")
+            ddr_type = None
+            speed = None
+
+            for line in lines:
+                if "Type:" in line and "DDR" in line:
+                    # Extract DDR type (e.g., "DDR4", "DDR5")
+                    for part in line.split():
+                        if "DDR" in part:
+                            ddr_type = part.strip()
+                            break
+
+                if "Configured Memory Speed:" in line or "Speed:" in line:
+                    # Extract speed (e.g., "3200 MT/s")
+                    parts = line.split()
+                    for j, part in enumerate(parts):
+                        if part.isdigit() and j + 1 < len(parts):
+                            if "MT/s" in parts[j + 1] or "MHz" in parts[j + 1]:
+                                speed = int(part)
+                                break
+
+            return (ddr_type, speed)
 
         # Try macOS system_profiler
         if platform.system() == "Darwin":
@@ -271,22 +290,12 @@ class RAM:
         Returns:
             Number of memory channels or None if detection fails.
         """
-        # Try to detect from dmidecode (Linux)
-        if platform.system() == "Linux":
-            try:
-                result = subprocess.run(
-                    ["sudo", "dmidecode", "-t", "memory"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0:
-                    # Count unique "Handle" lines to estimate channels
-                    handles = result.stdout.count("Handle")
-                    if handles > 0:
-                        return handles
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-                pass
+        dmidecode_output = self._run_dmidecode()
+        if dmidecode_output is not None:
+            # Count unique "Handle" lines to estimate channels
+            handles = dmidecode_output.count("Handle")
+            if handles > 0:
+                return handles
 
         return None
 

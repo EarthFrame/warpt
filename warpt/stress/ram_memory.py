@@ -36,6 +36,10 @@ class RAMBandwidthTest(StressTest):
         self._total_ram_gb = 0.0
         self._available_ram_gb = 0.0
 
+        # Memory hardware info (populated in setup)
+        self._memory_type: str | None = None
+        self._memory_speed_mt_s: int | None = None
+
     # -------------------------------------------------------------------------
     # Identity & Metadata
     # -------------------------------------------------------------------------
@@ -47,8 +51,9 @@ class RAMBandwidthTest(StressTest):
     def get_description(self) -> str:
         """Return one-line description."""
         return (
-            "Measures system RAM sequential read/write bandwidth "
-            "(duration split between both)"
+            "Single-threaded sequential read/write bandwidth. Does not "
+            "saturate all memory channels — results reflect what one "
+            "thread can achieve, not peak hardware capability."
         )
 
     def get_category(self) -> TestCategory:
@@ -132,6 +137,19 @@ class RAMBandwidthTest(StressTest):
             ) from exc
         self.logger.debug(f"Allocated {num_elements:,} float64 elements per array")
 
+        # Detect memory hardware specs
+        from warpt.backends.ram import RAM
+
+        ram = RAM()
+        self._memory_type, _ = ram._detect_ddr_info()
+
+        if self._memory_type:
+            self.logger.info(f"Memory type: {self._memory_type}")
+        self.logger.info(
+            "Note: single-threaded test — measures bandwidth available to "
+            "one thread, not peak hardware capability across all channels"
+        )
+
     def teardown(self) -> None:
         """Clean up allocated memory."""
         if self._array is not None:
@@ -207,24 +225,13 @@ class RAMBandwidthTest(StressTest):
             allocated_memory_gb=self._allocated_gb * 2,  # Total for both arrays
             # Test metadata
             duration=float(duration),
+            mode="single-threaded",
             burnin_seconds=self.burnin_seconds,
+            # Memory hardware info
+            memory_type=self._memory_type,
             # Baseline metrics (actual measurements)
             baseline_read_gbps=read_bandwidth_gbps,
             baseline_write_gbps=write_bandwidth_gbps,
-            baseline_latency_ms=0.0,  # Not measuring latency
-            # Pressure metrics (not tested, set to 0)
-            pressure_read_gbps=0.0,
-            pressure_write_gbps=0.0,
-            pressure_latency_ms=0.0,
-            # Performance degradation (no degradation = 1.0)
-            read_slowdown_factor=1.0,
-            write_slowdown_factor=1.0,
-            latency_increase_factor=1.0,
-            # Swap metrics (no swap testing)
-            swap_occurred=False,
-            swap_in_mb=None,
-            swap_out_mb=None,
-            peak_swap_usage_mb=None,
         )
 
     # -------------------------------------------------------------------------

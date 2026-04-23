@@ -308,7 +308,13 @@ class RAMMemoryStressResult(BaseModel):
 
     # Test metadata
     duration: float = Field(..., ge=0, description="Test duration in seconds")
+    mode: str | None = Field(None, description="Test mode (e.g., 'single-threaded')")
     burnin_seconds: int = Field(..., ge=0, description="Warmup period in seconds")
+
+    # Memory hardware info
+    memory_type: str | None = Field(
+        None, description="Memory type (e.g., 'DDR5', 'LPDDR5')"
+    )
 
     # Baseline metrics (before swap pressure)
     baseline_read_gbps: float = Field(
@@ -317,33 +323,37 @@ class RAMMemoryStressResult(BaseModel):
     baseline_write_gbps: float = Field(
         ..., ge=0, description="Baseline write bandwidth in GB/s"
     )
-    baseline_latency_ms: float = Field(
-        ..., ge=0, description="Baseline memory access latency in ms"
+    baseline_latency_ms: float | None = Field(
+        None, ge=0, description="Baseline memory access latency in ms"
     )
 
     # Swap detection
-    swap_occurred: bool = Field(..., description="Whether swapping was detected")
+    swap_occurred: bool | None = Field(
+        None, description="Whether swapping was detected"
+    )
 
     # Pressure metrics (under swap)
-    pressure_read_gbps: float = Field(
-        ..., ge=0, description="Read bandwidth under swap pressure in GB/s"
+    pressure_read_gbps: float | None = Field(
+        None, ge=0, description="Read bandwidth under swap pressure in GB/s"
     )
-    pressure_write_gbps: float = Field(
-        ..., ge=0, description="Write bandwidth under swap pressure in GB/s"
+    pressure_write_gbps: float | None = Field(
+        None, ge=0, description="Write bandwidth under swap pressure in GB/s"
     )
-    pressure_latency_ms: float = Field(
-        ..., ge=0, description="Memory access latency under swap pressure in ms"
+    pressure_latency_ms: float | None = Field(
+        None, ge=0, description="Memory access latency under swap pressure in ms"
     )
 
     # Performance degradation metrics
-    read_slowdown_factor: float = Field(
-        ..., ge=1.0, description="Read performance degradation (≥1.0, higher is worse)"
+    read_slowdown_factor: float | None = Field(
+        None, ge=1.0, description="Read performance degradation (≥1.0, higher is worse)"
     )
-    write_slowdown_factor: float = Field(
-        ..., ge=1.0, description="Write performance degradation (≥1.0, higher is worse)"
+    write_slowdown_factor: float | None = Field(
+        None,
+        ge=1.0,
+        description="Write performance degradation (≥1.0, higher is worse)",
     )
-    latency_increase_factor: float = Field(
-        ..., ge=1.0, description="Latency increase factor (≥1.0, higher is worse)"
+    latency_increase_factor: float | None = Field(
+        None, ge=1.0, description="Latency increase factor (≥1.0, higher is worse)"
     )
 
     # Additional swap metrics
