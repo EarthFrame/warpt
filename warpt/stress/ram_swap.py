@@ -1,13 +1,13 @@
 """RAM swap pressure stress test."""
 
-from typing import Any
+import time
 
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.models.stress_models import RAMMemoryStressResult
-from warpt.stress.base import StressTest, TestCategory
+from warpt.stress.ram_base import RAMBaseTest
 
 
-class RAMSwapPressureTest(StressTest):
+class RAMSwapPressureTest(RAMBaseTest):
     """Memory stress test that forces swap to measure performance degradation.
 
     Tests both baseline (normal RAM) and pressure (forced swap) conditions
@@ -36,16 +36,11 @@ class RAMSwapPressureTest(StressTest):
                 pressure test (>1.0 to force swap). Default 1.5 (150%).
             burnin_seconds: Warmup duration before measurement.
         """
+        super().__init__()
         self.allocation_percent_baseline = allocation_percent_baseline
         self.allocation_percent_pressure = allocation_percent_pressure
         self.burnin_seconds = burnin_seconds
-
-        # Runtime state (set in setup/execute_test)
-        self._array: Any | None = None
-        self._source_array_for_writes: Any | None = None
         self._pressure_chunks: list = []
-        self._total_ram_gb = 0.0
-        self._available_ram_gb = 0.0
 
     # -------------------------------------------------------------------------
     # Identity & Metadata
@@ -62,23 +57,9 @@ class RAMSwapPressureTest(StressTest):
             "(baseline vs forced swap)"
         )
 
-    def get_category(self) -> TestCategory:
-        """Return test category."""
-        return TestCategory.RAM
-
     # -------------------------------------------------------------------------
     # Hardware & Availability
     # -------------------------------------------------------------------------
-
-    def is_available(self) -> bool:
-        """Check if NumPy and psutil are available."""
-        try:
-            import numpy  # noqa: F401
-            import psutil  # noqa: F401
-
-            return True
-        except ImportError:
-            return False
 
     def validate_configuration(self) -> None:
         """Validate test configuration."""
@@ -113,10 +94,21 @@ class RAMSwapPressureTest(StressTest):
         self.logger.info(f"Total RAM: {self._total_ram_gb:.2f} GB")
         self.logger.info(f"Available RAM: {self._available_ram_gb:.2f} GB")
 
+        self._detect_memory_type()
+        if self._memory_type:
+            self.logger.info(f"Memory type: {self._memory_type}")
+
     def teardown(self) -> None:
         """Clean up allocated memory."""
         self._free_arrays()
         self.logger.debug("Memory cleaned up")
+
+    def _free_arrays(self) -> None:
+        """Free pressure chunks, then delegate to base for shared arrays."""
+        if self._pressure_chunks:
+            del self._pressure_chunks[:]
+            self._pressure_chunks = []
+        super()._free_arrays()
 
     def warmup(self, duration_seconds: int = 0, iterations: int = 3) -> None:
         """Run warmup to stabilize memory subsystem.
@@ -129,8 +121,6 @@ class RAMSwapPressureTest(StressTest):
             iterations: Number of iterations if both duration_seconds and
                 burnin_seconds are 0.
         """
-        import time
-
         if duration_seconds == 0:
             duration_seconds = self.burnin_seconds
 
@@ -161,6 +151,8 @@ class RAMSwapPressureTest(StressTest):
             RAMMemoryStressResult with both baseline and pressure metrics.
         """
         del iterations  # Unused
+
+        start = time.time()
 
         # Split duration between baseline and pressure phases
         phase_duration = duration // 2
@@ -222,6 +214,8 @@ class RAMSwapPressureTest(StressTest):
         swap_occurred = swap_after["used"] > swap_before["used"]
         swap_delta_mb = (swap_after["used"] - swap_before["used"]) / (1024**2)
 
+        actual_elapsed = time.time() - start
+
         # Return results
         return RAMMemoryStressResult(
             # System info
@@ -229,20 +223,19 @@ class RAMSwapPressureTest(StressTest):
             available_ram_gb=self._available_ram_gb,
             allocated_memory_gb=allocated_pressure_gb,
             # Test metadata
-            duration=float(duration),
+            duration=actual_elapsed,
             burnin_seconds=self.burnin_seconds,
+            # Memory hardware info
+            memory_type=self._memory_type,
             # Baseline metrics
             baseline_read_gbps=baseline_read_gbps,
             baseline_write_gbps=baseline_write_gbps,
-            baseline_latency_ms=0.0,  # Not measuring latency
             # Pressure metrics
             pressure_read_gbps=pressure_read_gbps,
             pressure_write_gbps=pressure_write_gbps,
-            pressure_latency_ms=0.0,  # Not measuring latency
             # Performance degradation
             read_slowdown_factor=read_slowdown,
             write_slowdown_factor=write_slowdown,
-            latency_increase_factor=1.0,  # Not measuring latency
             # Swap metrics
             swap_occurred=swap_occurred,
             swap_in_mb=None,  # psutil doesn't provide sin/sout on all platforms
@@ -354,18 +347,6 @@ class RAMSwapPressureTest(StressTest):
         # Store chunks so they stay allocated during benchmarks
         self._pressure_chunks = chunks
 
-    def _free_arrays(self) -> None:
-        """Free allocated memory arrays and pressure chunks."""
-        if self._pressure_chunks:
-            del self._pressure_chunks[:]
-            self._pressure_chunks = []
-        if self._array is not None:
-            del self._array
-            self._array = None
-        if self._source_array_for_writes is not None:
-            del self._source_array_for_writes
-            self._source_array_for_writes = None
-
     def _get_swap_stats(self) -> dict[str, int]:
         """Get current swap memory statistics.
 
@@ -376,100 +357,3 @@ class RAMSwapPressureTest(StressTest):
 
         swap = psutil.swap_memory()
         return {"total": swap.total, "used": swap.used}
-
-    def _benchmark_sequential_read(self, duration: int) -> float:
-        """Benchmark sequential read bandwidth.
-
-        Args:
-            duration: Test duration in seconds.
-
-        Returns:
-            Read bandwidth in GB/s.
-        """
-        import time
-
-        import numpy as np
-
-        assert self._array is not None, "Array not allocated"
-
-        start_time = time.time()
-        bytes_read = 0
-        iter_count = 0
-        next_log = start_time + 5  # Log progress every 5 seconds
-
-        while (time.time() - start_time) < duration:
-            # Sequential read: sum forces reading all elements
-            # TODO: Consider random access to defeat OS/CPU prefetching
-            # and guarantee severe swap degradation
-            _ = np.sum(self._array)
-            bytes_read += self._array.nbytes
-            iter_count += 1
-
-            now = time.time()
-            if now >= next_log:
-                elapsed_so_far = now - start_time
-                gb_so_far = bytes_read / (1024**3)
-                bw = gb_so_far / elapsed_so_far
-                self.logger.info(
-                    f"  Read progress: {elapsed_so_far:.0f}/{duration}s "
-                    f"({bw:.2f} GB/s, {iter_count} iters)"
-                )
-                next_log = now + 5
-
-        elapsed = time.time() - start_time
-        gb_read = bytes_read / (1024**3)
-        bandwidth_gbps = gb_read / elapsed
-
-        self.logger.debug(
-            f"Read: {iter_count} iterations, {gb_read:.2f} GB in {elapsed:.2f}s"
-        )
-
-        return bandwidth_gbps
-
-    def _benchmark_sequential_write(self, duration: int) -> float:
-        """Benchmark sequential write bandwidth.
-
-        Args:
-            duration: Test duration in seconds.
-
-        Returns:
-            Write bandwidth in GB/s.
-        """
-        import time
-
-        assert self._array is not None, "Array not allocated"
-        assert self._source_array_for_writes is not None, "Source array not allocated"
-
-        start_time = time.time()
-        bytes_written = 0
-        iter_count = 0
-        next_log = start_time + 5  # Log progress every 5 seconds
-
-        while (time.time() - start_time) < duration:
-            # Sequential write: copy from pre-allocated source array
-            # TODO: Consider random access to defeat OS/CPU prefetching
-            # and guarantee severe swap degradation
-            self._array[:] = self._source_array_for_writes
-            bytes_written += self._array.nbytes
-            iter_count += 1
-
-            now = time.time()
-            if now >= next_log:
-                elapsed_so_far = now - start_time
-                gb_so_far = bytes_written / (1024**3)
-                bw = gb_so_far / elapsed_so_far
-                self.logger.info(
-                    f"  Write progress: {elapsed_so_far:.0f}/{duration}s "
-                    f"({bw:.2f} GB/s, {iter_count} iters)"
-                )
-                next_log = now + 5
-
-        elapsed = time.time() - start_time
-        gb_written = bytes_written / (1024**3)
-        bandwidth_gbps = gb_written / elapsed
-
-        self.logger.debug(
-            f"Write: {iter_count} iterations, {gb_written:.2f} GB in {elapsed:.2f}s"
-        )
-
-        return bandwidth_gbps

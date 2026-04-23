@@ -261,6 +261,9 @@ class TestResults:
         if test_name == "RAMBandwidthTest":
             self._format_ram_bandwidth_text(output, result)
             return
+        if test_name == "RAMSwapPressureTest":
+            self._format_ram_swap_text(output, result)
+            return
 
         # Highlight key metrics
         key_metrics = ["tflops", "bandwidth_gbps", "duration", "iterations"]
@@ -285,6 +288,17 @@ class TestResults:
                     output.write(f"  {key}: {value}\n")
 
     @staticmethod
+    def _format_ram_system_line(output: StringIO, result: dict[str, Any]) -> None:
+        """Write the shared system context line for RAM tests."""
+        total = result.get("total_ram_gb", 0.0)
+        mem_type = result.get("memory_type")
+        alloc = result.get("allocated_memory_gb", 0.0)
+        sys_parts = [f"{total:.2f} GB"]
+        if mem_type:
+            sys_parts.append(mem_type)
+        output.write(f"  system: {' '.join(sys_parts)}, tested with {alloc:.2f} GB\n")
+
+    @staticmethod
     def _format_ram_bandwidth_text(output: StringIO, result: dict[str, Any]) -> None:
         """Format RAMBandwidthTest result with measurements first, context second."""
         read = result.get("baseline_read_gbps", 0.0)
@@ -294,18 +308,47 @@ class TestResults:
         output.write(f"  write: {write:.2f} GB/s\n")
         output.write("\n")
 
-        # System context line: "124.95 GB DDR5, tested with 60.21 GB"
-        total = result.get("total_ram_gb", 0.0)
-        mem_type = result.get("memory_type")
-        alloc = result.get("allocated_memory_gb", 0.0)
+        TestResults._format_ram_system_line(output, result)
 
-        sys_parts = [f"{total:.2f} GB"]
-        if mem_type:
-            sys_parts.append(mem_type)
-        sys_line = " ".join(sys_parts)
-        output.write(f"  system: {sys_line}, tested with {alloc:.2f} GB\n")
+        dur = result.get("duration", 0.0)
+        warmup = result.get("burnin_seconds", 0)
+        output.write(f"  duration: {dur:.0f}s, warmup: {warmup}s\n")
 
-        # Duration line
+    @staticmethod
+    def _format_ram_swap_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format RAMSwapPressureTest result."""
+        read_slow = result.get("read_slowdown_factor")
+        write_slow = result.get("write_slowdown_factor")
+
+        if read_slow is not None:
+            output.write(f"  read slowdown:  {read_slow:.2f}x\n")
+        if write_slow is not None:
+            output.write(f"  write slowdown: {write_slow:.2f}x\n")
+        output.write("\n")
+
+        bl_read = result.get("baseline_read_gbps", 0.0)
+        bl_write = result.get("baseline_write_gbps", 0.0)
+        pr_read = result.get("pressure_read_gbps")
+        pr_write = result.get("pressure_write_gbps")
+
+        output.write(f"  baseline read:   {bl_read:.2f} GB/s\n")
+        output.write(f"  baseline write:  {bl_write:.2f} GB/s\n")
+        if pr_read is not None:
+            output.write(f"  pressure read:   {pr_read:.2f} GB/s\n")
+        if pr_write is not None:
+            output.write(f"  pressure write:  {pr_write:.2f} GB/s\n")
+        output.write("\n")
+
+        swap_occurred = result.get("swap_occurred")
+        if swap_occurred is not None:
+            output.write(f"  swap occurred: {'yes' if swap_occurred else 'no'}\n")
+        peak_swap = result.get("peak_swap_usage_mb")
+        if peak_swap is not None:
+            output.write(f"  peak swap usage: {peak_swap:.0f} MB\n")
+        output.write("\n")
+
+        TestResults._format_ram_system_line(output, result)
+
         dur = result.get("duration", 0.0)
         warmup = result.get("burnin_seconds", 0)
         output.write(f"  duration: {dur:.0f}s, warmup: {warmup}s\n")
