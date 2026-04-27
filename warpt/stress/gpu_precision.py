@@ -243,7 +243,7 @@ class GPUPrecisionTest(StressTest):
             # Benchmark
             elapsed, iterations = measure_loop(
                 duration=test_duration,
-                work_fn=lambda: torch.matmul(a, b),
+                work_fn=lambda: torch.matmul(a, b),  # noqa: F821
                 sync_fn=torch.cuda.synchronize,
                 device=self._device,
             )

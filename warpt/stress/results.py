@@ -433,7 +433,8 @@ class TestResults:
             min_ms = result.get("min_iteration_time_ms", 0.0)
             max_ms = result.get("max_iteration_time_ms", 0.0)
             output.write(
-                f"  iteration: avg {avg_ms:.2f}ms, min {min_ms:.2f}ms, max {max_ms:.2f}ms\n"
+                f"  iteration: avg {avg_ms:.2f}ms,"
+                f" min {min_ms:.2f}ms, max {max_ms:.2f}ms\n"
             )
             p50 = result.get("p50_iteration_time_ms", 0.0)
             p95 = result.get("p95_iteration_time_ms", 0.0)

@@ -245,7 +245,7 @@ class GPUFP32ComputeTest(StressTest):
 
         elapsed, iter_count = measure_loop(
             duration=duration,
-            work_fn=lambda: torch.matmul(a, b),
+            work_fn=lambda: torch.matmul(a, b),  # noqa: F821
             sync_fn=torch.cuda.synchronize,
             device=self._device,
         )

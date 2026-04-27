@@ -69,7 +69,7 @@ class Observation(BaseModel):
     timestamp: str = Field(..., description="ISO 8601 timestamp")
     test_name: str = Field(
         ...,
-        description="Test class name (e.g., 'GPUFP32ComputeTest', 'GPUMemoryBandwidthTest')",
+        description="Test class name (e.g., 'GPUFP32ComputeTest')",
     )
     category: HardwareCategory = Field(
         ..., description="Hardware category of the tested device"

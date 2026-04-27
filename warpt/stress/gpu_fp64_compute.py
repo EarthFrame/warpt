@@ -267,11 +267,11 @@ class GPUFP64ComputeTest(StressTest):
 
         def work():
             nonlocal matmul_count, c
-            c = torch.matmul(a, b)
+            c = torch.matmul(a, b)  # noqa: F821
             matmul_count += 1
             # Prevent compiler optimization by occasionally modifying data
             if matmul_count % 10 == 0:
-                a[0, 0] = c[0, 0]
+                a[0, 0] = c[0, 0]  # noqa: F821
 
         test_elapsed, _ = measure_loop(
             duration=duration,

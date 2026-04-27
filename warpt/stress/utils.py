@@ -49,9 +49,7 @@ def measure_loop(
     import time
 
     use_cuda_events = (
-        device is not None
-        and hasattr(device, "type")
-        and device.type == "cuda"
+        device is not None and hasattr(device, "type") and device.type == "cuda"
     )
 
     if use_cuda_events:
