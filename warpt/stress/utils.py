@@ -67,6 +67,7 @@ def measure_loop(
         while (time.time() - loop_start) < duration:
             work_fn()
             iterations += 1
+            torch.cuda.synchronize()  # keep loop in lockstep with GPU
 
         end_event.record()
         torch.cuda.synchronize()
