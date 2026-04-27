@@ -57,7 +57,7 @@ class StressTest(ABC):
         6. teardown() - Clean up resources after test
 
     Example:
-        >>> class GPUMatMulTest(StressTest):
+        >>> class GPUFP32ComputeTest(StressTest):
         ...     _PARAM_FIELDS = ("device_id", "matrix_size", "burnin_seconds")
         ...
         ...     def __init__(self, device_id: int = 0, matrix_size: int = 4096,
@@ -95,7 +95,7 @@ class StressTest(ABC):
         """Get the human-readable test name for display.
 
         Returns:
-            Pretty-printed test name (e.g., "GPU Matrix Multiplication").
+            Pretty-printed test name (e.g., "GPU FP32 Compute").
         """
         pass
 

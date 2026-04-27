@@ -9,7 +9,7 @@ Usage:
     Logger.configure(level="INFO", timestamps=True)
 
     # Get a logger anywhere in the codebase
-    log = Logger.get("stress.GPUMatMulTest")
+    log = Logger.get("stress.GPUFP32ComputeTest")
     log.info("Starting test...")
 
     # Or log directly
@@ -58,7 +58,7 @@ class Logger:
         >>> Logger.configure(level="INFO")
         >>>
         >>> # Anywhere in the codebase
-        >>> log = Logger.get("stress.GPUMatMulTest")
+        >>> log = Logger.get("stress.GPUFP32ComputeTest")
         >>> log.info("Running test...")
     """
 
@@ -152,7 +152,7 @@ class Logger:
             LoggerNotConfiguredError: If configure() hasn't been called.
 
         Example:
-            >>> log = Logger.get("stress.GPUMatMulTest")
+            >>> log = Logger.get("stress.GPUFP32ComputeTest")
             >>> log.info("Test starting...")
         """
         if not cls._configured:

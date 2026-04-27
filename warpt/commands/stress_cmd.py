@@ -6,7 +6,7 @@ CLI Examples:
     warpt stress                         # Run all available tests
     warpt stress -c cpu                  # Run CPU category
     warpt stress -c accelerator          # Run accelerator tests
-    warpt stress -t GPUMatMulTest        # Run specific test
+    warpt stress -t GPUFP32ComputeTest        # Run specific test
     warpt stress -o results.json         # Save to JSON
     warpt stress -o a.json -o b.yaml     # Multiple outputs
     warpt stress --config tests.yaml     # Use config file
@@ -53,7 +53,7 @@ def load_config(config_path: str) -> dict[str, Any]:
           warmup: 10
 
         tests:
-          - name: GPUMatMulTest
+          - name: GPUFP32ComputeTest
             duration: 120
             device_id: 0
 

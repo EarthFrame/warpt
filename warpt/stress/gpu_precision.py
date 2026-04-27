@@ -213,68 +213,46 @@ class GPUPrecisionTest(StressTest):
         hardware_supported = self._check_hardware_support(dtype)
 
         try:
+            # Allocate once — reuse for warmup and benchmark
+            a = torch.randn(
+                self.matrix_size,
+                self.matrix_size,
+                dtype=dtype,
+                device=self._device,
+            )
+            b = torch.randn(
+                self.matrix_size,
+                self.matrix_size,
+                dtype=dtype,
+                device=self._device,
+            )
+
             # Warmup
             if self.burnin_seconds > 0:
                 start = time.time()
                 while (time.time() - start) < self.burnin_seconds:
-                    a = torch.randn(
-                        self.matrix_size,
-                        self.matrix_size,
-                        dtype=dtype,
-                        device=self._device,
-                    )
-                    b = torch.randn(
-                        self.matrix_size,
-                        self.matrix_size,
-                        dtype=dtype,
-                        device=self._device,
-                    )
                     _ = torch.matmul(a, b)
                     torch.cuda.synchronize()
-                    del a, b
             else:
                 for _ in range(3):
-                    a = torch.randn(
-                        self.matrix_size,
-                        self.matrix_size,
-                        dtype=dtype,
-                        device=self._device,
-                    )
-                    b = torch.randn(
-                        self.matrix_size,
-                        self.matrix_size,
-                        dtype=dtype,
-                        device=self._device,
-                    )
                     _ = torch.matmul(a, b)
                     torch.cuda.synchronize()
-                    del a, b
 
             torch.cuda.empty_cache()
 
             # Benchmark
-            start_time = time.time()
+            start_time = time.time()  # TODO: consider CUDA events for GPU-side timing
             iterations = 0
 
             while (time.time() - start_time) < test_duration:
-                a = torch.randn(
-                    self.matrix_size,
-                    self.matrix_size,
-                    dtype=dtype,
-                    device=self._device,
-                )
-                b = torch.randn(
-                    self.matrix_size,
-                    self.matrix_size,
-                    dtype=dtype,
-                    device=self._device,
-                )
                 _ = torch.matmul(a, b)
                 torch.cuda.synchronize()
                 iterations += 1
-                del a, b
 
             elapsed = time.time() - start_time
+
+            # Clean up
+            del a, b
             torch.cuda.empty_cache()
 
             # Calculate metrics
@@ -357,7 +335,7 @@ class GPUPrecisionTest(StressTest):
             precision_results[precision] = self._test_precision(
                 torch_dtype,
                 precision.value.upper(),
-                f"torch.{torch_dtype}",
+                str(torch_dtype),
                 per_precision_duration,
             )
 

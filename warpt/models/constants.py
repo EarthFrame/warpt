@@ -73,7 +73,7 @@ VALID_STRESS_TARGETS = ("cpu", "gpu", "ram", "all")
 
 # Names for stress tests
 CPU_STRESS_TEST = "CPU Matrix Multiplication"
-GPU_STRESS_TEST = "GPU Matrix Multiplication"
+GPU_FP32_STRESS_TEST = "GPU FP32 Compute"
 MIXED_PRECISION_TEST = "GPU Mixed Precision Profile"
 GPU_MEMORY_TEST = "GPU Memory Bandwidth"
 MULTI_GPU_SCALING_TEST = "Multi-GPU Scaling"
