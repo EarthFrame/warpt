@@ -6,7 +6,7 @@ Usage:
     from warpt.stress.results import TestResults, OutputFormat
 
     results = TestResults()
-    results.add_result("GPUMatMulTest", test_result_dict)
+    results.add_result("GPUFP32ComputeTest", test_result_dict)
     results.add_result("CPUMatMulTest", test_result_dict)
 
     # Emit to different formats
@@ -46,7 +46,7 @@ class TestResults:
 
     Example:
         >>> results = TestResults()
-        >>> results.add_result("GPUMatMulTest", {"tflops": 12.5, "duration": 30})
+        >>> results.add_result("GPUFP32ComputeTest", {"tflops": 12.5, "duration": 30})
         >>> results.emit("results.json", OutputFormat.JSON)
         >>> results.emit(sys.stdout, OutputFormat.TEXT)
     """
@@ -264,6 +264,21 @@ class TestResults:
         if test_name == "RAMSwapPressureTest":
             self._format_ram_swap_text(output, result)
             return
+        if test_name == "GPUFP32ComputeTest":
+            self._format_gpu_fp32_text(output, result)
+            return
+        if test_name == "GPUFP64ComputeTest":
+            self._format_gpu_fp64_text(output, result)
+            return
+        if test_name == "GPUMemoryBandwidthTest":
+            self._format_gpu_memory_bw_text(output, result)
+            return
+        if test_name == "GPUPrecisionTest":
+            self._format_gpu_precision_text(output, result)
+            return
+        if test_name == "GPUCFDSimulationTest":
+            self._format_gpu_cfd_text(output, result)
+            return
 
         # Highlight key metrics
         key_metrics = ["tflops", "bandwidth_gbps", "duration", "iterations"]
@@ -352,6 +367,233 @@ class TestResults:
         dur = result.get("duration", 0.0)
         warmup = result.get("burnin_seconds", 0)
         output.write(f"  duration: {dur:.0f}s, warmup: {warmup}s\n")
+
+    # -------------------------------------------------------------------------
+    # GPU Shared Helpers
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _format_gpu_device_line(output: StringIO, result: dict[str, Any]) -> None:
+        """Write GPU identity line: 'gpu: NVIDIA RTX 5000 Ada (gpu_0)'."""
+        name = result.get("gpu_name", "unknown")
+        dev = result.get("device_id", 0)
+        dev_str = (
+            dev if isinstance(dev, str) and dev.startswith("gpu_") else f"gpu_{dev}"
+        )
+        output.write(f"  gpu: {name} ({dev_str})\n")
+
+    @staticmethod
+    def _format_duration_line(output: StringIO, result: dict[str, Any]) -> None:
+        """Write duration/warmup line."""
+        dur = result.get("duration", 0.0)
+        warmup = result.get("burnin_seconds", 0)
+        output.write(f"  duration: {dur:.0f}s, warmup: {warmup}s\n")
+
+    # -------------------------------------------------------------------------
+    # GPU Formatters
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _format_gpu_fp32_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format GPUFP32ComputeTest result."""
+        tflops = result.get("tflops", 0.0)
+        output.write(f"  tflops: {tflops:.2f}\n")
+        output.write("\n")
+
+        TestResults._format_gpu_device_line(output, result)
+
+        size = result.get("matrix_size", 0)
+        precision = result.get("precision", "fp32").upper()
+        tf32 = result.get("tf32_enabled", False)
+        tf32_str = "TF32 enabled" if tf32 else "TF32 disabled"
+        output.write(f"  matrix: {size}x{size} {precision}, {tf32_str}\n")
+
+        mem_used = result.get("memory_used_gb", 0.0)
+        mem_total = result.get("memory_total_gb", 0.0)
+        output.write(f"  memory: {mem_used:.2f} / {mem_total:.2f} GB\n")
+
+        iters = result.get("iterations", 0)
+        output.write(f"  iterations: {iters}\n")
+
+        TestResults._format_duration_line(output, result)
+
+    @staticmethod
+    def _format_gpu_fp64_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format GPUFP64ComputeTest result."""
+        avg = result.get("avg_fp64_tflops", 0.0)
+        output.write(f"  avg tflops: {avg:.2f}\n")
+
+        peak = result.get("peak_fp64_tflops")
+        if peak is not None:
+            output.write(f"  peak tflops: {peak:.2f}\n")
+        output.write("\n")
+
+        avg_ms = result.get("avg_iteration_time_ms")
+        if avg_ms is not None:
+            min_ms = result.get("min_iteration_time_ms", 0.0)
+            max_ms = result.get("max_iteration_time_ms", 0.0)
+            output.write(
+                f"  iteration: avg {avg_ms:.2f}ms,"
+                f" min {min_ms:.2f}ms, max {max_ms:.2f}ms\n"
+            )
+            p50 = result.get("p50_iteration_time_ms", 0.0)
+            p95 = result.get("p95_iteration_time_ms", 0.0)
+            p99 = result.get("p99_iteration_time_ms", 0.0)
+            output.write(
+                f"  percentiles: p50 {p50:.2f}ms, p95 {p95:.2f}ms, p99 {p99:.2f}ms\n"
+            )
+            output.write("\n")
+
+        TestResults._format_gpu_device_line(output, result)
+
+        size = result.get("matrix_size", 0)
+        output.write(f"  matrix: {size}x{size} FP64\n")
+
+        iters = result.get("matmul_count", 0)
+        output.write(f"  iterations: {iters}\n")
+
+        TestResults._format_duration_line(output, result)
+
+    @staticmethod
+    def _format_gpu_memory_bw_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format GPUMemoryBandwidthTest result."""
+        d2d = result.get("d2d_bandwidth_gbps", 0.0)
+        d2d_it = result.get("d2d_iterations", 0)
+        h2d = result.get("h2d_bandwidth_gbps")
+        h2d_it = result.get("h2d_iterations")
+        d2h = result.get("d2h_bandwidth_gbps")
+        d2h_it = result.get("d2h_iterations")
+
+        # Find widths for alignment
+        bw_vals = [f"{d2d:.2f}"]
+        if h2d is not None:
+            bw_vals.append(f"{h2d:.2f}")
+        if d2h is not None:
+            bw_vals.append(f"{d2h:.2f}")
+        bw_width = max(len(v) for v in bw_vals)
+
+        output.write(f"  d2d: {d2d:>{bw_width}.2f} GB/s  ({d2d_it} iters)\n")
+        if h2d is not None:
+            output.write(f"  h2d: {h2d:>{bw_width}.2f} GB/s   ({h2d_it} iters)\n")
+        if d2h is not None:
+            output.write(f"  d2h: {d2h:>{bw_width}.2f} GB/s   ({d2h_it} iters)\n")
+        output.write("\n")
+
+        TestResults._format_gpu_device_line(output, result)
+
+        data_sz = result.get("data_size_gb", 0.0)
+        pinned = result.get("used_pinned_memory", False)
+        pinned_str = "yes" if pinned else "no"
+        output.write(f"  data size: {data_sz:.2f} GB, pinned memory: {pinned_str}\n")
+
+        TestResults._format_duration_line(output, result)
+
+    @staticmethod
+    def _format_gpu_precision_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format GPUPrecisionTest result."""
+        fp32 = result.get("fp32", {})
+        fp16 = result.get("fp16")
+        bf16 = result.get("bf16")
+
+        fp32_tflops = fp32.get("tflops", 0.0) if fp32 else 0.0
+
+        # Headline: per-precision TFLOPS with speedup
+        label_w = 4  # "BF16" is widest label
+        if fp32_tflops:
+            output.write(
+                f"  {'FP32':>{label_w}}: {fp32_tflops:>7.2f} TFLOPS (baseline)\n"
+            )
+
+        fp16_speedup = result.get("fp16_speedup")
+        if fp16 and fp16.get("supported") and fp16.get("tflops") is not None:
+            output.write(
+                f"  {'FP16':>{label_w}}: {fp16['tflops']:>7.2f} TFLOPS"
+                f" ({fp16_speedup:.2f}x)\n"
+                if fp16_speedup
+                else f"  {'FP16':>{label_w}}: {fp16['tflops']:>7.2f} TFLOPS\n"
+            )
+
+        bf16_speedup = result.get("bf16_speedup")
+        if bf16 and bf16.get("supported") and bf16.get("tflops") is not None:
+            output.write(
+                f"  {'BF16':>{label_w}}: {bf16['tflops']:>7.2f} TFLOPS"
+                f" ({bf16_speedup:.2f}x)\n"
+                if bf16_speedup
+                else f"  {'BF16':>{label_w}}: {bf16['tflops']:>7.2f} TFLOPS\n"
+            )
+        output.write("\n")
+
+        # Mixed precision readiness
+        mixed_ready = result.get("mixed_precision_ready", False)
+        ready_str = "yes" if mixed_ready else "no"
+        detail = ""
+        if mixed_ready and bf16_speedup:
+            detail = f" (BF16 {bf16_speedup:.2f}x speedup)"
+        output.write(f"  mixed precision ready: {ready_str}{detail}\n")
+
+        tf32 = result.get("tf32_enabled", False)
+        output.write(f"  TF32 enabled: {'yes' if tf32 else 'no'}\n")
+        output.write("\n")
+
+        # Matrix size from FP32 baseline
+        matrix_size = fp32.get("matrix_size", 0) if fp32 else 0
+        if matrix_size:
+            output.write(f"  matrix: {matrix_size}x{matrix_size}\n")
+
+    @staticmethod
+    def _format_gpu_cfd_text(output: StringIO, result: dict[str, Any]) -> None:
+        """Format GPUCFDSimulationTest result."""
+        # Operation summary rows: label, rate, unit, avg, p95
+        rows = []
+
+        solves_sec = result.get("solves_per_sec", 0.0)
+        avg_solver = result.get("avg_solver_time_ms", 0.0)
+        p95_solver = result.get("p95_solver_time_ms", 0.0)
+        rows.append(
+            ("solver", f"{solves_sec:.2f}", "solves/sec", avg_solver, p95_solver)
+        )
+
+        grad_sec = result.get("gradient_ops_per_sec", 0.0)
+        avg_grad = result.get("avg_gradient_time_ms", 0.0)
+        p95_grad = result.get("p95_gradient_time_ms", 0.0)
+        rows.append(("gradients", f"{grad_sec:.2f}", "ops/sec", avg_grad, p95_grad))
+
+        flux_sec = result.get("flux_ops_per_sec", 0.0)
+        avg_flux = result.get("avg_flux_time_ms", 0.0)
+        p95_flux = result.get("p95_flux_time_ms", 0.0)
+        rows.append(("flux", f"{flux_sec:.2f}", "ops/sec", avg_flux, p95_flux))
+
+        # Calculate column widths for alignment
+        label_w = max(len(r[0]) for r in rows)
+        rate_w = max(len(r[1]) for r in rows)
+        unit_w = max(len(r[2]) for r in rows)
+
+        for label, rate, unit, avg_ms, p95_ms in rows:
+            output.write(
+                f"  {label + ':':.<{label_w + 1}} {rate:>{rate_w}} {unit:<{unit_w}}"
+                f"    avg {avg_ms:.2f}ms  p95 {p95_ms:.2f}ms\n"
+            )
+        output.write("\n")
+
+        mem_bw = result.get("memory_bandwidth_gbps")
+        if mem_bw is not None:
+            output.write(f"  memory bandwidth: {mem_bw:.2f} GB/s\n")
+            output.write("\n")
+
+        TestResults._format_gpu_device_line(output, result)
+
+        mesh = result.get("mesh_size", 0)
+        # Format mesh size: 30000000 → "30M"
+        if mesh >= 1_000_000:
+            mesh_str = f"{mesh / 1_000_000:.0f}M"
+        elif mesh >= 1_000:
+            mesh_str = f"{mesh / 1_000:.0f}K"
+        else:
+            mesh_str = str(mesh)
+        solver_iters = result.get("solver_iterations", 0)
+        output.write(f"  mesh: {mesh_str} cells, {solver_iters} solver iterations\n")
+
+        TestResults._format_duration_line(output, result)
 
     @staticmethod
     def _is_two_col_table(value: Any) -> bool:

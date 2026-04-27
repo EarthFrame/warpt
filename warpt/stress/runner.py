@@ -8,7 +8,7 @@ Usage:
     runner = TestRunner()
 
     # Add tests to run
-    runner.add_test(registry.get_test("GPUMatMulTest"))
+    runner.add_test(registry.get_test("GPUFP32ComputeTest"))
     runner.add_tests(registry.get_tests_by_category(TestCategory.CPU))
 
     # Run all tests
@@ -33,7 +33,7 @@ class TestRunner:
 
     Example:
         >>> runner = TestRunner()
-        >>> runner.add_test(GPUMatMulTest)
+        >>> runner.add_test(GPUFP32ComputeTest)
         >>> results = runner.run(duration=30)
         >>> results.emit_stdout()
     """

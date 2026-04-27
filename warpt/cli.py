@@ -394,7 +394,7 @@ def benchmark(
     "-t",
     "tests",
     multiple=True,
-    help="Run specific test(s) by name (e.g., GPUMatMulTest)",
+    help="Run specific test(s) by name (e.g., GPUFP32ComputeTest)",
 )
 @click.option(
     "--duration",
@@ -498,7 +498,7 @@ def stress(
       warpt stress -c all                  # Run all available tests
       warpt stress -c cpu                  # Run CPU category
       warpt stress -c accelerator          # Run accelerator tests
-      warpt stress -t GPUMatMulTest        # Run specific test
+      warpt stress -t GPUFP32ComputeTest        # Run specific test
       warpt stress -o results.json         # Save to JSON
       warpt stress -o a.json -o b.yaml     # Multiple outputs
       warpt stress --config tests.yaml     # Use config file
