@@ -7,7 +7,7 @@ from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import MIXED_PRECISION_TEST, Precision
 from warpt.models.stress_models import MixedPrecisionResults, PrecisionResult
 from warpt.stress.base import StressTest, TestCategory
-from warpt.stress.utils import calculate_tflops
+from warpt.stress.utils import calculate_tflops, measure_loop
 
 
 class GPUPrecisionTest(StressTest):
@@ -22,7 +22,7 @@ class GPUPrecisionTest(StressTest):
         device_id: int = 0,
         burnin_seconds: int = 0,
         backend: AcceleratorBackend | None = None,
-        matrix_size: int = 2048,
+        matrix_size: int = 4096,
         test_duration: int = 5,
         allow_tf32: bool = True,
         precisions: list[Precision] | None = None,
@@ -33,7 +33,7 @@ class GPUPrecisionTest(StressTest):
             device_id: GPU device ID (0, 1, 2, etc.)
             burnin_seconds: Warmup duration (0 = use 3 iterations).
             backend: GPU backend (NvidiaBackend, AMDBackend, etc.).
-            matrix_size: Size of square matrices (NxN). Default 2048.
+            matrix_size: Size of square matrices (NxN). Default 4096.
             test_duration: Duration per precision test in seconds.
             allow_tf32: Enable TF32 for FP32 operations.
             precisions: Precisions to test. Default: [FP32, FP16, BF16].
@@ -241,15 +241,12 @@ class GPUPrecisionTest(StressTest):
             torch.cuda.empty_cache()
 
             # Benchmark
-            start_time = time.time()  # TODO: consider CUDA events for GPU-side timing
-            iterations = 0
-
-            while (time.time() - start_time) < test_duration:
-                _ = torch.matmul(a, b)
-                torch.cuda.synchronize()
-                iterations += 1
-
-            elapsed = time.time() - start_time
+            elapsed, iterations = measure_loop(
+                duration=test_duration,
+                work_fn=lambda: torch.matmul(a, b),
+                sync_fn=torch.cuda.synchronize,
+                device=self._device,
+            )
 
             # Clean up
             del a, b

@@ -6,7 +6,7 @@ from typing import Any
 from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS, GPU_FP32_STRESS_TEST
 from warpt.stress.base import StressTest, TestCategory
-from warpt.stress.utils import calculate_tflops
+from warpt.stress.utils import calculate_tflops, measure_loop
 
 
 class GPUFP32ComputeTest(StressTest):
@@ -243,15 +243,12 @@ class GPUFP32ComputeTest(StressTest):
             device=self._device,
         )
 
-        start_time = time.time()  # TODO: consider CUDA events for GPU-side timing
-        iter_count = 0
-
-        while (time.time() - start_time) < duration:
-            _ = torch.matmul(a, b)
-            torch.cuda.synchronize()
-            iter_count += 1
-
-        elapsed = time.time() - start_time
+        elapsed, iter_count = measure_loop(
+            duration=duration,
+            work_fn=lambda: torch.matmul(a, b),
+            sync_fn=torch.cuda.synchronize,
+            device=self._device,
+        )
 
         # Clean up
         del a, b

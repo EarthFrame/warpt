@@ -421,24 +421,27 @@ class TestResults:
     def _format_gpu_fp64_text(output: StringIO, result: dict[str, Any]) -> None:
         """Format GPUFP64ComputeTest result."""
         avg = result.get("avg_fp64_tflops", 0.0)
-        peak = result.get("peak_fp64_tflops", 0.0)
         output.write(f"  avg tflops: {avg:.2f}\n")
-        output.write(f"  peak tflops: {peak:.2f}\n")
+
+        peak = result.get("peak_fp64_tflops")
+        if peak is not None:
+            output.write(f"  peak tflops: {peak:.2f}\n")
         output.write("\n")
 
-        avg_ms = result.get("avg_iteration_time_ms", 0.0)
-        min_ms = result.get("min_iteration_time_ms", 0.0)
-        max_ms = result.get("max_iteration_time_ms", 0.0)
-        output.write(
-            f"  iteration: avg {avg_ms:.2f}ms, min {min_ms:.2f}ms, max {max_ms:.2f}ms\n"
-        )
-        p50 = result.get("p50_iteration_time_ms", 0.0)
-        p95 = result.get("p95_iteration_time_ms", 0.0)
-        p99 = result.get("p99_iteration_time_ms", 0.0)
-        output.write(
-            f"  percentiles: p50 {p50:.2f}ms, p95 {p95:.2f}ms, p99 {p99:.2f}ms\n"
-        )
-        output.write("\n")
+        avg_ms = result.get("avg_iteration_time_ms")
+        if avg_ms is not None:
+            min_ms = result.get("min_iteration_time_ms", 0.0)
+            max_ms = result.get("max_iteration_time_ms", 0.0)
+            output.write(
+                f"  iteration: avg {avg_ms:.2f}ms, min {min_ms:.2f}ms, max {max_ms:.2f}ms\n"
+            )
+            p50 = result.get("p50_iteration_time_ms", 0.0)
+            p95 = result.get("p95_iteration_time_ms", 0.0)
+            p99 = result.get("p99_iteration_time_ms", 0.0)
+            output.write(
+                f"  percentiles: p50 {p50:.2f}ms, p95 {p95:.2f}ms, p99 {p99:.2f}ms\n"
+            )
+            output.write("\n")
 
         TestResults._format_gpu_device_line(output, result)
 

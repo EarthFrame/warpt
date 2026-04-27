@@ -10,6 +10,7 @@ from typing import Any
 from warpt.backends.base import AcceleratorBackend
 from warpt.models.constants import DEFAULT_BURNIN_SECONDS
 from warpt.stress.base import StressTest, TestCategory
+from warpt.stress.utils import measure_loop
 
 
 class GPUFP64ComputeTest(StressTest):
@@ -259,57 +260,25 @@ class GPUFP64ComputeTest(StressTest):
         flops_per_matmul = 2 * (self.matrix_size**3)
 
         # Run test for specified duration
-        matmul_count = 0
-        test_start = time.time()
-        iteration_times = []
-
         self.logger.info("Starting FP64 matrix multiplications...")
 
-        # Check first iteration for extremely slow GPUs
-        first_iter_start = time.perf_counter()
-        try:
+        matmul_count = 0
+        c = None
+
+        def work():
+            nonlocal matmul_count, c
             c = torch.matmul(a, b)
-            torch.cuda.synchronize(self._device)
-        except RuntimeError as e:
-            torch.cuda.empty_cache()
-            raise RuntimeError(
-                f"GPU computation failed: {e}. This may indicate driver issues "
-                f"or insufficient GPU memory."
-            ) from e
-
-        first_iter_time = time.perf_counter() - first_iter_start
-        iteration_times.append(first_iter_time)
-        matmul_count += 1
-
-        # Warn if GPU is extremely slow (gaming GPU with crippled FP64)
-        if first_iter_time > 30.0:
-            self.logger.warning(
-                f"First iteration took {first_iter_time:.1f}s. "
-                f"This GPU likely has severely limited FP64 performance. "
-                f"Consider using a professional/scientific GPU for FP64 workloads."
-            )
-
-        # Continue test
-        while (time.time() - test_start) < duration:
-            iter_start = time.perf_counter()
-
-            try:
-                c = torch.matmul(a, b)
-                torch.cuda.synchronize(self._device)
-            except RuntimeError:
-                self.logger.error(f"GPU computation failed at iteration {matmul_count}")
-                torch.cuda.empty_cache()
-                raise
-
-            iter_elapsed = time.perf_counter() - iter_start
-            iteration_times.append(iter_elapsed)
             matmul_count += 1
-
             # Prevent compiler optimization by occasionally modifying data
             if matmul_count % 10 == 0:
                 a[0, 0] = c[0, 0]
 
-        test_elapsed = time.time() - test_start
+        test_elapsed, _ = measure_loop(
+            duration=duration,
+            work_fn=work,
+            sync_fn=torch.cuda.synchronize,
+            device=self._device,
+        )
 
         # Clean up
         del a, b, c
@@ -319,38 +288,9 @@ class GPUFP64ComputeTest(StressTest):
         total_flops = flops_per_matmul * matmul_count
         avg_tflops = (total_flops / test_elapsed) / 1e12
 
-        if iteration_times:
-            avg_iter_time = sum(iteration_times) / len(iteration_times)
-            min_iter_time = min(iteration_times)
-            max_iter_time = max(iteration_times)
-            peak_tflops = flops_per_matmul / (min_iter_time * 1e12)
-
-            # Calculate percentiles
-            sorted_times = sorted(iteration_times)
-            p50_time = sorted_times[len(sorted_times) // 2]
-            p95_time = sorted_times[int(len(sorted_times) * 0.95)]
-            p99_time = sorted_times[int(len(sorted_times) * 0.99)]
-        else:
-            avg_iter_time = 0
-            min_iter_time = 0
-            max_iter_time = 0
-            peak_tflops = 0
-            p50_time = 0
-            p95_time = 0
-            p99_time = 0
-
         # Logging
         self.logger.info(f"Completed {matmul_count} matrix multiplications")
         self.logger.info(f"Average FP64 performance: {avg_tflops:.3f} TFLOPS")
-        self.logger.info(f"Peak FP64 performance: {peak_tflops:.3f} TFLOPS")
-        self.logger.info(
-            f"Iteration time: avg={avg_iter_time * 1000:.2f}ms, "
-            f"min={min_iter_time * 1000:.2f}ms, max={max_iter_time * 1000:.2f}ms"
-        )
-        self.logger.info(
-            f"Percentiles: p50={p50_time * 1000:.2f}ms, "
-            f"p95={p95_time * 1000:.2f}ms, p99={p99_time * 1000:.2f}ms"
-        )
 
         return {
             "test_name": self.get_name(),
@@ -363,12 +303,12 @@ class GPUFP64ComputeTest(StressTest):
             "matmul_count": matmul_count,
             "total_flops": total_flops,
             "avg_fp64_tflops": avg_tflops,
-            "peak_fp64_tflops": peak_tflops,
+            "peak_fp64_tflops": None,  # TODO: add percentile metrics later
             # Timing metrics
-            "avg_iteration_time_ms": avg_iter_time * 1000,
-            "min_iteration_time_ms": min_iter_time * 1000,
-            "max_iteration_time_ms": max_iter_time * 1000,
-            "p50_iteration_time_ms": p50_time * 1000,
-            "p95_iteration_time_ms": p95_time * 1000,
-            "p99_iteration_time_ms": p99_time * 1000,
+            "avg_iteration_time_ms": None,  # TODO: add percentile metrics later
+            "min_iteration_time_ms": None,
+            "max_iteration_time_ms": None,
+            "p50_iteration_time_ms": None,
+            "p95_iteration_time_ms": None,
+            "p99_iteration_time_ms": None,
         }
