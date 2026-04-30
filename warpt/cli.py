@@ -549,28 +549,32 @@ def stress(
     "--value", default=None, help="Value for set-region (region code) or intensity (gCO2/kWh)"
 )
 def carbon(subcommand, label, interval, limit, days, output_json, value):
-    r"""Track energy consumption, CO2 emissions, and electricity cost.
+    """Track energy consumption, CO2 emissions, and electricity cost.
 
-    \b
-    Examples:
-      warpt carbon                     # Show daemon status
-      warpt carbon start               # Start background tracking
-      warpt carbon stop                # Stop and show results
-      warpt carbon history             # Show recent sessions
-      warpt carbon summary --days 7    # Aggregate last 7 days
-      warpt carbon regions             # List grid regions
+\b
+Examples:
+  warpt carbon                     Show daemon status
+  warpt carbon start               Start background tracking
+  warpt carbon stop                Stop and show results
+  warpt carbon history             Show recent sessions
+  warpt carbon summary --days 7    Aggregate last 7 days
+  warpt carbon regions             List grid regions
 
-    \b
-    Automatic mode:
-      Energy is tracked automatically when running 'warpt stress' or
-      'warpt power -c'. A one-line summary prints at the end.
+\b
+Configure:
+  warpt carbon set-region --value EU-DE   Set grid region
+  warpt carbon intensity --value 500      Set custom gCO2/kWh
 
-    \b
-    Manual mode:
-      warpt carbon set-region --value EU-DE
-      warpt carbon start --label "my workload"
-      # ... run your workload ...
-      warpt carbon stop
+\b
+Manual mode:
+  warpt carbon start --label "my workload"
+  # ... run your workload ...
+  warpt carbon stop
+
+\b
+Automatic mode:
+  Energy is tracked automatically when running 'warpt stress' or
+  'warpt power -c'. A one-line summary prints at the end.
     """
     from warpt.commands.carbon_cmd import run_carbon
 
