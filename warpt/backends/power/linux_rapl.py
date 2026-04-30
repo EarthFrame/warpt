@@ -110,11 +110,8 @@ class LinuxRAPLBackend(PowerBackend):
                 return True
             except PermissionError:
                 self._unavailable_reason = (
-                    f"RAPL: permission denied reading {energy_file} "
-                    "(energy_uj is root-readable only by default on many "
-                    "distros; try: sudo chmod +r "
-                    f"{rapl_path}/{found_prefix}:*/energy_uj, "
-                    "or run warpt as root)"
+                    f"RAPL: permission denied reading {energy_file}\n"
+                    f"  Fix:  sudo chmod +r {rapl_path}/{found_prefix}:*/energy_uj"
                 )
                 return False
             except OSError as exc:

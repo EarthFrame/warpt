@@ -129,10 +129,12 @@ def _start_tracking(label: str | None, interval: float) -> None:
     if unavailable:
         has_cpu = any(s in ("rapl", "powermetrics") for s in sources)
         if not has_cpu:
-            print("\n  Warning: CPU power not available")
+            print()
+            print("  \u26a0 CPU power not available")
             for reason in unavailable:
                 if "RAPL" in reason or "powermetrics" in reason:
-                    print(f"    {reason}")
+                    for line in reason.split("\n"):
+                        print(f"    {line}")
     print("\n  Stop with: warpt carbon stop")
 
 
