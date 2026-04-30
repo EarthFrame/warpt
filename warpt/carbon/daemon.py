@@ -45,6 +45,7 @@ def start_daemon(
     label: str = "manual",
     interval: float = 1.0,
     region: str = "US",
+    intensity: float | None = None,
 ) -> str:
     """Fork a background daemon process for energy tracking.
 
@@ -56,6 +57,8 @@ def start_daemon(
         Sampling interval in seconds.
     region : str
         Grid region for CO2 calculation.
+    intensity : float | None
+        Explicit gCO2/kWh override (used when region is ``CUSTOM``).
 
     Returns
     -------
@@ -88,7 +91,12 @@ def start_daemon(
         # Parent process — write PID and session info, then return
         PIDFILE.write_text(str(pid))
         SESSIONFILE.write_text(
-            json.dumps({"session_id": session_id, "label": label, "region": region})
+            json.dumps({
+                "session_id": session_id,
+                "label": label,
+                "region": region,
+                "intensity": intensity,
+            })
         )
         return session_id
 
@@ -103,7 +111,7 @@ def start_daemon(
     os.close(devnull)
 
     try:
-        _daemon_main(session_id, label, interval, region)
+        _daemon_main(session_id, label, interval, region, intensity)
     except Exception:
         pass
     finally:
@@ -225,6 +233,7 @@ def _daemon_main(
     label: str,
     interval: float,
     region: str,
+    intensity: float | None = None,
 ) -> None:
     """Run the main daemon loop.
 
@@ -283,7 +292,7 @@ def _daemon_main(
 
     # Final update
     monitor.cleanup()
-    _finalize_session(session, samples, region, store)
+    _finalize_session(session, samples, region, store, intensity)
 
 
 def _update_session_on_disk(
@@ -306,9 +315,10 @@ def _finalize_session(
     samples: list[tuple[float, float, float, float]],
     region: str,
     store: EnergyStore,
+    intensity: float | None = None,
 ) -> None:
     """Calculate final energy/CO2/cost and persist the completed session."""
-    calc = CarbonCalculator(region=region)
+    calc = CarbonCalculator(region=region, intensity=intensity)
     power_samples = [(t, w) for t, w, _c, _g in samples]
     energy_kwh = calc.energy_from_samples(power_samples)
     co2_grams = calc.co2_from_energy(energy_kwh)
@@ -326,6 +336,7 @@ def _finalize_session(
         "avg_power_w": round(sum(powers) / len(powers), 2) if powers else 0.0,
         "peak_power_w": round(max(powers), 2) if powers else 0.0,
         "sample_count": len(samples),
+        "intensity_gco2_kwh": intensity or calc.intensity,
     }
     session.samples = [
         {

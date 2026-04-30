@@ -529,11 +529,12 @@ def stress(
 @warpt.command()
 @click.argument(
     "subcommand",
-    type=click.Choice(["start", "stop", "status", "history", "summary", "regions"]),
+    type=click.Choice(
+        ["start", "stop", "status", "history", "summary", "regions", "set-region", "intensity"]
+    ),
     required=False,
 )
 @click.option("--label", "-l", default=None, help="Session label")
-@click.option("--region", "-r", default="US", help="Grid region for CO2 calculation")
 @click.option(
     "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
 )
@@ -544,7 +545,10 @@ def stress(
     "--days", "-d", default=30, type=int, help="Time window in days for summary"
 )
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def carbon(subcommand, label, region, interval, limit, days, output_json):
+@click.option(
+    "--value", default=None, help="Value for set-region (region code) or intensity (gCO2/kWh)"
+)
+def carbon(subcommand, label, interval, limit, days, output_json, value):
     r"""Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
@@ -563,13 +567,14 @@ def carbon(subcommand, label, region, interval, limit, days, output_json):
 
     \b
     Manual mode:
-      warpt carbon start --label "my workload" --region EU-DE
+      warpt carbon set-region --value EU-DE
+      warpt carbon start --label "my workload"
       # ... run your workload ...
       warpt carbon stop
     """
     from warpt.commands.carbon_cmd import run_carbon
 
-    run_carbon(subcommand, label, region, interval, limit, days, output_json)
+    run_carbon(subcommand, label, interval, limit, days, output_json, value)
 
 
 # Register integrate command group (requires optional deps)
