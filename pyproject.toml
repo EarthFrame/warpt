@@ -123,7 +123,9 @@ select = [
 ignore = [
     "D100",   # Missing module docstring (sometimes not needed)
     "D104",   # Missing docstring in public package
+    "D207",   # Docstring under-indented (conflicts with Click \b convention)
     "D212",   # Multi-line docstring summary should start at the first line (NumPy style uses second line)
+    "D301",   # Use r-string if backslashes (conflicts with Click \b convention)
     "D406",   # Section name should end with a newline (our NumPy style variation)
     "D407",   # Missing dashed underline after section (our NumPy style variation)
 ]

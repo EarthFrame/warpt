@@ -561,7 +561,7 @@ def stress(
     help="Value for set-region (region code) or intensity (gCO2/kWh)",
 )
 def carbon(subcommand, label, interval, limit, days, output_json, value):
-    r"""Track energy consumption, CO2 emissions, and electricity cost.
+    """Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
     Examples:
@@ -581,7 +581,7 @@ def carbon(subcommand, label, interval, limit, days, output_json, value):
     \b
     Manual mode:
       warpt carbon start --label "my workload"
-      # ... run your workload ...
+      ... run your workload ...
       warpt carbon stop
 
     \b
