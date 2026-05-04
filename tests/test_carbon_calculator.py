@@ -9,7 +9,7 @@ class TestGridIntensity:
 
     def test_known_region(self):
         """Look up a known region."""
-        assert get_grid_intensity("US") == 390
+        assert get_grid_intensity("US") == GRID_INTENSITY["US"]
 
     def test_unknown_region_falls_back_to_world(self):
         """Unknown region returns WORLD average."""
@@ -17,8 +17,8 @@ class TestGridIntensity:
 
     def test_case_insensitive(self):
         """Region lookup is case-insensitive."""
-        assert get_grid_intensity("us") == 390
-        assert get_grid_intensity("eu-fr") == 60
+        assert get_grid_intensity("us") == GRID_INTENSITY["US"]
+        assert get_grid_intensity("eu-fr") == GRID_INTENSITY["EU-FR"]
 
     def test_list_regions_returns_all(self):
         """List all regions."""
@@ -79,14 +79,14 @@ class TestCarbonCalculator:
         assert energy == 0.0
 
     def test_co2_from_energy(self):
-        """US grid: 390 gCO2/kWh * 1 kWh = 390g."""
+        """US grid: intensity * 1 kWh = intensity grams."""
         calc = CarbonCalculator(region="US")
-        assert abs(calc.co2_from_energy(1.0) - 390.0) < 1e-9
+        assert abs(calc.co2_from_energy(1.0) - GRID_INTENSITY["US"]) < 1e-9
 
     def test_co2_from_energy_france(self):
-        """France: 60 gCO2/kWh * 1 kWh = 60g."""
+        """France: intensity * 1 kWh = intensity grams."""
         calc = CarbonCalculator(region="EU-FR")
-        assert abs(calc.co2_from_energy(1.0) - 60.0) < 1e-9
+        assert abs(calc.co2_from_energy(1.0) - GRID_INTENSITY["EU-FR"]) < 1e-9
 
     def test_cost_from_energy_default_rate(self):
         """1 kWh * $0.12 = $0.12."""

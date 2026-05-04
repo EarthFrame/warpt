@@ -14,9 +14,12 @@ class CarbonCalculator:
         Grid region code for CO2 intensity lookup.
     """
 
-    def __init__(self, region: str = "US") -> None:
+    def __init__(self, region: str = "US", intensity: float | None = None) -> None:
         self.region = region
-        self.intensity = get_grid_intensity(region)  # gCO2/kWh
+        if intensity is not None:
+            self.intensity = intensity
+        else:
+            self.intensity = get_grid_intensity(region)  # gCO2/kWh
 
     def energy_from_samples(self, samples: list[tuple[float, float]]) -> float:
         """Compute energy via trapezoidal integration.

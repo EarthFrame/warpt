@@ -14,22 +14,21 @@ _HEADING_UNDERLINE = "---"
 def run_carbon(
     subcommand: str | None,
     label: str | None,
-    region: str,
     interval: float,
     limit: int,
     days: int,
     output_json: bool,
+    value: str | None = None,
 ) -> None:
     """Dispatch to the appropriate carbon subcommand.
 
     Parameters
     ----------
     subcommand : str | None
-        One of: start, stop, status, history, summary, regions.
+        One of: start, stop, status, history, summary, regions,
+        set-region, intensity.
     label : str | None
         Session label for start command.
-    region : str
-        Grid region code.
     interval : float
         Sampling interval for daemon.
     limit : int
@@ -38,11 +37,13 @@ def run_carbon(
         Time window for summary.
     output_json : bool
         Whether to output JSON.
+    value : str | None
+        Value for set-region or intensity subcommands.
     """
     if subcommand is None or subcommand == "status":
         _show_status(output_json)
     elif subcommand == "start":
-        _start_tracking(label, interval, region)
+        _start_tracking(label, interval)
     elif subcommand == "stop":
         _stop_tracking(output_json)
     elif subcommand == "history":
@@ -51,12 +52,30 @@ def run_carbon(
         _show_summary(days, output_json)
     elif subcommand == "regions":
         _show_regions()
+    elif subcommand == "set-region":
+        _set_region(value)
+    elif subcommand == "intensity":
+        _set_intensity(value)
+    elif subcommand == "kwh-price":
+        _set_kwh_price(value)
 
 
-def _start_tracking(label: str | None, interval: float, region: str) -> None:
+def _start_tracking(label: str | None, interval: float) -> None:
     """Start the carbon tracking daemon."""
     from warpt.backends.power.factory import PowerMonitor
+    from warpt.carbon.config import (
+        DEFAULT_KWH_PRICE,
+        get_effective_kwh_price,
+        get_effective_region_and_intensity,
+        load_carbon_config,
+    )
     from warpt.carbon.daemon import start_daemon
+
+    # Resolve region / intensity / rate from config
+    region, intensity = get_effective_region_and_intensity()
+    kwh_price = get_effective_kwh_price()
+    cfg = load_carbon_config()
+    has_config = bool(cfg.get("region") or cfg.get("intensity"))
 
     # Pre-check power sources before forking the daemon
     monitor = PowerMonitor(include_process_attribution=False)
@@ -79,7 +98,11 @@ def _start_tracking(label: str | None, interval: float, region: str) -> None:
     effective_label = label or "manual"
     try:
         session_id = start_daemon(
-            label=effective_label, interval=interval, region=region
+            label=effective_label,
+            interval=interval,
+            region=region,
+            intensity=intensity if region == "CUSTOM" else None,
+            kwh_price=kwh_price,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -91,7 +114,42 @@ def _start_tracking(label: str | None, interval: float, region: str) -> None:
     print(f"\n  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"  Session:  {session_id[:8]}...")
     print(f"  Label:    {effective_label}")
-    print(f"  Region:   {region}")
+
+    # Show region/intensity source
+    if has_config and cfg.get("intensity"):
+        print(f"  Intensity: {intensity} gCO2/kWh (custom)")
+    elif has_config:
+        print(f"  Region:   {region} ({intensity} gCO2/kWh)")
+    else:
+        print()
+        print(
+            "  \u26a0 No region or intensity set"
+            " \u2014 using US (385 gCO2/kWh) as default."
+        )
+        print(
+            "    \u2192 Run `warpt carbon stop` to stop,"
+            " then set your region or intensity."
+        )
+        print("    \u2192 Run `warpt carbon regions`" " to view available regions")
+        print(
+            "    \u2192 Run `warpt carbon set-region" " --value <CODE>` to set a region"
+        )
+        print(
+            "    \u2192 Run `warpt carbon intensity"
+            " --value <NUMBER>` to set a custom value"
+        )
+        print("    \u2192 See docs.earthframe.com/warpt/carbon" " for full details")
+        print()
+
+    if "kwh_price" in cfg:
+        print(f"  Rate:     ${kwh_price}/kWh")
+    else:
+        print(f"  Rate:     ${DEFAULT_KWH_PRICE}/kWh (default)")
+        print(
+            "    \u2192 Run `warpt carbon kwh-price"
+            " --value <NUMBER>` to set your rate"
+        )
+
     print(f"  Interval: {interval}s")
     if sources:
         print(f"  Sources:  {', '.join(sources)}")
@@ -100,10 +158,12 @@ def _start_tracking(label: str | None, interval: float, region: str) -> None:
     if unavailable:
         has_cpu = any(s in ("rapl", "powermetrics") for s in sources)
         if not has_cpu:
-            print("\n  Warning: CPU power not available")
+            print()
+            print("  \u26a0 CPU power not available")
             for reason in unavailable:
                 if "RAPL" in reason or "powermetrics" in reason:
-                    print(f"    {reason}")
+                    for line in reason.split("\n"):
+                        print(f"    {line}")
     print("\n  Stop with: warpt carbon stop")
 
 
@@ -268,6 +328,90 @@ def _show_summary(days: int, output_json: bool) -> None:
     print(f"  ~ {summary.humanized}")
 
 
+def _set_region(value: str | None) -> None:
+    """Set the grid region for carbon tracking."""
+    from warpt.carbon.config import (
+        load_carbon_config,
+        save_carbon_config,
+        validate_region,
+    )
+    from warpt.carbon.grid_intensity import get_grid_intensity
+
+    if value is None:
+        print("Usage: warpt carbon set-region --value <CODE>", file=sys.stderr)
+        sys.exit(1)
+
+    code = value.upper()
+    if not validate_region(code):
+        print(f"Unknown region '{value}'.", file=sys.stderr)
+        print(
+            "Run 'warpt carbon regions' to see available regions, or use "
+            "'warpt carbon intensity --value <N>' for a custom value.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    cfg = {"region": code}
+    # Preserve kwh_price if previously set
+    existing = load_carbon_config()
+    if "kwh_price" in existing:
+        cfg["kwh_price"] = existing["kwh_price"]
+    save_carbon_config(cfg)
+    intensity = get_grid_intensity(code)
+    print(f"Region set to {code} ({intensity} gCO2/kWh)")
+
+
+def _set_intensity(value: str | None) -> None:
+    """Set a custom carbon intensity value."""
+    from warpt.carbon.config import load_carbon_config, save_carbon_config
+
+    if value is None:
+        print("Usage: warpt carbon intensity --value <NUMBER>", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        float_value = float(value)
+    except ValueError:
+        print("Intensity must be a positive number (gCO2/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    if float_value <= 0:
+        print("Intensity must be a positive number (gCO2/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = {"intensity": float_value}
+    # Preserve kwh_price if previously set
+    existing = load_carbon_config()
+    if "kwh_price" in existing:
+        cfg["kwh_price"] = existing["kwh_price"]
+    save_carbon_config(cfg)
+    print(f"Custom intensity set to {float_value} gCO2/kWh")
+
+
+def _set_kwh_price(value: str | None) -> None:
+    """Set the electricity price per kWh."""
+    from warpt.carbon.config import load_carbon_config, save_carbon_config
+
+    if value is None:
+        print("Usage: warpt carbon kwh-price --value <NUMBER>", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        float_value = float(value)
+    except ValueError:
+        print("Price must be a positive number ($/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    if float_value <= 0:
+        print("Price must be a positive number ($/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = load_carbon_config()
+    cfg["kwh_price"] = float_value
+    save_carbon_config(cfg)
+    print(f"Electricity price set to ${float_value}/kWh")
+
+
 def _show_regions() -> None:
     """Display all available grid regions and their carbon intensities."""
     from warpt.carbon.grid_intensity import list_regions
@@ -277,13 +421,16 @@ def _show_regions() -> None:
     print(_SECTION_SEP)
     print("  grid carbon intensity by region")
     print(_SECTION_SEP)
+    print()
+    print("  Set your region:    warpt carbon set-region --value <CODE>")
+    print("  Set custom value:   warpt carbon intensity --value <NUMBER>")
     print(f"\n  {'Region':<10} {'gCO2/kWh':>10}")
     print(f"  {_HEADING_UNDERLINE * 3}")
 
     for region, intensity in sorted(regions.items()):
         print(f"  {region:<10} {intensity:>10.0f}")
 
-    print("\n  Use --region <code> to set your region.")
+    print("\n  Set your region: warpt carbon set-region --value <CODE>")
     world = regions.get("WORLD", 440)
     print(f"  Unknown regions fall back to WORLD ({world} gCO2/kWh).")
 

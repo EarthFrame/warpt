@@ -529,11 +529,22 @@ def stress(
 @warpt.command()
 @click.argument(
     "subcommand",
-    type=click.Choice(["start", "stop", "status", "history", "summary", "regions"]),
+    type=click.Choice(
+        [
+            "start",
+            "stop",
+            "status",
+            "history",
+            "summary",
+            "regions",
+            "set-region",
+            "intensity",
+            "kwh-price",
+        ]
+    ),
     required=False,
 )
 @click.option("--label", "-l", default=None, help="Session label")
-@click.option("--region", "-r", default="US", help="Grid region for CO2 calculation")
 @click.option(
     "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
 )
@@ -544,32 +555,43 @@ def stress(
     "--days", "-d", default=30, type=int, help="Time window in days for summary"
 )
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def carbon(subcommand, label, region, interval, limit, days, output_json):
-    r"""Track energy consumption, CO2 emissions, and electricity cost.
+@click.option(
+    "--value",
+    default=None,
+    help="Value for set-region (region code) or intensity (gCO2/kWh)",
+)
+def carbon(subcommand, label, interval, limit, days, output_json, value):
+    """Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
     Examples:
-      warpt carbon                     # Show daemon status
-      warpt carbon start               # Start background tracking
-      warpt carbon stop                # Stop and show results
-      warpt carbon history             # Show recent sessions
-      warpt carbon summary --days 7    # Aggregate last 7 days
-      warpt carbon regions             # List grid regions
+      warpt carbon                     Show daemon status
+      warpt carbon start               Start background tracking
+      warpt carbon stop                Stop and show results
+      warpt carbon history             Show recent sessions
+      warpt carbon summary --days 7    Aggregate last 7 days
+      warpt carbon regions             List grid regions
+
+    \b
+    Configure:
+      warpt carbon set-region --value EU-DE   Set grid region
+      warpt carbon intensity --value 500      Set custom gCO2/kWh
+      warpt carbon kwh-price --value 0.15     Set electricity price ($/kWh)
+
+    \b
+    Manual mode:
+      warpt carbon start --label "my workload"
+      ... run your workload ...
+      warpt carbon stop
 
     \b
     Automatic mode:
       Energy is tracked automatically when running 'warpt stress' or
       'warpt power -c'. A one-line summary prints at the end.
-
-    \b
-    Manual mode:
-      warpt carbon start --label "my workload" --region EU-DE
-      # ... run your workload ...
-      warpt carbon stop
     """
     from warpt.commands.carbon_cmd import run_carbon
 
-    run_carbon(subcommand, label, region, interval, limit, days, output_json)
+    run_carbon(subcommand, label, interval, limit, days, output_json, value)
 
 
 # Register integrate command group (requires optional deps)
