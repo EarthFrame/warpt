@@ -81,6 +81,10 @@ warpt power
 warpt automatically tracks energy usage and CO2 emissions during stress tests and power monitoring. You can also track any workload manually:
 
 ```bash
+# Configure once — persisted to ~/.warpt/config.json
+warpt carbon set-region --value EU-DE
+warpt carbon kwh-price --value 0.21
+
 # Automatic — built into stress tests
 warpt stress -c cpu -d 30
 # [carbon] 30.2s | 23.8W avg | 199.7 mWh | 0.08g CO2 | $0.0000 | less than breathing for a minute
@@ -98,7 +102,7 @@ warpt carbon summary
 warpt carbon regions
 ```
 
-Carbon calculations use regional grid intensity data to estimate CO2 emissions from energy consumption. Configure your region with `--region` (defaults to US).
+Carbon calculations use regional grid intensity data to estimate CO2 emissions from energy consumption. Configure your region with `warpt carbon set-region` (defaults to US if unconfigured). Set a custom intensity with `warpt carbon intensity` or your electricity rate with `warpt carbon kwh-price`.
 
 ## Backend Integration
 
@@ -246,7 +250,7 @@ GPU Information:
 
 This is an **alpha release**. Some features are still in development:
 
-- Carbon tracking — new in v0.2.0
+- Carbon tracking — persistent config and cost tracking added in v0.4.0
 - AMD GPU support (ROCm) — in progress
 - Intel GPU support (oneAPI) — in progress
 - Apple Neural Engine — in progress
