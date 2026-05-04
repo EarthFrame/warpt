@@ -330,7 +330,11 @@ def _show_summary(days: int, output_json: bool) -> None:
 
 def _set_region(value: str | None) -> None:
     """Set the grid region for carbon tracking."""
-    from warpt.carbon.config import save_carbon_config, validate_region
+    from warpt.carbon.config import (
+        load_carbon_config,
+        save_carbon_config,
+        validate_region,
+    )
     from warpt.carbon.grid_intensity import get_grid_intensity
 
     if value is None:
@@ -347,14 +351,19 @@ def _set_region(value: str | None) -> None:
         )
         sys.exit(1)
 
-    save_carbon_config({"region": code})
+    cfg = {"region": code}
+    # Preserve kwh_price if previously set
+    existing = load_carbon_config()
+    if "kwh_price" in existing:
+        cfg["kwh_price"] = existing["kwh_price"]
+    save_carbon_config(cfg)
     intensity = get_grid_intensity(code)
     print(f"Region set to {code} ({intensity} gCO2/kWh)")
 
 
 def _set_intensity(value: str | None) -> None:
     """Set a custom carbon intensity value."""
-    from warpt.carbon.config import save_carbon_config
+    from warpt.carbon.config import load_carbon_config, save_carbon_config
 
     if value is None:
         print("Usage: warpt carbon intensity --value <NUMBER>", file=sys.stderr)
@@ -370,7 +379,12 @@ def _set_intensity(value: str | None) -> None:
         print("Intensity must be a positive number (gCO2/kWh)", file=sys.stderr)
         sys.exit(1)
 
-    save_carbon_config({"intensity": float_value})
+    cfg = {"intensity": float_value}
+    # Preserve kwh_price if previously set
+    existing = load_carbon_config()
+    if "kwh_price" in existing:
+        cfg["kwh_price"] = existing["kwh_price"]
+    save_carbon_config(cfg)
     print(f"Custom intensity set to {float_value} gCO2/kWh")
 
 

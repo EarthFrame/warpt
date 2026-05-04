@@ -167,3 +167,22 @@ class TestKwhPrice:
         loaded = load_carbon_config(config_file=cfg_file)
         assert loaded["region"] == "EU-FR"
         assert loaded["kwh_price"] == 0.30
+
+    def test_kwh_price_survives_intensity_overwrite(self, tmp_path):
+        """Setting intensity should not erase kwh_price."""
+        cfg_file = tmp_path / "config.json"
+        save_carbon_config(
+            {"region": "US", "kwh_price": 0.21},
+            config_file=cfg_file,
+        )
+        # Simulate what _set_intensity does: new dict preserving kwh_price
+        existing = load_carbon_config(config_file=cfg_file)
+        new_cfg = {"intensity": 245.0}
+        if "kwh_price" in existing:
+            new_cfg["kwh_price"] = existing["kwh_price"]
+        save_carbon_config(new_cfg, config_file=cfg_file)
+
+        loaded = load_carbon_config(config_file=cfg_file)
+        assert loaded["intensity"] == 245.0
+        assert loaded["kwh_price"] == 0.21
+        assert "region" not in loaded
