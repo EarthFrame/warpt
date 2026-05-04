@@ -10,6 +10,7 @@ from warpt.carbon.grid_intensity import GRID_INTENSITY, get_grid_intensity
 CONFIG_FILE = Path.home() / ".warpt" / "config.json"
 
 _DEFAULT_REGION = "US"
+DEFAULT_KWH_PRICE = 0.12  # USD per kWh — US national avg residential
 
 
 def load_carbon_config(config_file: Path | None = None) -> dict:
@@ -71,6 +72,18 @@ def get_effective_region_and_intensity(
 
     region = cfg.get("region", _DEFAULT_REGION)
     return (region, get_grid_intensity(region))
+
+
+def get_effective_kwh_price(config_file: Path | None = None) -> float:
+    """Return the configured electricity price, or the default.
+
+    Returns
+    -------
+    float
+        Price in USD per kWh.
+    """
+    cfg = load_carbon_config(config_file)
+    return float(cfg.get("kwh_price", DEFAULT_KWH_PRICE))
 
 
 def validate_region(code: str) -> bool:

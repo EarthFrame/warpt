@@ -530,7 +530,17 @@ def stress(
 @click.argument(
     "subcommand",
     type=click.Choice(
-        ["start", "stop", "status", "history", "summary", "regions", "set-region", "intensity"]
+        [
+            "start",
+            "stop",
+            "status",
+            "history",
+            "summary",
+            "regions",
+            "set-region",
+            "intensity",
+            "kwh-price",
+        ]
     ),
     required=False,
 )
@@ -546,35 +556,38 @@ def stress(
 )
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
 @click.option(
-    "--value", default=None, help="Value for set-region (region code) or intensity (gCO2/kWh)"
+    "--value",
+    default=None,
+    help="Value for set-region (region code) or intensity (gCO2/kWh)",
 )
 def carbon(subcommand, label, interval, limit, days, output_json, value):
-    """Track energy consumption, CO2 emissions, and electricity cost.
+    r"""Track energy consumption, CO2 emissions, and electricity cost.
 
-\b
-Examples:
-  warpt carbon                     Show daemon status
-  warpt carbon start               Start background tracking
-  warpt carbon stop                Stop and show results
-  warpt carbon history             Show recent sessions
-  warpt carbon summary --days 7    Aggregate last 7 days
-  warpt carbon regions             List grid regions
+    \b
+    Examples:
+      warpt carbon                     Show daemon status
+      warpt carbon start               Start background tracking
+      warpt carbon stop                Stop and show results
+      warpt carbon history             Show recent sessions
+      warpt carbon summary --days 7    Aggregate last 7 days
+      warpt carbon regions             List grid regions
 
-\b
-Configure:
-  warpt carbon set-region --value EU-DE   Set grid region
-  warpt carbon intensity --value 500      Set custom gCO2/kWh
+    \b
+    Configure:
+      warpt carbon set-region --value EU-DE   Set grid region
+      warpt carbon intensity --value 500      Set custom gCO2/kWh
+      warpt carbon kwh-price --value 0.15     Set electricity price ($/kWh)
 
-\b
-Manual mode:
-  warpt carbon start --label "my workload"
-  # ... run your workload ...
-  warpt carbon stop
+    \b
+    Manual mode:
+      warpt carbon start --label "my workload"
+      # ... run your workload ...
+      warpt carbon stop
 
-\b
-Automatic mode:
-  Energy is tracked automatically when running 'warpt stress' or
-  'warpt power -c'. A one-line summary prints at the end.
+    \b
+    Automatic mode:
+      Energy is tracked automatically when running 'warpt stress' or
+      'warpt power -c'. A one-line summary prints at the end.
     """
     from warpt.commands.carbon_cmd import run_carbon
 

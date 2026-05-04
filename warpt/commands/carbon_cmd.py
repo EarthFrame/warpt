@@ -56,16 +56,24 @@ def run_carbon(
         _set_region(value)
     elif subcommand == "intensity":
         _set_intensity(value)
+    elif subcommand == "kwh-price":
+        _set_kwh_price(value)
 
 
 def _start_tracking(label: str | None, interval: float) -> None:
     """Start the carbon tracking daemon."""
     from warpt.backends.power.factory import PowerMonitor
-    from warpt.carbon.config import get_effective_region_and_intensity, load_carbon_config
+    from warpt.carbon.config import (
+        DEFAULT_KWH_PRICE,
+        get_effective_kwh_price,
+        get_effective_region_and_intensity,
+        load_carbon_config,
+    )
     from warpt.carbon.daemon import start_daemon
 
-    # Resolve region / intensity from config
+    # Resolve region / intensity / rate from config
     region, intensity = get_effective_region_and_intensity()
+    kwh_price = get_effective_kwh_price()
     cfg = load_carbon_config()
     has_config = bool(cfg.get("region") or cfg.get("intensity"))
 
@@ -94,6 +102,7 @@ def _start_tracking(label: str | None, interval: float) -> None:
             interval=interval,
             region=region,
             intensity=intensity if region == "CUSTOM" else None,
+            kwh_price=kwh_price,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -113,13 +122,33 @@ def _start_tracking(label: str | None, interval: float) -> None:
         print(f"  Region:   {region} ({intensity} gCO2/kWh)")
     else:
         print()
-        print("  \u26a0 No region or intensity set \u2014 using US (385 gCO2/kWh) as default.")
-        print("    \u2192 Run `warpt carbon stop` to stop, then set your region or intensity.")
-        print("    \u2192 Run `warpt carbon regions` to view available regions")
-        print("    \u2192 Run `warpt carbon set-region --value <CODE>` to set a region")
-        print("    \u2192 Run `warpt carbon intensity --value <NUMBER>` to set a custom value")
-        print("    \u2192 See docs.earthframe.com/warpt/carbon for full details")
+        print(
+            "  \u26a0 No region or intensity set"
+            " \u2014 using US (385 gCO2/kWh) as default."
+        )
+        print(
+            "    \u2192 Run `warpt carbon stop` to stop,"
+            " then set your region or intensity."
+        )
+        print("    \u2192 Run `warpt carbon regions`" " to view available regions")
+        print(
+            "    \u2192 Run `warpt carbon set-region" " --value <CODE>` to set a region"
+        )
+        print(
+            "    \u2192 Run `warpt carbon intensity"
+            " --value <NUMBER>` to set a custom value"
+        )
+        print("    \u2192 See docs.earthframe.com/warpt/carbon" " for full details")
         print()
+
+    if "kwh_price" in cfg:
+        print(f"  Rate:     ${kwh_price}/kWh")
+    else:
+        print(f"  Rate:     ${DEFAULT_KWH_PRICE}/kWh (default)")
+        print(
+            "    \u2192 Run `warpt carbon kwh-price"
+            " --value <NUMBER>` to set your rate"
+        )
 
     print(f"  Interval: {interval}s")
     if sources:
@@ -343,6 +372,30 @@ def _set_intensity(value: str | None) -> None:
 
     save_carbon_config({"intensity": float_value})
     print(f"Custom intensity set to {float_value} gCO2/kWh")
+
+
+def _set_kwh_price(value: str | None) -> None:
+    """Set the electricity price per kWh."""
+    from warpt.carbon.config import load_carbon_config, save_carbon_config
+
+    if value is None:
+        print("Usage: warpt carbon kwh-price --value <NUMBER>", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        float_value = float(value)
+    except ValueError:
+        print("Price must be a positive number ($/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    if float_value <= 0:
+        print("Price must be a positive number ($/kWh)", file=sys.stderr)
+        sys.exit(1)
+
+    cfg = load_carbon_config()
+    cfg["kwh_price"] = float_value
+    save_carbon_config(cfg)
+    print(f"Electricity price set to ${float_value}/kWh")
 
 
 def _show_regions() -> None:

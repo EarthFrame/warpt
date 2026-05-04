@@ -46,6 +46,7 @@ def start_daemon(
     interval: float = 1.0,
     region: str = "US",
     intensity: float | None = None,
+    kwh_price: float = 0.12,
 ) -> str:
     """Fork a background daemon process for energy tracking.
 
@@ -59,6 +60,8 @@ def start_daemon(
         Grid region for CO2 calculation.
     intensity : float | None
         Explicit gCO2/kWh override (used when region is ``CUSTOM``).
+    kwh_price : float
+        Electricity price in USD per kWh.
 
     Returns
     -------
@@ -91,12 +94,15 @@ def start_daemon(
         # Parent process — write PID and session info, then return
         PIDFILE.write_text(str(pid))
         SESSIONFILE.write_text(
-            json.dumps({
-                "session_id": session_id,
-                "label": label,
-                "region": region,
-                "intensity": intensity,
-            })
+            json.dumps(
+                {
+                    "session_id": session_id,
+                    "label": label,
+                    "region": region,
+                    "intensity": intensity,
+                    "kwh_price": kwh_price,
+                }
+            )
         )
         return session_id
 
@@ -111,7 +117,7 @@ def start_daemon(
     os.close(devnull)
 
     try:
-        _daemon_main(session_id, label, interval, region, intensity)
+        _daemon_main(session_id, label, interval, region, intensity, kwh_price)
     except Exception:
         pass
     finally:
@@ -234,6 +240,7 @@ def _daemon_main(
     interval: float,
     region: str,
     intensity: float | None = None,
+    kwh_price: float = 0.12,
 ) -> None:
     """Run the main daemon loop.
 
@@ -292,7 +299,7 @@ def _daemon_main(
 
     # Final update
     monitor.cleanup()
-    _finalize_session(session, samples, region, store, intensity)
+    _finalize_session(session, samples, region, store, intensity, kwh_price)
 
 
 def _update_session_on_disk(
@@ -316,13 +323,14 @@ def _finalize_session(
     region: str,
     store: EnergyStore,
     intensity: float | None = None,
+    kwh_price: float = 0.12,
 ) -> None:
     """Calculate final energy/CO2/cost and persist the completed session."""
     calc = CarbonCalculator(region=region, intensity=intensity)
     power_samples = [(t, w) for t, w, _c, _g in samples]
     energy_kwh = calc.energy_from_samples(power_samples)
     co2_grams = calc.co2_from_energy(energy_kwh)
-    cost_usd = calc.cost_from_energy(energy_kwh)
+    cost_usd = calc.cost_from_energy(energy_kwh, rate=kwh_price)
 
     end_time = time.time()
     powers = [w for _, w, _, _ in samples]
@@ -337,6 +345,7 @@ def _finalize_session(
         "peak_power_w": round(max(powers), 2) if powers else 0.0,
         "sample_count": len(samples),
         "intensity_gco2_kwh": intensity or calc.intensity,
+        "kwh_price_usd": kwh_price,
     }
     session.samples = [
         {
