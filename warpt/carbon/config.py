@@ -31,7 +31,8 @@ def load_carbon_config(config_file: Path | None = None) -> dict:
         return {}
     try:
         data = json.loads(path.read_text())
-        return data.get("carbon", {})
+        result: dict = data.get("carbon", {})
+        return result
     except (json.JSONDecodeError, OSError):
         return {}
 
