@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Warpt CLI - Command-line interface for Warpt."""
 
+import difflib
+
 import click
 
 from warpt.commands.list_cmd import run_list
@@ -8,9 +10,41 @@ from warpt.utils.env import get_env
 from warpt.utils.logger import Logger
 
 
-@click.group()
+class WarptGroup(click.Group):
+    """Click group with 'did you mean' suggestions for unknown commands."""
+
+    def resolve_command(self, ctx, args):
+        """Resolve command with 'did you mean' suggestions on mismatch."""
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            # Suggest close matches for unrecognized commands
+            matches = difflib.get_close_matches(
+                args[0], self.list_commands(ctx), n=3, cutoff=0.5
+            )
+            if matches:
+                suggestion = ", ".join(f"'{m}'" for m in matches)
+                raise click.UsageError(
+                    f"No such command '{args[0]}'. Did you mean: {suggestion}?"
+                ) from exc
+            raise click.UsageError(
+                f"No such command '{args[0]}'."
+                " Run 'warpt --help' for available commands."
+            ) from exc
+
+
+_QUICK_START = """\b
+Quick start:
+  warpt list                       Discover your hardware
+  warpt monitor                    Live system dashboard
+  warpt stress --list              See available stress tests
+  warpt stress -c cpu -d 30        Run CPU stress tests for 30s
+  warpt stress -c accelerator      Run GPU stress tests"""
+
+
+@click.group(cls=WarptGroup, epilog=_QUICK_START)
 def warpt():
-    """Warpt command-line tool for system monitoring and utilities."""
+    """Warpt — hardware discovery, monitoring, stress testing, and diagnostics."""
     # Configure logger at startup if not already configured
     if not Logger.is_configured():
         # Default to INFO level; subcommands can adjust via set_level()
@@ -374,7 +408,7 @@ def benchmark(
     "-t",
     "tests",
     multiple=True,
-    help="Run specific test(s) by name (e.g., GPUMatMulTest)",
+    help="Run specific test(s) by name (e.g., GPUFP32ComputeTest)",
 )
 @click.option(
     "--duration",
@@ -478,7 +512,7 @@ def stress(
       warpt stress -c all                  # Run all available tests
       warpt stress -c cpu                  # Run CPU category
       warpt stress -c accelerator          # Run accelerator tests
-      warpt stress -t GPUMatMulTest        # Run specific test
+      warpt stress -t GPUFP32ComputeTest        # Run specific test
       warpt stress -o results.json         # Save to JSON
       warpt stress -o a.json -o b.yaml     # Multiple outputs
       warpt stress --config tests.yaml     # Use config file
@@ -509,11 +543,22 @@ def stress(
 @warpt.command()
 @click.argument(
     "subcommand",
-    type=click.Choice(["start", "stop", "status", "history", "summary", "regions"]),
+    type=click.Choice(
+        [
+            "start",
+            "stop",
+            "status",
+            "history",
+            "summary",
+            "regions",
+            "set-region",
+            "intensity",
+            "kwh-price",
+        ]
+    ),
     required=False,
 )
 @click.option("--label", "-l", default=None, help="Session label")
-@click.option("--region", "-r", default="US", help="Grid region for CO2 calculation")
 @click.option(
     "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
 )
@@ -524,32 +569,43 @@ def stress(
     "--days", "-d", default=30, type=int, help="Time window in days for summary"
 )
 @click.option("--json", "output_json", is_flag=True, help="Output in JSON format")
-def carbon(subcommand, label, region, interval, limit, days, output_json):
-    r"""Track energy consumption, CO2 emissions, and electricity cost.
+@click.option(
+    "--value",
+    default=None,
+    help="Value for set-region (region code) or intensity (gCO2/kWh)",
+)
+def carbon(subcommand, label, interval, limit, days, output_json, value):
+    """Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
     Examples:
-      warpt carbon                     # Show daemon status
-      warpt carbon start               # Start background tracking
-      warpt carbon stop                # Stop and show results
-      warpt carbon history             # Show recent sessions
-      warpt carbon summary --days 7    # Aggregate last 7 days
-      warpt carbon regions             # List grid regions
+      warpt carbon                     Show daemon status
+      warpt carbon start               Start background tracking
+      warpt carbon stop                Stop and show results
+      warpt carbon history             Show recent sessions
+      warpt carbon summary --days 7    Aggregate last 7 days
+      warpt carbon regions             List grid regions
+
+    \b
+    Configure:
+      warpt carbon set-region --value EU-DE   Set grid region
+      warpt carbon intensity --value 500      Set custom gCO2/kWh
+      warpt carbon kwh-price --value 0.15     Set electricity price ($/kWh)
+
+    \b
+    Manual mode:
+      warpt carbon start --label "my workload"
+      ... run your workload ...
+      warpt carbon stop
 
     \b
     Automatic mode:
       Energy is tracked automatically when running 'warpt stress' or
       'warpt power -c'. A one-line summary prints at the end.
-
-    \b
-    Manual mode:
-      warpt carbon start --label "my workload" --region EU-DE
-      # ... run your workload ...
-      warpt carbon stop
     """
     from warpt.commands.carbon_cmd import run_carbon
 
-    run_carbon(subcommand, label, region, interval, limit, days, output_json)
+    run_carbon(subcommand, label, interval, limit, days, output_json, value)
 
 
 # Register daemon command group

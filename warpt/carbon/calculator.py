@@ -14,9 +14,12 @@ class CarbonCalculator:
         Grid region code for CO2 intensity lookup.
     """
 
-    def __init__(self, region: str = "US") -> None:
+    def __init__(self, region: str = "US", intensity: float | None = None) -> None:
         self.region = region
-        self.intensity = get_grid_intensity(region)  # gCO2/kWh
+        if intensity is not None:
+            self.intensity = intensity
+        else:
+            self.intensity = get_grid_intensity(region)  # gCO2/kWh
 
     def energy_from_samples(self, samples: list[tuple[float, float]]) -> float:
         """Compute energy via trapezoidal integration.
@@ -118,19 +121,19 @@ class CarbonCalculator:
             # Average phone charge ≈ 8g CO2
             charges = co2_grams / 8.0
             if charges < 1.5:
-                return "like charging your phone once"
-            return f"like charging your phone {charges:.0f} times"
+                return "like charging your phone once (~8g CO2 per charge)"
+            return f"like charging your phone {charges:.0f} times (~8g CO2 per charge)"
 
         if co2_grams < 500.0:
             # Average car emits ~400g CO2/mile
             miles = co2_grams / 400.0
             if miles < 0.15:
-                return "like driving a few hundred feet"
-            return f"like driving {miles:.1f} miles"
+                return "like driving a few hundred feet (~400g CO2/mile, avg car)"
+            return f"like driving {miles:.1f} miles (~400g CO2/mile, avg car)"
 
         # Average AC unit ≈ 1500g CO2/hour
         hours = co2_grams / 1500.0
         if hours < 1.0:
             minutes = hours * 60
-            return f"like {minutes:.0f} minutes of air conditioning"
-        return f"like {hours:.1f} hours of air conditioning"
+            return f"like {minutes:.0f} minutes of air conditioning (~1.5kg CO2/hr)"
+        return f"like {hours:.1f} hours of air conditioning (~1.5kg CO2/hr)"

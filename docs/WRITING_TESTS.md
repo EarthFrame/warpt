@@ -241,13 +241,13 @@ The `TestRegistry` automatically discovers your test. Here's how:
 
 - Place your test in `warpt/stress/`
 - Name the file anything except starting with `_` (those are skipped)
-- Common pattern: `{category}_{what}.py` (e.g., `gpu_compute.py`, `cpu_compute.py`)
+- Common pattern: `{category}_{what}.py` (e.g., `gpu_fp32_compute.py`, `cpu_compute.py`)
 
 ### Class Naming Rules
 
 - Use descriptive class names ending in `Test` (convention, not required)
 - Class name must be unique across all tests
-- Examples: `GPUMatMulTest`, `CPUMatMulTest`, `RAMBandwidthTest`
+- Examples: `GPUFP32ComputeTest`, `CPUMatMulTest`, `RAMBandwidthTest`
 
 ## How Results Flow Through the System
 

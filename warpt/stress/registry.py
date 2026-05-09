@@ -13,7 +13,7 @@ Usage:
     gpu_tests = registry.get_tests_by_category(TestCategory.ACCELERATOR)
 
     # Get a specific test by name
-    test = registry.get_test("GPUMatMulTest")
+    test = registry.get_test("GPUFP32ComputeTest")
 """
 
 import importlib
@@ -152,8 +152,12 @@ class TestRegistry:
 
         # Find all StressTest subclasses
         for _name, obj in inspect.getmembers(module, inspect.isclass):
+            try:
+                is_subclass = issubclass(obj, StressTest)
+            except TypeError:
+                continue
             if (
-                issubclass(obj, StressTest)
+                is_subclass
                 and obj is not StressTest
                 and not inspect.isabstract(obj)
                 and obj.__module__ == module_name
@@ -188,7 +192,7 @@ class TestRegistry:
         """Get a specific test class by name.
 
         Args:
-            name: The test class name (e.g., "GPUMatMulTest").
+            name: The test class name (e.g., "GPUFP32ComputeTest").
 
         Returns:
             The test class.

@@ -75,7 +75,7 @@ warpt/
 │       └── yourvendor_power.py # Add this for power readings (optional, but recommended)
 ├── stress/
 │   ├── base.py                 # StressTest ABC
-│   ├── gpu_compute.py
+│   ├── gpu_fp32_compute.py
 │   └── yourvendor_compute.py   # Add this to enable stress testing on your hardware
 ├── models/
 │   ├── list_models.py          # GPUInfo (Pydantic) — use extra_metrics

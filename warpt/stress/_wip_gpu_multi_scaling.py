@@ -1,5 +1,9 @@
 """Multi-GPU scaling stress test.
 
+WIP: This module is under active development and is not currently functional.
+It is prefixed with ``_wip_`` so the test registry skips it and it is not
+exposed via ``warpt stress -l`` or included in PyPI releases.
+
 Tests how well GPU infrastructure scales across multiple GPUs by measuring
 inter-GPU communication overhead (halo exchange, residual reductions) and
 comparing multi-GPU throughput to single-GPU baselines. Identifies interconnect

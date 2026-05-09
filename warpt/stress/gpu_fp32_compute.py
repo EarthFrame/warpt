@@ -1,16 +1,16 @@
-"""GPU compute stress tests."""
+"""GPU FP32 compute stress test."""
 
 import time
 from typing import Any
 
 from warpt.backends.base import AcceleratorBackend
-from warpt.models.constants import DEFAULT_BURNIN_SECONDS, GPU_STRESS_TEST
+from warpt.models.constants import DEFAULT_BURNIN_SECONDS, GPU_FP32_STRESS_TEST
 from warpt.stress.base import StressTest, TestCategory
-from warpt.stress.utils import calculate_tflops
+from warpt.stress.utils import calculate_tflops, measure_loop
 
 
-class GPUMatMulTest(StressTest):
-    """Matrix multiplication stress test for GPU.
+class GPUFP32ComputeTest(StressTest):
+    """FP32 compute stress test for GPU.
 
     Uses PyTorch's matmul to stress GPU compute units. Measures TFLOPS
     throughput using FP32 operations (with optional TF32 acceleration).
@@ -26,7 +26,7 @@ class GPUMatMulTest(StressTest):
         matrix_size: int = 8192,
         allow_tf32: bool = True,
     ):
-        """Initialize GPU matmul test.
+        """Initialize GPU FP32 compute test.
 
         Args:
             device_id: GPU device ID (0, 1, 2, etc.)
@@ -54,11 +54,11 @@ class GPUMatMulTest(StressTest):
 
     def get_name(self) -> str:
         """Return internal test name."""
-        return GPU_STRESS_TEST
+        return GPU_FP32_STRESS_TEST
 
     def get_pretty_name(self) -> str:
         """Return human-readable test name."""
-        return "GPU Matrix Multiplication"
+        return "GPU FP32 Compute"
 
     def get_description(self) -> str:
         """Return one-line description."""
@@ -215,7 +215,7 @@ class GPUMatMulTest(StressTest):
     # -------------------------------------------------------------------------
 
     def execute_test(self, duration: int, iterations: int) -> dict[Any, Any]:
-        """Execute the GPU matrix multiplication test.
+        """Execute the GPU FP32 compute test.
 
         Args:
             duration: Test duration in seconds.
@@ -228,28 +228,30 @@ class GPUMatMulTest(StressTest):
         import torch
 
         torch.cuda.reset_peak_memory_stats(self._device)
-        start_time = time.time()
-        iter_count = 0
 
-        while (time.time() - start_time) < duration:
-            a = torch.randn(
-                self.matrix_size,
-                self.matrix_size,
-                dtype=torch.float32,
-                device=self._device,
-            )
-            b = torch.randn(
-                self.matrix_size,
-                self.matrix_size,
-                dtype=torch.float32,
-                device=self._device,
-            )
-            _ = torch.matmul(a, b)
-            torch.cuda.synchronize()
-            iter_count += 1
-            del a, b
+        # Pre-allocate matrices
+        a = torch.randn(
+            self.matrix_size,
+            self.matrix_size,
+            dtype=torch.float32,
+            device=self._device,
+        )
+        b = torch.randn(
+            self.matrix_size,
+            self.matrix_size,
+            dtype=torch.float32,
+            device=self._device,
+        )
 
-        elapsed = time.time() - start_time
+        elapsed, iter_count = measure_loop(
+            duration=duration,
+            work_fn=lambda: torch.matmul(a, b),  # noqa: F821
+            sync_fn=torch.cuda.synchronize,
+            device=self._device,
+        )
+
+        # Clean up
+        del a, b
 
         # Get memory stats
         memory_used = torch.cuda.max_memory_allocated(self._device) / (1024**3)

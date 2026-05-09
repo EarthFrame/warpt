@@ -154,7 +154,15 @@ tests/RESULTS.md
 .sdk_docs.txt
 questions.yaml
 
+<<<<<<< HEAD
 # Skills
 warpt/skills/
 
 TENSTORRENT_INTEGRATION.md
+=======
+# Internal docs
+TENSTORRENT_INTEGRATION.md
+
+# Claude Code skills
+warpt/skills/
+>>>>>>> 09a2115608735eef0141d1165abd0952d064c27e

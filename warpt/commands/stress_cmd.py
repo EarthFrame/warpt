@@ -6,7 +6,7 @@ CLI Examples:
     warpt stress                         # Run all available tests
     warpt stress -c cpu                  # Run CPU category
     warpt stress -c accelerator          # Run accelerator tests
-    warpt stress -t GPUMatMulTest        # Run specific test
+    warpt stress -t GPUFP32ComputeTest        # Run specific test
     warpt stress -o results.json         # Save to JSON
     warpt stress -o a.json -o b.yaml     # Multiple outputs
     warpt stress --config tests.yaml     # Use config file
@@ -38,7 +38,7 @@ CATEGORY_MAP: dict[str, TestCategory | str] = {
 
 def _resolve_category_enum(name: str) -> TestCategory | None:
     """Return the TestCategory enum for the CLI name if available."""
-    value = CATEGORY_MAP.get(name)
+    value = CATEGORY_MAP.get(name.lower())
     if isinstance(value, TestCategory):
         return value
     return None
@@ -53,7 +53,7 @@ def load_config(config_path: str) -> dict[str, Any]:
           warmup: 10
 
         tests:
-          - name: GPUMatMulTest
+          - name: GPUFP32ComputeTest
             duration: 120
             device_id: 0
 
@@ -116,6 +116,7 @@ def list_tests(
 ) -> None:
     """List available stress tests."""
     if category:
+        category = category.lower()
         if category not in CATEGORY_MAP:
             valid = ", ".join(sorted(CATEGORY_MAP.keys()))
             click.echo(f"Error: Unknown category '{category}'. Valid: {valid}")
@@ -290,7 +291,7 @@ def run_stress(
 
             # Test by category
             elif "category" in test_spec:
-                cat_name = test_spec["category"]
+                cat_name = test_spec["category"].lower()
                 if cat_name not in CATEGORY_MAP:
                     click.echo(f"Warning: Unknown category '{cat_name}', skipping.")
                     continue
@@ -326,6 +327,7 @@ def run_stress(
 
     elif categories:
         for cat in categories:
+            cat = cat.lower()
             if cat not in CATEGORY_MAP:
                 valid = ", ".join(sorted(CATEGORY_MAP.keys()))
                 click.echo(f"Error: Unknown category '{cat}'. Valid: {valid}")

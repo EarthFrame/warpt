@@ -50,6 +50,7 @@ class PowerMonitor:
         self._nvidia_backend: NvidiaPowerBackend | None = None
         self._initialized = False
         self._lock = threading.Lock()
+        self._unavailable_reasons: list[str] = []
 
         # For process CPU tracking: pid -> (cpu_time, wall_time)
         self._last_process_times: dict[int, tuple[float, float]] = {}
@@ -64,6 +65,7 @@ class PowerMonitor:
             return bool(self._backends)
 
         self._backends = []
+        self._unavailable_reasons = []
 
         # Platform-specific CPU power backend
         if self._platform == "Linux":
@@ -71,12 +73,21 @@ class PowerMonitor:
             if rapl.is_available():
                 rapl.initialize()
                 self._backends.append(rapl)
+            else:
+                self._unavailable_reasons.append(
+                    rapl.get_unavailable_reason()
+                    or "RAPL: /sys/class/powercap/intel-rapl/ not found or not readable"
+                )
 
         elif self._platform == "Darwin":
             macos = MacOSPowerBackend()
             if macos.is_available():
                 macos.initialize()
                 self._backends.append(macos)
+            else:
+                self._unavailable_reasons.append(
+                    "powermetrics: not available or requires passwordless sudo"
+                )
 
         # NVIDIA GPU backend (cross-platform)
         nvidia = NvidiaPowerBackend()
@@ -84,9 +95,21 @@ class PowerMonitor:
             nvidia.initialize()
             self._backends.append(nvidia)
             self._nvidia_backend = nvidia
+        else:
+            self._unavailable_reasons.append(
+                "NVIDIA: nvidia-ml-py not installed or no GPUs detected"
+            )
 
         self._initialized = True
         return bool(self._backends)
+
+    def get_unavailable_reasons(self) -> list[str]:
+        """Get reasons why specific backends are unavailable.
+
+        Returns:
+            List of human-readable strings explaining each unavailable backend.
+        """
+        return list(self._unavailable_reasons)
 
     def get_available_sources(self) -> list[PowerSource]:
         """Get list of available power sources.
