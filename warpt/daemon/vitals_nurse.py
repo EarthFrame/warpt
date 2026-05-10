@@ -43,7 +43,7 @@ class VitalsNurse:
         self,
         casefile: CaseFile,
         buffer_size: int = 60,
-        heartbeat_interval: float = 30.0,
+        heartbeat_interval: float = 10.0,
         poll_interval: float = 5.0,
         gpu_thresholds: dict[str, dict[str, float]] | None = None,
     ) -> None:
