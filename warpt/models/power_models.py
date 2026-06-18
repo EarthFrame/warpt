@@ -28,6 +28,7 @@ class PowerSource(str, Enum):
     ROCM_SMI = "rocm_smi"  # AMD ROCm SMI
     IOKIT = "iokit"  # macOS IOKit (battery)
     ESTIMATED = "estimated"  # Calculated/estimated from utilization
+    DAEMON = "daemon"  # Out-of-process warpt power-daemon (REST service)
 
 
 @dataclass

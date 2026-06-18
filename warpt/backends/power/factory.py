@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from warpt.backends.power.base import PowerBackend
+from warpt.backends.power.daemon_source import DaemonPowerBackend
 from warpt.backends.power.linux_rapl import LinuxRAPLBackend
 from warpt.backends.power.macos_power import MacOSPowerBackend
 from warpt.backends.power.nvidia_power import NvidiaPowerBackend
@@ -48,6 +49,7 @@ class PowerMonitor:
         self._include_process_attribution = include_process_attribution
         self._backends: list[PowerBackend] = []
         self._nvidia_backend: NvidiaPowerBackend | None = None
+        self._daemon_backend: DaemonPowerBackend | None = None
         self._initialized = False
         self._lock = threading.Lock()
         self._unavailable_reasons: list[str] = []
@@ -66,6 +68,23 @@ class PowerMonitor:
 
         self._backends = []
         self._unavailable_reasons = []
+
+        # Out-of-process power-daemon (preferred when reachable). Auto-detected:
+        # if the Rust power-daemon REST service is up, it becomes the sole
+        # measurement source (exact per-component energy counters, no double
+        # counting). NVML is still kept alive — only for per-process attribution,
+        # which the daemon does not provide.
+        daemon = DaemonPowerBackend()
+        if daemon.is_available():
+            self._backends.append(daemon)
+            self._daemon_backend = daemon
+            if self._include_process_attribution:
+                nvidia = NvidiaPowerBackend()
+                if nvidia.is_available():
+                    nvidia.initialize()
+                    self._nvidia_backend = nvidia
+            self._initialized = True
+            return True
 
         # Platform-specific CPU power backend
         if self._platform == "Linux":
@@ -140,12 +159,19 @@ class PowerMonitor:
             readings = backend.get_power_readings()
             domains.extend(readings)
 
-        # Get detailed GPU info if NVIDIA backend available
-        if self._nvidia_backend:
-            gpus = self._nvidia_backend.get_gpu_power_info()
+        # GPU info and total: prefer the daemon (authoritative node total that
+        # includes storage, and avoids double-counting GPUs vs NVML).
+        total_power: float | None
+        if self._daemon_backend is not None:
+            gpus = self._daemon_backend.get_gpu_power_info()
+            total_power = self._daemon_backend.get_total_watts()
+        else:
+            # Get detailed GPU info if NVIDIA backend available
+            if self._nvidia_backend:
+                gpus = self._nvidia_backend.get_gpu_power_info()
 
-        # Calculate total power
-        total_power = self._calculate_total_power(domains, gpus)
+            # Calculate total power
+            total_power = self._calculate_total_power(domains, gpus)
 
         # Get per-process attribution
         processes: list[ProcessPower] = []
@@ -302,12 +328,17 @@ class PowerMonitor:
 
         return processes[:50]  # Top 50 processes
 
+    def is_daemon_active(self) -> bool:
+        """Return True if the out-of-process power-daemon is the active source."""
+        return self._daemon_backend is not None
+
     def cleanup(self) -> None:
         """Clean up all backends."""
         for backend in self._backends:
             backend.cleanup()
         self._backends = []
         self._nvidia_backend = None
+        self._daemon_backend = None
         self._initialized = False
 
 
