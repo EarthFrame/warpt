@@ -220,13 +220,19 @@ class CarbonTracker:
 
         # Print one-line summary to stderr
         humanized = calc.humanize(co2_grams)
+        source_label = {
+            "daemon-counter": "rust daemon counter",
+            "counter": "hardware counter",
+            "polled": "sampled estimate",
+        }.get(energy_source, energy_source)
         print(
             f"\n[carbon] {duration_s:.1f}s | "
             f"{avg_power:.1f}W avg | "
             f"{energy_kwh * 1_000_000:.1f} mWh | "
             f"{co2_grams:.2f}g CO2 | "
             f"${cost_usd:.4f} | "
-            f"{humanized}",
+            f"{humanized} | "
+            f"via {source_label}",
             file=sys.stderr,
         )
 
