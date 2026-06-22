@@ -43,7 +43,7 @@ class PowerClient:
     """Minimal HTTP client for the power-daemon REST API."""
 
     def __init__(self, base_url: str | None = None, timeout: float = 2.0) -> None:
-        url = base_url or os.environ.get("POWER_DAEMON_URL", DEFAULT_BASE_URL)
+        url = base_url or os.environ.get("POWER_DAEMON_URL") or DEFAULT_BASE_URL
         self.base_url = url.rstrip("/")
         self._timeout = timeout
 
