@@ -104,8 +104,7 @@ class CarbonTracker:
         except Exception:
             pass
 
-        # If the out-of-process daemon is the source, capture its exact total
-        # energy counter at start (preferred over native counters / sampling).
+        # get the power reading at the start (for rust daemon)
         if self._monitor.is_daemon_active():
             try:
                 self._daemon_client = PowerClient()
@@ -114,7 +113,7 @@ class CarbonTracker:
                 self._daemon_client = None
                 self._start_daemon_reading = None
 
-        # Start background sampling
+        # Starting background sampling
         self._running = True
         self._thread = threading.Thread(
             target=self._sample_loop, daemon=True, name="carbon-tracker"
@@ -133,22 +132,24 @@ class CarbonTracker:
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 
-        # Cleanup monitor
+        # Calculate energy/CO2/cost
+        # Fallback chain: daemon counter, then native hardware counters, then sampling
+        calc = CarbonCalculator(region=self._region)
+        daemon_counter_energy_j = self._get_daemon_counter_delta()
+        gpu_counter_energy_j = self._get_gpu_counter_delta()
+        cpu_counter_energy_j = self._get_cpu_counter_delta()
+
+        # Cleanup monitor AFTER reading the final counters above. The gpu/cpu
+        # deltas take a final snapshot, and cleanup() resets the monitor, which
+        # would force a full re-initialize just to serve that snapshot.
         if self._monitor is not None:
             try:
                 self._monitor.cleanup()
             except Exception:
                 pass
 
-        # Calculate energy/CO2/cost.
-        # Fallback chain: daemon counter → native hardware counters → sampling.
-        calc = CarbonCalculator(region=self._region)
-        daemon_counter_energy_j = self._get_daemon_counter_delta()
-        gpu_counter_energy_j = self._get_gpu_counter_delta()
-        cpu_counter_energy_j = self._get_cpu_counter_delta()
-
         if daemon_counter_energy_j is not None:
-            # Exact node-total energy from the out-of-process daemon counter.
+            # Exact node-total energy from the out-of-process daemon counter
             energy_kwh = calc.energy_from_counter(daemon_counter_energy_j)
             energy_source = "daemon-counter"
             if "daemon" not in self._sources:
@@ -239,10 +240,8 @@ class CarbonTracker:
     def _get_daemon_counter_delta(self) -> float | None:
         """Compute total energy delta from the power-daemon counter.
 
-        Reads the daemon's cumulative joules at exit and subtracts the value
-        captured in __enter__. Returns None (falling back to native counters or
-        sampling) if the daemon wasn't the source, is now unreachable, or
-        restarted mid-session (counter reset).
+        get the difference of current and start values to calculate
+        energy delta
         """
         if self._daemon_client is None or self._start_daemon_reading is None:
             return None
@@ -265,8 +264,10 @@ class CarbonTracker:
         """Compute GPU energy delta from hardware counters.
 
         Takes a final snapshot, reads the energy counters, and subtracts
-        the start values captured in __enter__. Returns total joules
-        across all GPUs, or None if counters weren't available.
+        the start values captured in __enter__.
+
+        Returns total joules across all GPUs,
+        or None if counters weren't available
         """
         if not self._start_gpu_energy or self._monitor is None:
             return None

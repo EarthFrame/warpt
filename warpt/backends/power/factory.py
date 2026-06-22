@@ -69,11 +69,8 @@ class PowerMonitor:
         self._backends = []
         self._unavailable_reasons = []
 
-        # Out-of-process power-daemon (preferred when reachable). Auto-detected:
-        # if the Rust power-daemon REST service is up, it becomes the sole
-        # measurement source (exact per-component energy counters, no double
-        # counting). NVML is still kept alive — only for per-process attribution,
-        # which the daemon does not provide.
+        # Out-of-process power-daemon - this is the preferred
+        # power source and fallsback to native
         daemon = DaemonPowerBackend()
         if daemon.is_available():
             self._backends.append(daemon)
@@ -159,8 +156,7 @@ class PowerMonitor:
             readings = backend.get_power_readings()
             domains.extend(readings)
 
-        # GPU info and total: prefer the daemon (authoritative node total that
-        # includes storage, and avoids double-counting GPUs vs NVML).
+        # GPU info and total
         total_power: float | None
         if self._daemon_backend is not None:
             gpus = self._daemon_backend.get_gpu_power_info()
