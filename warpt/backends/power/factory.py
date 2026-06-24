@@ -150,18 +150,17 @@ class PowerMonitor:
         timestamp = time.time()
         domains: list[DomainPower] = []
         gpus: list[GPUPowerInfo] = []
-
-        # Collect readings from all backends
-        for backend in self._backends:
-            readings = backend.get_power_readings()
-            domains.extend(readings)
-
-        # GPU info and total
         total_power: float | None
+
         if self._daemon_backend is not None:
-            gpus = self._daemon_backend.get_gpu_power_info()
-            total_power = self._daemon_backend.get_total_watts()
+            # One daemon fetch yields readings, GPU info, and the authoritative
+            # total (which includes components warpt doesn't model as domains).
+            domains, gpus, total_power = self._daemon_backend.read_snapshot()
         else:
+            # Collect readings from all native backends
+            for backend in self._backends:
+                domains.extend(backend.get_power_readings())
+
             # Get detailed GPU info if NVIDIA backend available
             if self._nvidia_backend:
                 gpus = self._nvidia_backend.get_gpu_power_info()

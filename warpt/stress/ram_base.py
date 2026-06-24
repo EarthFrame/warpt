@@ -124,9 +124,9 @@ class RAMBaseTest(StressTest):
         import time
 
         assert self._array is not None, "Array not allocated in setup()"
-        assert (
-            self._source_array_for_writes is not None
-        ), "Source array not allocated in setup()"
+        assert self._source_array_for_writes is not None, (
+            "Source array not allocated in setup()"
+        )
 
         start_time = time.time()
         bytes_written = 0

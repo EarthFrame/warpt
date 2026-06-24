@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+from warpt.backends.power.daemon_client import PowerClientError
 from warpt.backends.power.daemon_source import DaemonPowerBackend
 from warpt.models.power_models import PowerDomain, PowerSource
 
@@ -105,18 +106,34 @@ class TestDaemonPowerBackendMapping:
         assert PowerDomain.DRAM in domains
         assert len(readings) == 4  # cpu + ram + 2 gpus, no storage
 
-    def test_get_gpu_power_info(self):
+    def test_read_snapshot_gpu_info(self):
         """Accelerators map to GPUPowerInfo with index/name/power."""
-        gpus = _backend_with_metrics().get_gpu_power_info()
+        _readings, gpus, _total = _backend_with_metrics().read_snapshot()
         assert len(gpus) == 2
         assert gpus[0].index == 0
         assert gpus[0].name == "NVIDIA A100"
         assert gpus[0].power_watts == 250.0
         assert gpus[0].metadata["integrated"] is False
 
-    def test_get_total_watts_uses_daemon_total(self):
+    def test_read_snapshot_total_uses_daemon_total(self):
         """Total comes from the daemon (includes storage), not a domain re-sum."""
-        assert _backend_with_metrics().get_total_watts() == 546.0
+        _readings, _gpus, total = _backend_with_metrics().read_snapshot()
+        assert total == 546.0
+
+    def test_read_snapshot_fetches_once(self):
+        """A full snapshot (readings + GPUs + total) is a single daemon fetch."""
+        backend = _backend_with_metrics()
+        backend.read_snapshot()
+        assert backend._client.metrics.call_count == 1
+
+    def test_read_snapshot_when_unreachable(self):
+        """An unreachable daemon yields empty readings and zero total."""
+        backend = _backend_with_metrics()
+        backend._client.metrics.side_effect = PowerClientError("down")
+        readings, gpus, total = backend.read_snapshot()
+        assert readings == []
+        assert gpus == []
+        assert total == 0.0
 
 
 class TestDaemonPowerBackendAvailability:

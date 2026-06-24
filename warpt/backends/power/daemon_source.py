@@ -11,8 +11,6 @@ the client-side backend for the external Rust service.
 
 from __future__ import annotations
 
-import time
-
 from warpt.backends.power.base import PowerBackend
 from warpt.backends.power.daemon_client import PowerClient, PowerClientError
 from warpt.models.power_models import (
@@ -26,13 +24,8 @@ from warpt.models.power_models import (
 class DaemonPowerBackend(PowerBackend):
     """Reads power/energy from the warpt power-daemon over HTTP."""
 
-    def __init__(self, base_url: str | None = None, cache_ttl: float = 0.5) -> None:
+    def __init__(self, base_url: str | None = None) -> None:
         self._client = PowerClient(base_url)
-        # A single get_snapshot() calls get_power_readings + get_gpu_power_info +
-        # get_total_watts; cache one fetch briefly so that's one round-trip.
-        self._cache_ttl = cache_ttl
-        self._cache: dict | None = None
-        self._cache_at = 0.0
 
     def is_available(self) -> bool:
         """Return True if the power-daemon answers its health check."""
@@ -42,23 +35,30 @@ class DaemonPowerBackend(PowerBackend):
         """Return the power source identifier for this backend."""
         return PowerSource.DAEMON
 
-    def _metrics(self) -> dict | None:
-        now = time.monotonic()
-        if self._cache is not None and (now - self._cache_at) < self._cache_ttl:
-            return self._cache
+    def _fetch(self) -> dict | None:
+        """Read the daemon's metrics once; None if it is unreachable."""
         try:
-            self._cache = self._client.metrics()
-            self._cache_at = now
+            return self._client.metrics()
         except PowerClientError:
             return None
-        return self._cache
+
+    def read_snapshot(
+        self,
+    ) -> tuple[list[DomainPower], list[GPUPowerInfo], float]:
+        """Daemon fetch: (domain readings, GPU info, total watts)."""
+        data = self._fetch()
+        if data is None:
+            return [], [], 0.0
+        total = float(data.get("total", {}).get("watts", 0.0))
+        return self._readings_from(data), self._gpus_from(data), total
 
     def get_power_readings(self) -> list[DomainPower]:
         """Map the daemon's per-component metrics into DomainPower readings."""
-        data = self._metrics()
-        if data is None:
-            return []
+        data = self._fetch()
+        return self._readings_from(data) if data is not None else []
 
+    def _readings_from(self, data: dict) -> list[DomainPower]:
+        """Map the daemon's components into per-domain power readings."""
         components = data.get("components", {})
         reset_time = data.get("reset_time")
         readings: list[DomainPower] = []
@@ -74,7 +74,7 @@ class DaemonPowerBackend(PowerBackend):
             readings.append(self._component_domain(PowerDomain.DRAM, ram, reset_time))
 
         # Storage is included in the daemon's total but has no PowerDomain enum,
-        # so it is intentionally not emitted as a domain (see get_total_watts).
+        # so it is intentionally not emitted as a domain (see read_snapshot).
         for accel in components.get("accelerators", []):
             readings.append(
                 DomainPower(
@@ -105,12 +105,8 @@ class DaemonPowerBackend(PowerBackend):
             metadata={"daemon": True, "reset_time": reset_time},
         )
 
-    def get_gpu_power_info(self) -> list[GPUPowerInfo]:
+    def _gpus_from(self, data: dict) -> list[GPUPowerInfo]:
         """Map the daemon's accelerators into per-GPU power info."""
-        data = self._metrics()
-        if data is None:
-            return []
-
         gpus: list[GPUPowerInfo] = []
         for accel in data.get("components", {}).get("accelerators", []):
             gpus.append(
@@ -127,10 +123,3 @@ class DaemonPowerBackend(PowerBackend):
                 )
             )
         return gpus
-
-    def get_total_watts(self) -> float:
-        """Authoritative node total from the daemon (includes storage)."""
-        data = self._metrics()
-        if data is None:
-            return 0.0
-        return float(data.get("total", {}).get("watts", 0.0))

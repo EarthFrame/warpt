@@ -18,16 +18,16 @@ def _fake_daemon():
     daemon = MagicMock()
     daemon.is_available.return_value = True
     daemon.get_source.return_value = PowerSource.DAEMON
-    daemon.get_power_readings.return_value = [
-        DomainPower(PowerDomain.PACKAGE, 45.0, 5000.0, PowerSource.DAEMON),
-        DomainPower(
-            PowerDomain.GPU, 250.0, 30000.0, PowerSource.DAEMON, {"gpu_index": 0}
-        ),
-    ]
-    daemon.get_gpu_power_info.return_value = [
-        GPUPowerInfo(index=0, name="NVIDIA A100", power_watts=250.0),
-    ]
-    daemon.get_total_watts.return_value = 546.0
+    daemon.read_snapshot.return_value = (
+        [
+            DomainPower(PowerDomain.PACKAGE, 45.0, 5000.0, PowerSource.DAEMON),
+            DomainPower(
+                PowerDomain.GPU, 250.0, 30000.0, PowerSource.DAEMON, {"gpu_index": 0}
+            ),
+        ],
+        [GPUPowerInfo(index=0, name="NVIDIA A100", power_watts=250.0)],
+        546.0,
+    )
     return daemon
 
 

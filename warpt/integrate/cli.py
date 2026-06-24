@@ -45,7 +45,7 @@ def _resolve_vendor(vendor: str | None) -> str | None:
 @click.option(
     "--sdk-docs",
     default=None,
-    help=("Path to SDK docs (local dir, PDF, git URL, " "or web URL)"),
+    help=("Path to SDK docs (local dir, PDF, git URL, or web URL)"),
 )
 @click.option(
     "--vendor-context",
@@ -56,7 +56,7 @@ def _resolve_vendor(vendor: str | None) -> str | None:
     "--dry-run",
     is_flag=True,
     default=False,
-    help=("Validate setup and show summary without " "starting the agent session"),
+    help=("Validate setup and show summary without starting the agent session"),
 )
 @click.pass_context
 def integrate(
@@ -90,8 +90,7 @@ def integrate(
     if sdk_docs:
         if not vendor:
             raise click.ClickException(
-                "--vendor is required when starting a new "
-                "integration with --sdk-docs."
+                "--vendor is required when starting a new integration with --sdk-docs."
             )
         _run_init(vendor, sdk_docs, vendor_context, dry_run)
         return
@@ -218,7 +217,7 @@ def _run_init(
         f"{vendor.capitalize()}Backend\n"
     )
     confirmed = click.prompt(
-        f"Vendor name is '{vendor}'. " "Press Enter to confirm or type a new name",
+        f"Vendor name is '{vendor}'. Press Enter to confirm or type a new name",
         default=vendor,
         show_default=False,
     ).strip()
@@ -254,7 +253,7 @@ def _run_init(
             "interface (function signatures, enums, types)."
         )
 
-    click.echo(f"Loaded ~{sdk_token_estimate:,} tokens " "of documentation.")
+    click.echo(f"Loaded ~{sdk_token_estimate:,} tokens of documentation.")
 
     # Build system prompt early so we can report its size
     system_prompt = build_system_prompt(
@@ -277,8 +276,8 @@ def _run_init(
             f"  SDK docs:      ~{sdk_token_estimate:,} tokens "
             f"from {sdk_file_count} file(s)"
         )
-        click.echo(f"  System prompt: ~{prompt_token_estimate:,} " "tokens")
-        click.echo(f"  Total context: ~{total_tokens:,} tokens " "(limit ~200k)")
+        click.echo(f"  System prompt: ~{prompt_token_estimate:,} tokens")
+        click.echo(f"  Total context: ~{total_tokens:,} tokens (limit ~200k)")
         click.echo(
             f"\n  Files to generate:\n"
             f"    warpt/backends/{vendor}.py\n"
@@ -292,7 +291,7 @@ def _run_init(
 
         try:
             click.prompt(
-                "\nPress Enter to start the agent, " "or Ctrl+C to abort",
+                "\nPress Enter to start the agent, or Ctrl+C to abort",
                 default="",
                 show_default=False,
             )
@@ -371,7 +370,7 @@ def validate(ctx: click.Context, vendor: str | None):
         if not sessions:
             raise click.ClickException("No active integrations found.")
         raise click.ClickException(
-            "Multiple active integrations. " "Specify with --vendor."
+            "Multiple active integrations. Specify with --vendor."
         )
 
     run_validate(vendor=resolved)
@@ -401,7 +400,7 @@ def reset(ctx: click.Context, vendor: str | None):
         if not sessions:
             raise click.ClickException("No active integrations found.")
         raise click.ClickException(
-            "Multiple active integrations. " "Specify with --vendor."
+            "Multiple active integrations. Specify with --vendor."
         )
 
     branch_name = f"backend/{resolved}"
@@ -491,7 +490,7 @@ def reset(ctx: click.Context, vendor: str | None):
                 f"'{branch_name}': {result.stderr.strip()}"
             )
     else:
-        click.echo(f"Branch '{branch_name}' does not exist, " "skipping.")
+        click.echo(f"Branch '{branch_name}' does not exist, skipping.")
 
     # 4. Delete session data
     if delete_session(resolved):
