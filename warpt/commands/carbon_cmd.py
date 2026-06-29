@@ -14,7 +14,6 @@ _HEADING_UNDERLINE = "---"
 def run_carbon(
     subcommand: str | None,
     label: str | None,
-    interval: float,
     limit: int,
     days: int,
     output_json: bool,
@@ -29,8 +28,6 @@ def run_carbon(
         set-region, intensity.
     label : str | None
         Session label for start command.
-    interval : float
-        Sampling interval for daemon.
     limit : int
         Max sessions for history.
     days : int
@@ -43,7 +40,7 @@ def run_carbon(
     if subcommand is None or subcommand == "status":
         _show_status(output_json)
     elif subcommand == "start":
-        _start_tracking(label, interval)
+        _start_tracking(label)
     elif subcommand == "stop":
         _stop_tracking(output_json)
     elif subcommand == "history":
@@ -60,16 +57,15 @@ def run_carbon(
         _set_kwh_price(value)
 
 
-def _start_tracking(label: str | None, interval: float) -> None:
-    """Start the carbon tracking daemon."""
-    from warpt.backends.power.factory import PowerMonitor
+def _start_tracking(label: str | None) -> None:
+    """Open a carbon tracking session bookmarked against the power-daemon."""
     from warpt.carbon.config import (
         DEFAULT_KWH_PRICE,
         get_effective_kwh_price,
         get_effective_region_and_intensity,
         load_carbon_config,
     )
-    from warpt.carbon.daemon import start_daemon
+    from warpt.carbon.session import start_session
 
     # Resolve region / intensity / rate from config
     region, intensity = get_effective_region_and_intensity()
@@ -77,29 +73,11 @@ def _start_tracking(label: str | None, interval: float) -> None:
     cfg = load_carbon_config()
     has_config = bool(cfg.get("region") or cfg.get("intensity"))
 
-    # Pre-check the daemon before forking — carbon tracking requires it.
-    monitor = PowerMonitor()
-    monitor.initialize()
-    sources = [s.value for s in monitor.get_available_sources()]
-    unavailable = monitor.get_unavailable_reasons()
-    monitor.cleanup()
-
-    if not sources:
-        print("Error: power-daemon not reachable.", file=sys.stderr)
-        print(
-            "Carbon tracking requires the power-daemon. Start it (or set "
-            "POWER_DAEMON_URL) and try again.",
-            file=sys.stderr,
-        )
-        for reason in unavailable:
-            print(f"  - {reason}", file=sys.stderr)
-        sys.exit(1)
-
+    # start_session bookmarks the daemon counter and errors if it is unreachable.
     effective_label = label or "manual"
     try:
-        session_id = start_daemon(
+        session_id = start_session(
             label=effective_label,
-            interval=interval,
             region=region,
             intensity=intensity if region == "CUSTOM" else None,
             kwh_price=kwh_price,
@@ -147,28 +125,22 @@ def _start_tracking(label: str | None, interval: float) -> None:
             "    \u2192 Run `warpt carbon kwh-price --value <NUMBER>` to set your rate"
         )
 
-    print(f"  Interval: {interval}s")
-    print(f"  Source:   {', '.join(sources)}")
+    print("  Source:   daemon")
     print("\n  Stop with: warpt carbon stop")
 
 
 def _stop_tracking(output_json: bool) -> None:
-    """Stop the carbon tracking daemon and display results."""
-    from warpt.carbon.daemon import stop_daemon
+    """Close the carbon tracking session and display results."""
+    from warpt.carbon.session import stop_session
 
-    session = stop_daemon()
+    session = stop_session()
     if session is None:
-        print("No carbon tracking daemon is running.")
+        print("No carbon tracking session is active.")
         return
 
     if output_json:
         print(json.dumps(session.to_dict(), indent=2))
         return
-
-    from warpt.carbon.calculator import CarbonCalculator
-
-    calc = CarbonCalculator(region=session.region)
-    humanized = calc.humanize(session.co2_grams or 0.0)
 
     print(_SECTION_SEP)
     print("  carbon tracking stopped")
@@ -178,15 +150,23 @@ def _stop_tracking(output_json: bool) -> None:
     print(f"  Label:    {session.label}")
     print(f"  Duration: {_format_duration(session.duration_s or 0)}")
     print(f"  Region:   {session.region}")
+
+    status = session.metadata.get("status", "completed")
+    if status != "completed":
+        # Daemon connection lost or counter reset mid-session.
+        print(f"\n  ⚠ {status}")
+        return
+
+    from warpt.carbon.calculator import CarbonCalculator
+
+    calc = CarbonCalculator(region=session.region)
+    humanized = calc.humanize(session.co2_grams or 0.0)
+
     print("\n  [Energy]")
     print(f"  {_HEADING_UNDERLINE}")
     energy_mwh = (session.energy_kwh or 0) * 1_000_000
     print(f"  Energy:   {energy_mwh:.1f} mWh ({session.energy_kwh or 0:.8f} kWh)")
-    avg_w = session.metadata.get("avg_power_w", 0)
-    peak_w = session.metadata.get("peak_power_w", 0)
-    print(f"  Avg Power: {avg_w:.1f} W")
-    print(f"  Peak Power: {peak_w:.1f} W")
-    print(f"  Samples:  {session.metadata.get('sample_count', 0)}")
+    print(f"  Avg Power: {session.metadata.get('avg_power_w', 0):.1f} W")
     print("\n  [Impact]")
     print(f"  {_HEADING_UNDERLINE}")
     print(f"  CO2:      {session.co2_grams or 0:.4f} g")
@@ -195,17 +175,17 @@ def _stop_tracking(output_json: bool) -> None:
 
 
 def _show_status(output_json: bool) -> None:
-    """Show the current daemon status."""
-    from warpt.carbon.daemon import daemon_status
+    """Show the open session's live status (polled from the daemon)."""
+    from warpt.carbon.session import session_status
 
-    status = daemon_status()
+    status = session_status()
 
     if output_json:
         print(json.dumps(status or {"running": False}, indent=2))
         return
 
     if status is None:
-        print("No carbon tracking daemon is running.")
+        print("No carbon tracking session is active.")
         print("\n  Start with: warpt carbon start")
         return
 
@@ -213,25 +193,22 @@ def _show_status(output_json: bool) -> None:
     print("  carbon tracking active")
     print(_SECTION_SEP)
     print(f"\n  Time:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  PID:      {status['pid']}")
     print(f"  Session:  {status.get('session_id', 'unknown')[:8]}...")
     print(f"  Label:    {status.get('label', 'manual')}")
     print(f"  Region:   {status.get('region', 'US')}")
     if "elapsed_s" in status:
         print(f"  Elapsed:  {_format_duration(status['elapsed_s'])}")
-    if "sample_count" in status:
-        print(f"  Samples:  {status['sample_count']}")
 
-    avg_w = status.get("avg_power_w", 0)
-    peak_w = status.get("peak_power_w", 0)
-    if avg_w > 0:
-        elapsed = status.get("elapsed_s", 0)
-        energy_mwh = (avg_w * elapsed / 3600) * 1000  # W * s -> mWh
+    if status.get("daemon_unreachable"):
+        print("\n  ⚠ power-daemon not reachable — cannot read live power")
+    else:
         print("\n  [Power]")
         print(f"  {_HEADING_UNDERLINE}")
-        print(f"  Avg:      {avg_w:.1f} W")
-        print(f"  Peak:     {peak_w:.1f} W")
-        print(f"  Energy:   {energy_mwh:.1f} mWh")
+        if "current_power_w" in status:
+            print(f"  Current:  {status['current_power_w']:.1f} W")
+        if "energy_kwh_so_far" in status:
+            energy_mwh = status["energy_kwh_so_far"] * 1_000_000
+            print(f"  Energy:   {energy_mwh:.1f} mWh (so far)")
 
     print("\n  Stop with: warpt carbon stop")
 

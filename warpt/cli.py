@@ -526,9 +526,6 @@ def stress(
 )
 @click.option("--label", "-l", default=None, help="Session label")
 @click.option(
-    "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
-)
-@click.option(
     "--limit", "-n", default=20, type=int, help="Max sessions to show in history"
 )
 @click.option(
@@ -540,13 +537,13 @@ def stress(
     default=None,
     help="Value for set-region (region code) or intensity (gCO2/kWh)",
 )
-def carbon(subcommand, label, interval, limit, days, output_json, value):
+def carbon(subcommand, label, limit, days, output_json, value):
     """Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
     Examples:
-      warpt carbon                     Show daemon status
-      warpt carbon start               Start background tracking
+      warpt carbon                     Show tracking status
+      warpt carbon start               Start a tracking session
       warpt carbon stop                Stop and show results
       warpt carbon history             Show recent sessions
       warpt carbon summary --days 7    Aggregate last 7 days
@@ -571,7 +568,7 @@ def carbon(subcommand, label, interval, limit, days, output_json, value):
     """
     from warpt.commands.carbon_cmd import run_carbon
 
-    run_carbon(subcommand, label, interval, limit, days, output_json, value)
+    run_carbon(subcommand, label, limit, days, output_json, value)
 
 
 # Register integrate command group (requires optional deps)
