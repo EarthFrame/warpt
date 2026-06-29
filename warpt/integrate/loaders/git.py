@@ -106,7 +106,7 @@ class GitLoader(DocLoader):
             return DirectoryLoader().load(load_path)
         except gitmodule.GitCommandError as exc:
             raise RuntimeError(
-                f"Failed to clone {clone_url}: " f"{exc.stderr.strip()}"
+                f"Failed to clone {clone_url}: {exc.stderr.strip()}"
             ) from exc
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)

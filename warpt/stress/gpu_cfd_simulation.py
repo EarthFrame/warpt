@@ -594,8 +594,7 @@ class GPUCFDSimulationTest(StressTest):
         self.logger.info(f"Solver: {solves_per_sec:.1f} solves/sec")
         self.logger.info(f"Gradients: {gradient_ops_per_sec:.0f} ops/sec")
         self.logger.info(
-            f"Flux: {flux_ops_per_sec:.0f} ops/sec, "
-            f"{memory_bandwidth_gbps:.1f} GB/s"
+            f"Flux: {flux_ops_per_sec:.0f} ops/sec, {memory_bandwidth_gbps:.1f} GB/s"
         )
 
         return {

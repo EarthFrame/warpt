@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from warpt.backends.power.base import PowerBackend
+from warpt.backends.power.daemon_source import DaemonPowerBackend
 from warpt.backends.power.linux_rapl import LinuxRAPLBackend
 from warpt.backends.power.macos_power import MacOSPowerBackend
 from warpt.backends.power.nvidia_power import NvidiaPowerBackend
@@ -48,6 +49,7 @@ class PowerMonitor:
         self._include_process_attribution = include_process_attribution
         self._backends: list[PowerBackend] = []
         self._nvidia_backend: NvidiaPowerBackend | None = None
+        self._daemon_backend: DaemonPowerBackend | None = None
         self._initialized = False
         self._lock = threading.Lock()
         self._unavailable_reasons: list[str] = []
@@ -66,6 +68,20 @@ class PowerMonitor:
 
         self._backends = []
         self._unavailable_reasons = []
+
+        # Out-of-process power-daemon - this is the preferred
+        # power source and fallsback to native
+        daemon = DaemonPowerBackend()
+        if daemon.is_available():
+            self._backends.append(daemon)
+            self._daemon_backend = daemon
+            if self._include_process_attribution:
+                nvidia = NvidiaPowerBackend()
+                if nvidia.is_available():
+                    nvidia.initialize()
+                    self._nvidia_backend = nvidia
+            self._initialized = True
+            return True
 
         # Platform-specific CPU power backend
         if self._platform == "Linux":
@@ -134,18 +150,23 @@ class PowerMonitor:
         timestamp = time.time()
         domains: list[DomainPower] = []
         gpus: list[GPUPowerInfo] = []
+        total_power: float | None
 
-        # Collect readings from all backends
-        for backend in self._backends:
-            readings = backend.get_power_readings()
-            domains.extend(readings)
+        if self._daemon_backend is not None:
+            # One daemon fetch yields readings, GPU info, and the authoritative
+            # total (which includes components warpt doesn't model as domains).
+            domains, gpus, total_power = self._daemon_backend.read_snapshot()
+        else:
+            # Collect readings from all native backends
+            for backend in self._backends:
+                domains.extend(backend.get_power_readings())
 
-        # Get detailed GPU info if NVIDIA backend available
-        if self._nvidia_backend:
-            gpus = self._nvidia_backend.get_gpu_power_info()
+            # Get detailed GPU info if NVIDIA backend available
+            if self._nvidia_backend:
+                gpus = self._nvidia_backend.get_gpu_power_info()
 
-        # Calculate total power
-        total_power = self._calculate_total_power(domains, gpus)
+            # Calculate total power
+            total_power = self._calculate_total_power(domains, gpus)
 
         # Get per-process attribution
         processes: list[ProcessPower] = []
@@ -302,12 +323,17 @@ class PowerMonitor:
 
         return processes[:50]  # Top 50 processes
 
+    def is_daemon_active(self) -> bool:
+        """Return True if the out-of-process power-daemon is the active source."""
+        return self._daemon_backend is not None
+
     def cleanup(self) -> None:
         """Clean up all backends."""
         for backend in self._backends:
             backend.cleanup()
         self._backends = []
         self._nvidia_backend = None
+        self._daemon_backend = None
         self._initialized = False
 
 

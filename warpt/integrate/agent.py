@@ -199,23 +199,23 @@ def _create_git_branch(vendor: str) -> str:
     # Check if branch already exists
     existing = _git_run("branch", "--list", branch_name)
     if branch_name in existing.stdout:
-        click.echo(f"Branch {branch_name} already exists, " "checking out...")
+        click.echo(f"Branch {branch_name} already exists, checking out...")
         result = _git_run("checkout", branch_name)
         if result.returncode != 0:
             raise click.ClickException(
-                f"Failed to checkout {branch_name}: " f"{result.stderr.strip()}"
+                f"Failed to checkout {branch_name}: {result.stderr.strip()}"
             )
     else:
         if not click.confirm(
-            f"Create branch '{branch_name}' " f"from '{current_branch}'?",
+            f"Create branch '{branch_name}' from '{current_branch}'?",
         ):
             raise click.ClickException(
-                "Aborted. Switch to the branch you want " "as the parent and try again."
+                "Aborted. Switch to the branch you want as the parent and try again."
             )
         result = _git_run("checkout", "-b", branch_name)
         if result.returncode != 0:
             raise click.ClickException(
-                f"Failed to create branch {branch_name}: " f"{result.stderr.strip()}"
+                f"Failed to create branch {branch_name}: {result.stderr.strip()}"
             )
 
     return current_branch
@@ -519,8 +519,7 @@ def _print_summary(doc: QuestionsDocument) -> None:
     )
     if blocking_open > 0:
         click.echo(
-            f"\n  {blocking_open} BLOCKING question(s) "
-            "need answers before proceeding."
+            f"\n  {blocking_open} BLOCKING question(s) need answers before proceeding."
         )
     else:
         click.echo("\n  No blocking questions.")
@@ -559,10 +558,10 @@ def _audit_generated_files(vendor: str) -> None:
             if rel_path == "questions.yaml":
                 doc = _load_questions()
                 count = len(doc.questions)
-                click.echo(f"  {rel_path}: created " f"({count} question(s))")
+                click.echo(f"  {rel_path}: created ({count} question(s))")
             else:
                 lines = full_path.read_text().splitlines()
-                click.echo(f"  {rel_path}: created " f"({len(lines)} lines)")
+                click.echo(f"  {rel_path}: created ({len(lines)} lines)")
         else:
             click.echo(f"  {rel_path}: MISSING")
 
@@ -650,7 +649,7 @@ def run_init(
     # Build the user prompt (includes SDK docs)
     user_prompt = _build_init_prompt(vendor, sdk_docs_text)
 
-    click.echo("Running agent session " "(this will take a few minutes)...")
+    click.echo("Running agent session (this will take a few minutes)...")
 
     # Run the agent
     session_id, output = _run_claude_session(
@@ -803,9 +802,7 @@ def run_status(vendor: str | None = None) -> None:
 
     if not doc.questions:
         click.echo("No questions document found.")
-        click.echo(
-            "Start one with: warpt integrate " "--vendor <name> --sdk-docs <path>"
-        )
+        click.echo("Start one with: warpt integrate --vendor <name> --sdk-docs <path>")
         return
 
     if vendor and doc.metadata.get("vendor") != vendor:
