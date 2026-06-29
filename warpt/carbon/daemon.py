@@ -11,6 +11,12 @@ import time
 import uuid
 from pathlib import Path
 
+from warpt.backends.power.daemon_client import (
+    PowerClient,
+    PowerClientError,
+    PowerReading,
+    counter_delta_joules,
+)
 from warpt.carbon.calculator import CarbonCalculator
 from warpt.carbon.store import EnergyStore
 from warpt.models.carbon_models import CarbonSession
@@ -256,8 +262,17 @@ def _daemon_main(
 
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
-    monitor = PowerMonitor(include_process_attribution=False)
+    monitor = PowerMonitor()
     if not monitor.initialize():
+        return
+
+    # Snapshot the daemon's energy counter at the start (energy comes from the
+    # counter delta, not from integrating the polled samples).
+    client = PowerClient()
+    try:
+        start_reading = client.current()
+    except PowerClientError:
+        monitor.cleanup()
         return
 
     sources = [s.value for s in monitor.get_available_sources()]
@@ -299,7 +314,9 @@ def _daemon_main(
 
     # Final update
     monitor.cleanup()
-    _finalize_session(session, samples, region, store, intensity, kwh_price)
+    _finalize_session(
+        session, samples, region, store, client, start_reading, intensity, kwh_price
+    )
 
 
 def _update_session_on_disk(
@@ -317,23 +334,61 @@ def _update_session_on_disk(
     store.update_session(session)
 
 
+def _final_counter_delta(
+    client: PowerClient, start_reading: PowerReading
+) -> float | None:
+    """Read the daemon counter once more and return joules since start.
+
+    None means the daemon was unreachable or its counter reset — a terminal
+    failure the caller records as a terminated session.
+    """
+    try:
+        end = client.current()
+    except PowerClientError:
+        return None
+    return counter_delta_joules(start_reading, end)
+
+
 def _finalize_session(
     session: CarbonSession,
     samples: list[tuple[float, float, float, float]],
     region: str,
     store: EnergyStore,
+    client: PowerClient,
+    start_reading: PowerReading,
     intensity: float | None = None,
     kwh_price: float = 0.12,
 ) -> None:
-    """Calculate final energy/CO2/cost and persist the completed session."""
+    """Calculate final energy/CO2/cost from the daemon counter and persist."""
     calc = CarbonCalculator(region=region, intensity=intensity)
-    power_samples = [(t, w) for t, w, _c, _g in samples]
-    energy_kwh = calc.energy_from_samples(power_samples)
-    co2_grams = calc.co2_from_energy(energy_kwh)
-    cost_usd = calc.cost_from_energy(energy_kwh, rate=kwh_price)
-
     end_time = time.time()
     powers = [w for _, w, _, _ in samples]
+    base_metadata = {
+        "avg_power_w": round(sum(powers) / len(powers), 2) if powers else 0.0,
+        "peak_power_w": round(max(powers), 2) if powers else 0.0,
+        "sample_count": len(samples),
+    }
+
+    delta_j = _final_counter_delta(client, start_reading)
+    if delta_j is None:
+        # Daemon connection lost or counter reset mid-session — record a
+        # terminated session rather than a guessed energy number.
+        session.end_time = end_time
+        session.duration_s = end_time - session.start_time
+        session.metadata = {
+            **base_metadata,
+            "energy_source": "daemon-counter",
+            "status": (
+                "terminated due to loss of connection, "
+                "please try connection to daemon again"
+            ),
+        }
+        store.update_session(session)
+        return
+
+    energy_kwh = calc.energy_from_counter(delta_j)
+    co2_grams = calc.co2_from_energy(energy_kwh)
+    cost_usd = calc.cost_from_energy(energy_kwh, rate=kwh_price)
 
     session.end_time = end_time
     session.duration_s = end_time - session.start_time
@@ -341,9 +396,9 @@ def _finalize_session(
     session.co2_grams = co2_grams
     session.cost_usd = cost_usd
     session.metadata = {
-        "avg_power_w": round(sum(powers) / len(powers), 2) if powers else 0.0,
-        "peak_power_w": round(max(powers), 2) if powers else 0.0,
-        "sample_count": len(samples),
+        **base_metadata,
+        "energy_source": "daemon-counter",
+        "status": "completed",
         "intensity_gco2_kwh": intensity or calc.intensity,
         "kwh_price_usd": kwh_price,
     }

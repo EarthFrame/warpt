@@ -39,6 +39,20 @@ class PowerReading:
     hostname: str
 
 
+def counter_delta_joules(start: PowerReading, end: PowerReading) -> float | None:
+    """Energy (joules) between two readings, or None if the counter is unusable.
+
+    Returns None when the daemon restarted between readings (``reset_time``
+    changed) or the counter went backwards — either way there's no clean delta
+    to report, and callers should treat that as a terminal failure rather than
+    guess.
+    """
+    if end.reset_time != start.reset_time:
+        return None
+    delta = end.joules_since_reset - start.joules_since_reset
+    return delta if delta >= 0 else None
+
+
 class PowerClient:
     """Minimal HTTP client for the power-daemon REST API."""
 

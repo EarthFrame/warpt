@@ -77,23 +77,23 @@ def _start_tracking(label: str | None, interval: float) -> None:
     cfg = load_carbon_config()
     has_config = bool(cfg.get("region") or cfg.get("intensity"))
 
-    # Pre-check power sources before forking the daemon
-    monitor = PowerMonitor(include_process_attribution=False)
+    # Pre-check the daemon before forking — carbon tracking requires it.
+    monitor = PowerMonitor()
     monitor.initialize()
     sources = [s.value for s in monitor.get_available_sources()]
     unavailable = monitor.get_unavailable_reasons()
     monitor.cleanup()
 
     if not sources:
-        print("Warning: no power sources detected.", file=sys.stderr)
+        print("Error: power-daemon not reachable.", file=sys.stderr)
         print(
-            "Carbon tracking will start but power readings may be zero.",
+            "Carbon tracking requires the power-daemon. Start it (or set "
+            "POWER_DAEMON_URL) and try again.",
             file=sys.stderr,
         )
-        if unavailable:
-            for reason in unavailable:
-                print(f"  - {reason}", file=sys.stderr)
-        print(file=sys.stderr)
+        for reason in unavailable:
+            print(f"  - {reason}", file=sys.stderr)
+        sys.exit(1)
 
     effective_label = label or "manual"
     try:
@@ -148,19 +148,7 @@ def _start_tracking(label: str | None, interval: float) -> None:
         )
 
     print(f"  Interval: {interval}s")
-    if sources:
-        print(f"  Sources:  {', '.join(sources)}")
-    else:
-        print("  Sources:  none (power readings may be zero)")
-    if unavailable:
-        has_cpu = any(s in ("rapl", "powermetrics") for s in sources)
-        if not has_cpu:
-            print()
-            print("  \u26a0 CPU power not available")
-            for reason in unavailable:
-                if "RAPL" in reason or "powermetrics" in reason:
-                    for line in reason.split("\n"):
-                        print(f"    {line}")
+    print(f"  Source:   {', '.join(sources)}")
     print("\n  Stop with: warpt carbon stop")
 
 

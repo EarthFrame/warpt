@@ -1,4 +1,9 @@
-"""Power monitoring CLI command implementation."""
+"""Power monitoring CLI command implementation.
+
+Reads power exclusively from the warpt power-daemon. If the daemon is not
+running, the command reports that and exits — there is no native fallback and no
+per-process attribution (the daemon reports per-component, not per-process).
+"""
 
 from __future__ import annotations
 
@@ -10,11 +15,18 @@ from warpt.backends.power.factory import PowerMonitor
 from warpt.models.power_models import PowerSnapshot
 
 
+def _print_daemon_unavailable(monitor: PowerMonitor) -> None:
+    """Print the daemon-unavailable message and troubleshooting hints."""
+    for reason in monitor.get_unavailable_reasons():
+        print(reason)
+    print("\nTroubleshooting:")
+    print("  - Start the power-daemon, then re-run.")
+    print("  - Or set POWER_DAEMON_URL to point at a running daemon.")
+
+
 def run_power(
     interval_seconds: float = 1.0,
     duration_seconds: float | None = None,
-    show_processes: bool = True,
-    top_n_processes: int = 10,
     output_format: str = "text",
     output_file: str | None = None,
     continuous: bool = False,
@@ -24,8 +36,6 @@ def run_power(
     Args:
         interval_seconds: Sampling interval in seconds.
         duration_seconds: Stop after this many seconds (None = until interrupted).
-        show_processes: Whether to show per-process power.
-        top_n_processes: Number of top processes to show.
         output_format: Output format ("text", "json").
         output_file: Optional file to write JSON output.
         continuous: Whether to run continuously (vs single snapshot).
@@ -33,34 +43,18 @@ def run_power(
     if interval_seconds <= 0:
         raise ValueError("interval_seconds must be greater than zero")
 
-    monitor = PowerMonitor(include_process_attribution=show_processes)
+    monitor = PowerMonitor()
 
     if not monitor.initialize():
-        print("No power sources available on this system.")
-        reasons = monitor.get_unavailable_reasons()
-        if reasons:
-            print("\nBackends checked:")
-            for reason in reasons:
-                print(f"  - {reason}")
-        print("\nTroubleshooting:")
-        print("  warpt power --sources    Show detailed source diagnostics")
+        _print_daemon_unavailable(monitor)
         return
 
-    sources = monitor.get_available_sources()
-    print(f"Available power sources: {[s.value for s in sources]}")
-    unavailable = monitor.get_unavailable_reasons()
-    if unavailable:
-        print("Unavailable sources:")
-        for reason in unavailable:
-            print(f"  - {reason}")
+    print(f"Power source: {[s.value for s in monitor.get_available_sources()]}")
     print()
 
     if not continuous:
-        # Single snapshot mode - wait a bit longer for powermetrics
-        # (powermetrics needs ~1s sample interval + collection time)
-        time.sleep(max(interval_seconds, 1.5))
         snapshot = monitor.get_snapshot()
-        _display_snapshot(snapshot, show_processes, top_n_processes, output_format)
+        _display_snapshot(snapshot, output_format)
 
         if output_file:
             _write_json_output(snapshot, output_file)
@@ -86,7 +80,7 @@ def run_power(
                 if output_format == "json":
                     print(json.dumps(snapshot.to_dict(), indent=2))
                 else:
-                    _display_snapshot_compact(snapshot, show_processes, top_n_processes)
+                    _display_snapshot_compact(snapshot)
 
                 # Check duration limit
                 if duration_seconds and (time.time() - start_time) >= duration_seconds:
@@ -105,12 +99,7 @@ def run_power(
                 print(f"\nResults written to: {output_file}")
 
 
-def _display_snapshot(
-    snapshot: PowerSnapshot,
-    show_processes: bool,
-    top_n: int,
-    output_format: str,
-) -> None:
+def _display_snapshot(snapshot: PowerSnapshot, output_format: str) -> None:
     """Display a power snapshot in detail."""
     if output_format == "json":
         print(json.dumps(snapshot.to_dict(), indent=2))
@@ -146,30 +135,11 @@ def _display_snapshot(
             if gpu.temperature_celsius:
                 print(f"    Temperature: {gpu.temperature_celsius:8.0f}°C")
 
-    # Process breakdown
-    if show_processes and snapshot.processes:
-        print(f"\nTop {top_n} Processes by Power:")
-        print("-" * 60)
-        print(f"{'PID':<8} {'Name':<25} {'CPU W':>8} {'GPU W':>8} {'Total W':>8}")
-        print("-" * 60)
 
-        for proc in snapshot.processes[:top_n]:
-            name = proc.name[:24] if len(proc.name) > 24 else proc.name
-            print(
-                f"{proc.pid:<8} {name:<25} {proc.cpu_power_watts:>8.2f} "
-                f"{proc.gpu_power_watts:>8.2f} {proc.total_power_watts:>8.2f}"
-            )
-
-
-def _display_snapshot_compact(
-    snapshot: PowerSnapshot,
-    show_processes: bool,
-    _top_n: int,
-) -> None:
+def _display_snapshot_compact(snapshot: PowerSnapshot) -> None:
     """Display a compact single-line snapshot for continuous mode."""
     timestamp = datetime.fromtimestamp(snapshot.timestamp).strftime("%H:%M:%S")
 
-    # Build component strings
     parts = [timestamp]
 
     if snapshot.total_power_watts is not None:
@@ -182,11 +152,6 @@ def _display_snapshot_compact(
     gpu_power = snapshot.get_gpu_power()
     if gpu_power > 0:
         parts.append(f"GPU: {gpu_power:.1f}W")
-
-    # Top process
-    if show_processes and snapshot.processes:
-        top = snapshot.processes[0]
-        parts.append(f"Top: {top.name[:15]}({top.total_power_watts:.1f}W)")
 
     print(" | ".join(parts))
 
@@ -210,62 +175,30 @@ def _write_json_output_list(snapshots: list[PowerSnapshot], filename: str) -> No
 
 
 def show_power_sources() -> None:
-    """Display available power sources on this system."""
-    monitor = PowerMonitor(include_process_attribution=False)
-    monitor.initialize()
-
-    sources = monitor.get_available_sources()
+    """Display power source availability (the daemon) on this system."""
+    monitor = PowerMonitor()
+    available = monitor.initialize()
 
     print("Power Monitoring Capabilities")
     print("=" * 50)
     print()
 
-    if not sources:
-        print("No power sources available.")
-        reasons = monitor.get_unavailable_reasons()
-        if reasons:
-            print()
-            print("Backends checked:")
-            for reason in reasons:
-                print(f"  - {reason}")
-        print()
-        print("Troubleshooting:")
-        print("  Linux:")
-        print("    - Check /sys/class/powercap/intel-rapl/ exists")
-        print("    - May need: sudo chmod -R a+r /sys/class/powercap/")
-        print("    - Or add user to powercap group")
-        print()
-        print("  macOS:")
-        print("    - Requires passwordless sudo for powermetrics")
-        print("    - Add to /etc/sudoers:")
-        print("      username ALL=(ALL) NOPASSWD: /usr/bin/powermetrics")
-        print()
-        print("  NVIDIA GPUs:")
-        print("    - Requires nvidia-ml-py package")
-        print("    - pip install nvidia-ml-py")
-    else:
-        print(f"Available sources: {[s.value for s in sources]}")
-        print()
+    if not available:
+        _print_daemon_unavailable(monitor)
+        return
 
-        unavailable = monitor.get_unavailable_reasons()
-        if unavailable:
-            print("Unavailable sources:")
-            for reason in unavailable:
-                print(f"  - {reason}")
-            print()
+    print(f"Available source: {[s.value for s in monitor.get_available_sources()]}")
+    print()
 
-        # Get a sample reading
-        time.sleep(0.5)
-        snapshot = monitor.get_snapshot()
+    snapshot = monitor.get_snapshot()
+    if snapshot.domains:
+        print("Reported power domains:")
+        for domain in snapshot.domains:
+            print(f"  - {domain.domain.value}: {domain.power_watts:.2f} W")
 
-        if snapshot.domains:
-            print("Supported power domains:")
-            for domain in snapshot.domains:
-                print(f"  - {domain.domain.value}: {domain.power_watts:.2f} W")
-
-        if snapshot.gpus:
-            print(f"\nDetected GPUs: {len(snapshot.gpus)}")
-            for gpu in snapshot.gpus:
-                print(f"  - {gpu.name}: {gpu.power_watts:.2f} W")
+    if snapshot.gpus:
+        print(f"\nDetected GPUs: {len(snapshot.gpus)}")
+        for gpu in snapshot.gpus:
+            print(f"  - {gpu.name}: {gpu.power_watts:.2f} W")
 
     monitor.cleanup()
