@@ -1,493 +1,233 @@
-"""Tests for CarbonTracker context manager."""
+"""Tests for CarbonTracker context manager (daemon-only).
+
+Energy is read exclusively from the Rust power-daemon counter. There is no
+native/polled fallback: the daemon is either reachable (tracking works) or it
+isn't (tracking is disabled or terminated, never guessed).
+"""
 
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from warpt.backends.power.daemon_client import PowerReading
+from warpt.backends.power.daemon_client import PowerClientError, PowerReading
 from warpt.carbon.tracker import CarbonTracker
 from warpt.models.carbon_models import CarbonSession
-from warpt.models.power_models import (
-    DomainPower,
-    PowerDomain,
-    PowerSnapshot,
-    PowerSource,
-)
+from warpt.models.power_models import PowerSnapshot
 
-# PowerMonitor is imported at module level in tracker.py, so patch
-# the name in the tracker module (where it's looked up at runtime).
+# Names are looked up in the tracker module at runtime, so patch them there.
 _PM_PATH = "warpt.carbon.tracker.PowerMonitor"
+_CLIENT_PATH = "warpt.carbon.tracker.PowerClient"
+_STORE_PATH = "warpt.carbon.tracker.EnergyStore"
 
 
-@pytest.fixture(autouse=True)
-def _daemon_inert_by_default(monkeypatch):
-    """Keep unit tests off the network by default.
+def _reading(joules: float, reset_time: float = 42.0, watts: float = 100.0):
+    return PowerReading(
+        timestamp=time.time(),
+        watts=watts,
+        joules_since_reset=joules,
+        watt_hours_since_reset=joules / 3600.0,
+        reset_time=reset_time,
+        hostname="node1",
+    )
 
-    Mocked monitors return is_daemon_active() as a truthy MagicMock, so without
-    this the tracker would attempt a real localhost call to the power-daemon.
-    Force the client unavailable; the daemon-counter tests re-enable it by
-    patching the class.
-    """
-    from warpt.backends.power.daemon_client import PowerClient, PowerClientError
 
-    def _unavailable(_self):
-        raise PowerClientError("power-daemon disabled in tests")
+def _mock_monitor(total_watts: float | None = 100.0):
+    monitor = MagicMock()
+    monitor.initialize.return_value = True
+    monitor.get_snapshot.return_value = PowerSnapshot(
+        timestamp=time.time(), total_power_watts=total_watts
+    )
+    return monitor
 
-    monkeypatch.setattr(PowerClient, "current", _unavailable)
+
+def _mock_client(readings, healthz: bool = True):
+    client = MagicMock()
+    client.current.side_effect = readings
+    client.healthz.return_value = healthz
+    return client
 
 
 class TestCarbonTrackerNoop:
-    """Tests for CarbonTracker graceful degradation."""
+    """The daemon being down disables tracking but never the workload."""
 
     @patch(_PM_PATH)
-    def test_noop_when_no_power_sources(self, _mock_pm_cls):
-        """Tracker becomes no-op when initialize() returns False."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = False
-        _mock_pm_cls.return_value = mock_monitor
+    def test_noop_when_daemon_unreachable(self, mock_pm_cls):
+        """initialize() False → no-op tracker, wrapped code still runs."""
+        monitor = MagicMock()
+        monitor.initialize.return_value = False
+        mock_pm_cls.return_value = monitor
 
         with CarbonTracker(label="test") as tracker:
             assert tracker._noop is True
             result = 1 + 1
-
         assert result == 2
 
-    @patch(_PM_PATH, side_effect=ImportError("no backend"))
-    def test_noop_when_import_fails(self, _mock_pm_cls):
-        """Tracker becomes no-op when PowerMonitor raises."""
+    @patch(_PM_PATH, side_effect=RuntimeError("no monitor"))
+    def test_noop_when_monitor_raises(self, _mock_pm_cls):
+        """A monitor construction error degrades to a no-op, not a crash."""
+        with CarbonTracker(label="test") as tracker:
+            assert tracker._noop is True
+
+    @patch(_CLIENT_PATH)
+    @patch(_PM_PATH)
+    def test_noop_when_start_counter_unreadable(self, mock_pm_cls, mock_client_cls):
+        """Daemon healthy but counter read fails at start → no-op."""
+        mock_pm_cls.return_value = _mock_monitor()
+        client = MagicMock()
+        client.current.side_effect = PowerClientError("counter down")
+        mock_client_cls.return_value = client
+
         with CarbonTracker(label="test") as tracker:
             assert tracker._noop is True
 
 
-class TestCarbonTrackerIntegration:
-    """Tests for CarbonTracker with mocked power backend."""
+class TestCarbonTrackerHappyPath:
+    """Daemon reachable: energy comes from the counter delta."""
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_creates_and_finalizes_session(self, mock_pm_cls, mock_store_cls):
-        """Tracker creates a session on enter and finalizes on exit."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        snapshot = PowerSnapshot(
-            timestamp=time.time(),
-            total_power_watts=50.0,
+    def test_creates_and_finalizes_session(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """A reachable daemon yields a completed, counter-sourced session."""
+        mock_pm_cls.return_value = _mock_monitor()
+        mock_client_cls.return_value = _mock_client(
+            [_reading(1000.0), _reading(4600.0)]
         )
-        mock_monitor.get_snapshot.return_value = snapshot
+        store = MagicMock()
+        mock_store_cls.return_value = store
 
-        mock_store = MagicMock()
-        mock_store_cls.return_value = mock_store
+        with CarbonTracker(label="test", interval=0.05):
+            time.sleep(0.15)
 
-        with CarbonTracker(label="test", interval=0.1):
-            time.sleep(0.3)
-
-        assert mock_store.create_session.called
-        assert mock_store.update_session.called
-
-        final_call = mock_store.update_session.call_args
-        session = final_call[0][0]
+        assert store.create_session.called
+        assert store.update_session.called
+        session = store.update_session.call_args[0][0]
         assert isinstance(session, CarbonSession)
         assert session.label == "test"
         assert session.end_time is not None
-        assert session.duration_s is not None
         assert session.duration_s > 0
+        assert session.metadata["status"] == "completed"
+        assert session.metadata["energy_source"] == "daemon-counter"
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_samples_collected(self, mock_pm_cls, mock_store_cls):
-        """Tracker collects power samples in background thread."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        call_count = 0
-
-        def make_snapshot():
-            nonlocal call_count
-            call_count += 1
-            return PowerSnapshot(
-                timestamp=time.time(),
-                total_power_watts=100.0,
-            )
-
-        mock_monitor.get_snapshot.side_effect = make_snapshot
+    def test_energy_from_counter_delta(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """3600 J consumed between start and end → 0.001 kWh."""
+        mock_pm_cls.return_value = _mock_monitor()
+        mock_client_cls.return_value = _mock_client(
+            [_reading(1000.0), _reading(4600.0)]
+        )
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.25)
+            time.sleep(0.1)
 
-        assert call_count >= 2
+        session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert session.energy_kwh == pytest.approx(0.001)
+        assert session.metadata["energy_source"] == "daemon-counter"
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_zero_power_samples_skipped(self, mock_pm_cls, mock_store_cls):
-        """Samples with None total power are not recorded."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        snapshot = PowerSnapshot(
-            timestamp=time.time(),
-            total_power_watts=None,
+    def test_samples_collected(self, mock_pm_cls, mock_client_cls, mock_store_cls):
+        """Background sampling records daemon power readings for avg/peak."""
+        mock_pm_cls.return_value = _mock_monitor(total_watts=120.0)
+        mock_client_cls.return_value = _mock_client(
+            [_reading(1000.0), _reading(2000.0)]
         )
-        mock_monitor.get_snapshot.return_value = snapshot
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05) as tracker:
-            time.sleep(0.15)
+            time.sleep(0.2)
+            assert len(tracker._samples) >= 2
 
-        assert len(tracker._samples) == 0
-
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_exception_in_wrapped_code(self, mock_pm_cls, mock_store_cls):
-        """Tracker finalizes session even if wrapped code raises."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        snapshot = PowerSnapshot(timestamp=time.time(), total_power_watts=50.0)
-        mock_monitor.get_snapshot.return_value = snapshot
-
-        mock_store = MagicMock()
-        mock_store_cls.return_value = mock_store
+    def test_finalizes_even_when_wrapped_code_raises(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """An exception in the wrapped workload still finalizes the session."""
+        mock_pm_cls.return_value = _mock_monitor()
+        mock_client_cls.return_value = _mock_client(
+            [_reading(1000.0), _reading(1500.0)]
+        )
+        store = MagicMock()
+        mock_store_cls.return_value = store
 
         with pytest.raises(ValueError):
             with CarbonTracker(label="test", interval=0.1):
                 raise ValueError("boom")
 
-        assert mock_store.update_session.called
+        assert store.update_session.called
 
 
-class TestCarbonTrackerEnergyCounter:
-    """Tests for hardware energy counter integration."""
+class TestCarbonTrackerTermination:
+    """Daemon failures record a terminated session, never a guessed number."""
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_uses_counter_when_available(self, mock_pm_cls, mock_store_cls):
-        """Tracker uses GPU energy counter delta when available."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        call_count = 0
-
-        def make_snapshot():
-            nonlocal call_count
-            call_count += 1
-            # First call: __enter__ snapshot (start counter)
-            # Middle calls: sample loop
-            # Last call: _get_gpu_counter_delta (end counter)
-            energy_j = 1000.0 + (call_count * 500.0)
-            return PowerSnapshot(
-                timestamp=time.time(),
-                total_power_watts=200.0,
-                domains=[
-                    DomainPower(
-                        domain=PowerDomain.GPU,
-                        power_watts=150.0,
-                        energy_joules=energy_j,
-                        source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
-                    ),
-                ],
-            )
-
-        mock_monitor.get_snapshot.side_effect = make_snapshot
+    def test_counter_reset_is_terminated(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """A reset_time change (daemon restart) → terminated, no energy."""
+        mock_pm_cls.return_value = _mock_monitor()
+        mock_client_cls.return_value = _mock_client(
+            [_reading(5000.0, reset_time=42.0), _reading(100.0, reset_time=99.0)]
+        )
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.15)
+            time.sleep(0.1)
 
-        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert final_session.metadata["energy_source"] == "counter"
+        session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert "terminated" in session.metadata["status"]
+        assert session.energy_kwh is None
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_falls_back_to_polled_without_counter(self, mock_pm_cls, mock_store_cls):
-        """Tracker falls back to trapezoidal integration without counters."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        # No energy_joules on domains — no counter available
-        snapshot = PowerSnapshot(
-            timestamp=time.time(),
-            total_power_watts=100.0,
+    def test_end_read_failure_is_terminated(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """A failed end-of-session counter read → terminated (loss of conn.)."""
+        mock_pm_cls.return_value = _mock_monitor()
+        mock_client_cls.return_value = _mock_client(
+            [_reading(1000.0), PowerClientError("gone")]
         )
-        mock_monitor.get_snapshot.return_value = snapshot
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.15)
+            time.sleep(0.1)
 
-        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert final_session.metadata["energy_source"] == "polled"
+        session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert "loss of connection" in session.metadata["status"]
+        assert session.energy_kwh is None
 
-    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_STORE_PATH)
+    @patch(_CLIENT_PATH)
     @patch(_PM_PATH)
-    def test_counter_delta_captures_start_energy(self, mock_pm_cls, mock_store_cls):
-        """Start energy is captured from initial snapshot in __enter__."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        snapshot = PowerSnapshot(
-            timestamp=time.time(),
-            total_power_watts=100.0,
-            domains=[
-                DomainPower(
-                    domain=PowerDomain.GPU,
-                    power_watts=80.0,
-                    energy_joules=5000.0,
-                    source=PowerSource.NVML,
-                    metadata={"gpu_index": 0},
-                ),
-            ],
-        )
-        mock_monitor.get_snapshot.return_value = snapshot
+    def test_midrun_loss_terminates_tracking(
+        self, mock_pm_cls, mock_client_cls, mock_store_cls
+    ):
+        """Snapshot stops returning data and health check fails → terminated."""
+        monitor = _mock_monitor(total_watts=None)  # daemon returns nothing
+        mock_pm_cls.return_value = monitor
+        # Start read succeeds; healthz False so the one reconnect attempt fails.
+        mock_client_cls.return_value = _mock_client([_reading(1000.0)], healthz=False)
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05) as tracker:
-            assert tracker._start_gpu_energy == {0: 5000.0}
-            time.sleep(0.1)
-
-
-class TestCarbonTrackerCPUCounter:
-    """Tests for CPU RAPL energy counter integration."""
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_uses_cpu_counter_when_available(self, mock_pm_cls, mock_store_cls):
-        """Tracker uses CPU energy counter delta when available."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        call_count = 0
-
-        def make_snapshot():
-            nonlocal call_count
-            call_count += 1
-            energy_j = 1000.0 + (call_count * 200.0)
-            return PowerSnapshot(
-                timestamp=time.time(),
-                total_power_watts=100.0,
-                domains=[
-                    DomainPower(
-                        domain=PowerDomain.PACKAGE,
-                        power_watts=50.0,
-                        energy_joules=energy_j,
-                        source=PowerSource.RAPL,
-                        metadata={"rapl_name": "package-0"},
-                    ),
-                ],
-            )
-
-        mock_monitor.get_snapshot.side_effect = make_snapshot
-        mock_store_cls.return_value = MagicMock()
-
-        with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.15)
-
-        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert final_session.metadata["energy_source"] == "counter"
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_cpu_counter_with_gpu_counter(self, mock_pm_cls, mock_store_cls):
-        """Both CPU and GPU counters present, both used."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        call_count = 0
-
-        def make_snapshot():
-            nonlocal call_count
-            call_count += 1
-            cpu_energy = 500.0 + (call_count * 100.0)
-            gpu_energy = 2000.0 + (call_count * 300.0)
-            return PowerSnapshot(
-                timestamp=time.time(),
-                total_power_watts=200.0,
-                domains=[
-                    DomainPower(
-                        domain=PowerDomain.PACKAGE,
-                        power_watts=60.0,
-                        energy_joules=cpu_energy,
-                        source=PowerSource.RAPL,
-                        metadata={"rapl_name": "package-0"},
-                    ),
-                    DomainPower(
-                        domain=PowerDomain.GPU,
-                        power_watts=140.0,
-                        energy_joules=gpu_energy,
-                        source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
-                    ),
-                ],
-            )
-
-        mock_monitor.get_snapshot.side_effect = make_snapshot
-        mock_store_cls.return_value = MagicMock()
-
-        with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.15)
-
-        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert final_session.metadata["energy_source"] == "counter"
-        assert final_session.energy_kwh > 0
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_cpu_counter_without_gpu_counter(self, mock_pm_cls, mock_store_cls):
-        """CPU counter only, GPU polled."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        call_count = 0
-
-        def make_snapshot():
-            nonlocal call_count
-            call_count += 1
-            cpu_energy = 1000.0 + (call_count * 150.0)
-            return PowerSnapshot(
-                timestamp=time.time(),
-                total_power_watts=120.0,
-                domains=[
-                    DomainPower(
-                        domain=PowerDomain.PACKAGE,
-                        power_watts=70.0,
-                        energy_joules=cpu_energy,
-                        source=PowerSource.RAPL,
-                        metadata={"rapl_name": "package-0"},
-                    ),
-                    DomainPower(
-                        domain=PowerDomain.GPU,
-                        power_watts=50.0,
-                        energy_joules=None,  # No GPU counter
-                        source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
-                    ),
-                ],
-            )
-
-        mock_monitor.get_snapshot.side_effect = make_snapshot
-        mock_store_cls.return_value = MagicMock()
-
-        with CarbonTracker(label="test", interval=0.05):
-            time.sleep(0.15)
-
-        final_session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert final_session.metadata["energy_source"] == "counter"
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_counter_delta_captures_start_cpu_energy(self, mock_pm_cls, mock_store_cls):
-        """Start CPU energy is captured from initial snapshot in __enter__."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.get_available_sources.return_value = []
-        mock_pm_cls.return_value = mock_monitor
-
-        snapshot = PowerSnapshot(
-            timestamp=time.time(),
-            total_power_watts=80.0,
-            domains=[
-                DomainPower(
-                    domain=PowerDomain.PACKAGE,
-                    power_watts=40.0,
-                    energy_joules=3000.0,
-                    source=PowerSource.RAPL,
-                    metadata={"rapl_name": "package-0"},
-                ),
-            ],
-        )
-        mock_monitor.get_snapshot.return_value = snapshot
-        mock_store_cls.return_value = MagicMock()
-
-        with CarbonTracker(label="test", interval=0.05) as tracker:
-            assert tracker._start_cpu_energy == {"package-0": 3000.0}
-            time.sleep(0.1)
-
-
-class TestCarbonTrackerDaemonCounter:
-    """Tests for preferring the out-of-process daemon's energy counter."""
-
-    @staticmethod
-    def _reading(joules, reset_time=42.0):
-        return PowerReading(
-            timestamp=time.time(),
-            watts=100.0,
-            joules_since_reset=joules,
-            watt_hours_since_reset=joules / 3600.0,
-            reset_time=reset_time,
-            hostname="node1",
-        )
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_uses_daemon_counter(self, mock_pm_cls, mock_store_cls):
-        """When the daemon is active, energy comes from its counter delta."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.is_daemon_active.return_value = True
-        mock_monitor.get_available_sources.return_value = [PowerSource.DAEMON]
-        mock_monitor.get_snapshot.return_value = PowerSnapshot(
-            timestamp=time.time(), total_power_watts=100.0
-        )
-        mock_pm_cls.return_value = mock_monitor
-        mock_store_cls.return_value = MagicMock()
-
-        # 3600 J consumed → 0.001 kWh. current() is called once at enter, once at exit.
-        with patch("warpt.carbon.tracker.PowerClient") as mock_client_cls:
-            mock_client_cls.return_value.current.side_effect = [
-                self._reading(1000.0),
-                self._reading(4600.0),
-            ]
-            with CarbonTracker(label="test", interval=0.05):
-                time.sleep(0.1)
+            time.sleep(0.7)  # allow the 0.5s reconnect attempt to elapse
+            assert tracker._daemon_lost is True
 
         session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert session.metadata["energy_source"] == "daemon-counter"
-        assert session.energy_kwh == pytest.approx(0.001)
-        assert "daemon" in session.sources
-
-    @patch("warpt.carbon.tracker.EnergyStore")
-    @patch(_PM_PATH)
-    def test_daemon_restart_falls_back(self, mock_pm_cls, mock_store_cls):
-        """A counter reset (reset_time change) falls back, not a bogus delta."""
-        mock_monitor = MagicMock()
-        mock_monitor.initialize.return_value = True
-        mock_monitor.is_daemon_active.return_value = True
-        mock_monitor.get_available_sources.return_value = [PowerSource.DAEMON]
-        mock_monitor.get_snapshot.return_value = PowerSnapshot(
-            timestamp=time.time(), total_power_watts=100.0
-        )
-        mock_pm_cls.return_value = mock_monitor
-        mock_store_cls.return_value = MagicMock()
-
-        with patch("warpt.carbon.tracker.PowerClient") as mock_client_cls:
-            mock_client_cls.return_value.current.side_effect = [
-                self._reading(5000.0, reset_time=42.0),
-                self._reading(100.0, reset_time=99.0),  # daemon restarted
-            ]
-            with CarbonTracker(label="test", interval=0.05):
-                time.sleep(0.1)
-
-        session = mock_store_cls.return_value.update_session.call_args[0][0]
-        assert session.metadata["energy_source"] == "polled"
+        assert "loss of connection" in session.metadata["status"]
+        assert session.energy_kwh is None

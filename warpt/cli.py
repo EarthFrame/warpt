@@ -156,20 +156,6 @@ def monitor(interval, duration, no_tui):
     help="Stop after this many seconds (default: run until interrupted)",
 )
 @click.option(
-    "--no-processes",
-    is_flag=True,
-    default=False,
-    help="Don't show per-process power attribution",
-)
-@click.option(
-    "--top",
-    "-n",
-    type=int,
-    default=10,
-    show_default=True,
-    help="Number of top processes to display",
-)
-@click.option(
     "--json",
     "output_json",
     is_flag=True,
@@ -196,13 +182,11 @@ def monitor(interval, duration, no_tui):
     default=False,
     help="Show available power sources and exit",
 )
-def power(
-    interval, duration, no_processes, top, output_json, output, continuous, sources
-):
+def power(interval, duration, output_json, output, continuous, sources):
     r"""Monitor system power consumption.
 
-    Displays power usage in watts for CPU, GPU, and other components.
-    Can attribute power consumption to individual processes.
+    Displays power usage in watts for CPU, GPU, and other components, read from
+    the warpt power-daemon.
 
     \b
     Examples:
@@ -214,10 +198,8 @@ def power(
       warpt power --sources          # Show available power sources
 
     \b
-    Platform support:
-      Linux: Intel/AMD RAPL via /sys/class/powercap/
-      macOS: powermetrics (requires sudo)
-      All: NVIDIA GPUs via NVML
+    Requires the warpt power-daemon to be running (set POWER_DAEMON_URL or start
+    the daemon). There is no native fallback.
     """
     from warpt.commands.power_cmd import run_power, show_power_sources
 
@@ -229,8 +211,6 @@ def power(
         run_power(
             interval_seconds=interval,
             duration_seconds=duration,
-            show_processes=not no_processes,
-            top_n_processes=top,
             output_format="json" if output_json else "text",
             output_file=output,
             continuous=continuous,
@@ -546,9 +526,6 @@ def stress(
 )
 @click.option("--label", "-l", default=None, help="Session label")
 @click.option(
-    "--interval", "-i", default=1.0, type=float, help="Sampling interval in seconds"
-)
-@click.option(
     "--limit", "-n", default=20, type=int, help="Max sessions to show in history"
 )
 @click.option(
@@ -560,13 +537,13 @@ def stress(
     default=None,
     help="Value for set-region (region code) or intensity (gCO2/kWh)",
 )
-def carbon(subcommand, label, interval, limit, days, output_json, value):
+def carbon(subcommand, label, limit, days, output_json, value):
     """Track energy consumption, CO2 emissions, and electricity cost.
 
     \b
     Examples:
-      warpt carbon                     Show daemon status
-      warpt carbon start               Start background tracking
+      warpt carbon                     Show tracking status
+      warpt carbon start               Start a tracking session
       warpt carbon stop                Stop and show results
       warpt carbon history             Show recent sessions
       warpt carbon summary --days 7    Aggregate last 7 days
@@ -591,7 +568,7 @@ def carbon(subcommand, label, interval, limit, days, output_json, value):
     """
     from warpt.commands.carbon_cmd import run_carbon
 
-    run_carbon(subcommand, label, interval, limit, days, output_json, value)
+    run_carbon(subcommand, label, limit, days, output_json, value)
 
 
 # Register integrate command group (requires optional deps)
