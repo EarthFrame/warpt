@@ -40,12 +40,10 @@ class PowerReading:
 
 
 def counter_delta_joules(start: PowerReading, end: PowerReading) -> float | None:
-    """Energy (joules) between two readings, or None if the counter is unusable.
+    """Energy between two readings, or None if the counter is unusable.
 
-    Returns None when the daemon restarted between readings (``reset_time``
-    changed) or the counter went backwards — either way there's no clean delta
-    to report, and callers should treat that as a terminal failure rather than
-    guess.
+    Returns None if the daemon restarted (``reset_time`` changed) or the counter
+    went backwards. Callers should treat that as a terminal failure, not guess.
     """
     if end.reset_time != start.reset_time:
         return None

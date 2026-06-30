@@ -1,10 +1,7 @@
-"""Manual energy-tracking sessions, bookmarked against the Rust power-daemon.
+"""Manual energy-tracking sessions backed by the Rust power-daemon's counter.
 
-There is no background process here. ``warpt carbon start`` records where the
-power-daemon's energy counter was (a bookmark on disk); ``status`` polls the
-daemon live and shows the delta so far; ``stop`` reads the counter once more and
-the energy is simply ``end - start``. The Rust daemon is the only long-lived
-process — warpt just reads its odometer at the boundaries.
+``start`` bookmarks the counter to disk, ``status`` polls the live delta, and
+``stop`` records ``end - start`` — no background process, just reads at the edges.
 """
 
 from __future__ import annotations
