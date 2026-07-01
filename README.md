@@ -13,7 +13,14 @@ warpt provides a vendor-agnostic reporting interface for software and hardware r
 
 `warpt` requires Python 3.8 or newer, though we recommend 3.10+. `warpt` has full support on Mac OS X and Linux; Windows support is currently limited.
 
-**Note:** We recommend using `warpt` in a virtualenv. Before installing warpt, you can create and activate a virtualenv by running:
+**Optional: need a newer Python?** If your system Python is older than 3.10, [pyenv](https://github.com/pyenv/pyenv) installs and manages standalone versions without touching the system one (see its [installation guide](https://github.com/pyenv/pyenv#installation)):
+
+```bash
+pyenv install 3.12
+pyenv local 3.12
+```
+
+**Note:** We recommend installing `warpt` in a virtualenv. On systems that lock the system Python (e.g. Ubuntu/Pop!_OS, which report `externally-managed-environment`), a virtualenv is required. Create and activate one by running:
 
 ```bash
 python -m venv warpt-env
