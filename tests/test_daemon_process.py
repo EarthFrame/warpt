@@ -163,7 +163,7 @@ def test_daemon_wires_intelligence_when_enabled(tmp_path) -> None:
         patch("warpt.daemon.daemon_process.VitalsNurse"),
         patch("warpt.daemon.daemon_process.CaseFile"),
         patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
-        patch("warpt.daemon.daemon_process.OllamaClient") as mock_ollama_cls,
+        patch("warpt.daemon.daemon_process.provider_for_agent") as mock_pfa,
         patch("warpt.daemon.daemon_process.ChartNurse") as mock_chart_cls,
         patch("warpt.daemon.daemon_process.Attending") as mock_attending_cls,
         patch("warpt.daemon.daemon_process.Scribe") as mock_scribe_cls,
@@ -175,8 +175,10 @@ def test_daemon_wires_intelligence_when_enabled(tmp_path) -> None:
         dp.stop()
         t.join(timeout=2)
 
-        # OllamaClient created twice (chart_nurse model + attending model)
-        assert mock_ollama_cls.call_count == 2
+        # A provider is built for each agent (chart_nurse + attending)
+        assert mock_pfa.call_count == 2
+        built_for = {call.args[1] for call in mock_pfa.call_args_list}
+        assert built_for == {"chart_nurse", "attending"}
         mock_chart_cls.assert_called_once()
         mock_attending_cls.assert_called_once()
         mock_scribe_cls.assert_called_once()
@@ -200,7 +202,7 @@ def test_daemon_skips_intelligence_when_disabled(tmp_path) -> None:
         patch("warpt.daemon.daemon_process.VitalsNurse"),
         patch("warpt.daemon.daemon_process.CaseFile"),
         patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
-        patch("warpt.daemon.daemon_process.OllamaClient") as mock_ollama_cls,
+        patch("warpt.daemon.daemon_process.provider_for_agent") as mock_pfa,
         patch("warpt.daemon.daemon_process.ChartNurse") as mock_chart_cls,
         patch("warpt.daemon.daemon_process.Attending") as mock_attending_cls,
         patch("warpt.daemon.daemon_process.Scribe") as mock_scribe_cls,
@@ -212,7 +214,7 @@ def test_daemon_skips_intelligence_when_disabled(tmp_path) -> None:
         dp.stop()
         t.join(timeout=2)
 
-        mock_ollama_cls.assert_not_called()
+        mock_pfa.assert_not_called()
         mock_chart_cls.assert_not_called()
         mock_attending_cls.assert_not_called()
         mock_scribe_cls.assert_not_called()
@@ -237,7 +239,7 @@ def test_daemon_pipeline_uses_run_intelligence_pipeline(tmp_path) -> None:
         patch("warpt.daemon.daemon_process.VitalsNurse"),
         patch("warpt.daemon.daemon_process.CaseFile"),
         patch("warpt.daemon.daemon_process.ChargeNurse") as mock_cn_cls,
-        patch("warpt.daemon.daemon_process.OllamaClient"),
+        patch("warpt.daemon.daemon_process.provider_for_agent"),
         patch("warpt.daemon.daemon_process.ChartNurse"),
         patch("warpt.daemon.daemon_process.Attending"),
         patch("warpt.daemon.daemon_process.Scribe"),

@@ -6,10 +6,10 @@ import json
 from datetime import datetime
 from typing import Any
 
-from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.agents.prompts import CHART_NURSE_SYSTEM_PROMPT
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.gpu_fields import SNAPSHOT_TO_DB
+from warpt.daemon.llm.base import LLMProvider
 from warpt.utils.logger import Logger
 
 
@@ -20,13 +20,13 @@ class ChartNurse:
     ----------
     casefile
         CaseFile instance for database queries.
-    ollama_client
-        OllamaClient instance for LLM interpretation.
+    provider
+        LLMProvider instance for interpretation.
     """
 
-    def __init__(self, casefile: CaseFile, ollama_client: OllamaClient) -> None:
+    def __init__(self, casefile: CaseFile, provider: LLMProvider) -> None:
         self._casefile = casefile
-        self._client = ollama_client
+        self._provider = provider
         self._log = Logger.get("daemon.agents.chart_nurse")
 
     def analyze(
@@ -73,8 +73,9 @@ class ChartNurse:
             "event_count_7d": event_count,
         }
 
-        interpretation = self._client.generate(
-            json.dumps(stats, default=str), CHART_NURSE_SYSTEM_PROMPT
+        response = self._provider.generate(
+            [{"role": "user", "content": json.dumps(stats, default=str)}],
+            system=CHART_NURSE_SYSTEM_PROMPT,
         )
 
         return {
@@ -86,8 +87,8 @@ class ChartNurse:
             "deviation_pct": deviation_pct,
             "prior_cases": prior_cases,
             "event_count_7d": event_count,
-            "interpretation": interpretation,
-            "model_used": self._client.model,
+            "interpretation": response.text,
+            "model_used": response.model,
         }
 
     def analyze_without_llm(

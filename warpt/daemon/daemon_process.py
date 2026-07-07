@@ -11,12 +11,12 @@ from typing import Any
 
 from warpt.daemon.agents.attending import Attending
 from warpt.daemon.agents.chart_nurse import ChartNurse
-from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.agents.pipeline import run_intelligence_pipeline
 from warpt.daemon.agents.scribe import Scribe
 from warpt.daemon.casefile import CaseFile, read_only_snapshot
 from warpt.daemon.charge_nurse import ChargeNurse
 from warpt.daemon.config import load_config
+from warpt.daemon.llm.registry import provider_for_agent
 from warpt.daemon.vitals_nurse import VitalsNurse
 from warpt.utils.logger import Logger
 
@@ -72,20 +72,20 @@ class DaemonProcess:
 
     def _build_pipeline(self, config: dict, log: Any) -> Any:
         """Create intelligence agents and return the pipeline closure."""
-        ollama_url = config.get("ollama_url", "http://localhost:11434")
-        models = config.get("models", {})
-
-        chart_client = OllamaClient(
-            model=models.get("chart_nurse", "llama3:8b"), ollama_url=ollama_url
+        chart_provider = provider_for_agent(config, "chart_nurse")
+        attending_provider = provider_for_agent(config, "attending")
+        log.info(
+            "LLM providers: chart_nurse=%s(%s) attending=%s(%s)",
+            chart_provider.name,
+            chart_provider.model,
+            attending_provider.name,
+            attending_provider.model,
         )
-        attending_client = OllamaClient(
-            model=models.get("attending", "llama3:70b"), ollama_url=ollama_url
-        )
 
-        chart_nurse = ChartNurse(casefile=self._casefile, ollama_client=chart_client)
+        chart_nurse = ChartNurse(casefile=self._casefile, provider=chart_provider)
         attending_agent = Attending(
             casefile=self._casefile,
-            ollama_client=attending_client,
+            provider=attending_provider,
             vitals_nurse=self._vitals_nurse,
             config=config,
         )

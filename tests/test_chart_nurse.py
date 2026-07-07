@@ -1,10 +1,10 @@
 """Tests for warpt.daemon.agents.chart_nurse."""
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+
+from llm_stubs import FakeProvider
 
 from warpt.daemon.agents.chart_nurse import ChartNurse
-from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.casefile import CaseFile
 
 GPU_GUID = "GPU-test-1234"
@@ -62,14 +62,12 @@ def _seed_vitals(
 def test_rolling_averages_from_seeded_vitals():
     """analyze() computes 1h rolling average from vitals data."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="test interpretation")
+    client = FakeProvider("test interpretation", model="llama3:8b")
 
     # Seed 6 values over the last hour (every 10 min), all utilization_pct
     _seed_vitals(cf, GPU_GUID, [60.0, 70.0, 80.0, 50.0, 60.0, 70.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)
 
     assert result["baseline"]["1h_avg"] is not None
@@ -80,9 +78,7 @@ def test_rolling_averages_from_seeded_vitals():
 def test_hourly_profile_for_current_hour():
     """analyze() computes mean and stddev for the current hour-of-day."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="test interpretation")
+    client = FakeProvider("test interpretation", model="llama3:8b")
 
     # Seed values all within the current hour. Anchor at :40 and step back 5min
     # (:40, :35, :30) so all three stay in the current hour regardless of the
@@ -90,7 +86,7 @@ def test_hourly_profile_for_current_hour():
     anchor = datetime.now().replace(minute=40, second=0, microsecond=0)
     _seed_vitals(cf, GPU_GUID, [60.0, 70.0, 80.0], interval_minutes=5, anchor=anchor)
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)
 
     profile = result["current_hour_profile"]
@@ -105,11 +101,9 @@ def test_hourly_profile_for_current_hour():
 def test_empty_db_returns_none_baselines():
     """analyze() on empty DB returns None baselines and no profile."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="no data available")
+    client = FakeProvider("no data available", model="llama3:8b")
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 50.0)
 
     assert result["baseline"]["1h_avg"] is None
@@ -124,9 +118,7 @@ def test_empty_db_returns_none_baselines():
 def test_prior_cases_listed():
     """analyze() lists prior cases associated with the GPU."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="interpretation")
+    client = FakeProvider("interpretation", model="llama3:8b")
 
     # Create a case + event for this GPU
     cf.execute("INSERT INTO cases (title, status) VALUES ('High utilization', 'open')")
@@ -142,7 +134,7 @@ def test_prior_cases_listed():
     # Seed at least one vitals row so baselines don't blow up
     _seed_vitals(cf, GPU_GUID, [50.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)
 
     assert len(result["prior_cases"]) == 1
@@ -153,9 +145,7 @@ def test_prior_cases_listed():
 def test_event_count_7d():
     """analyze() counts recent events for the GPU."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="interpretation")
+    client = FakeProvider("interpretation", model="llama3:8b")
 
     # Insert 3 events for this GPU
     for _ in range(3):
@@ -169,7 +159,7 @@ def test_event_count_7d():
 
     _seed_vitals(cf, GPU_GUID, [50.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)
 
     assert result["event_count_7d"] == 3
@@ -178,14 +168,12 @@ def test_event_count_7d():
 def test_deviation_percentage_calculated():
     """analyze() computes deviation_pct from 1h average."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="interpretation")
+    client = FakeProvider("interpretation", model="llama3:8b")
 
     # Seed uniform values so 1h avg = 50.0
     _seed_vitals(cf, GPU_GUID, [50.0, 50.0, 50.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     # Current value 75.0 with baseline 50.0 → deviation = 50%
     result = nurse.analyze(GPU_GUID, "utilization_pct", 75.0)
 
@@ -195,15 +183,13 @@ def test_deviation_percentage_calculated():
 def test_full_output_contract_with_interpretation():
     """analyze() returns complete output with LLM interpretation."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(
-        return_value="GPU utilization is significantly above baseline."
+    client = FakeProvider(
+        "GPU utilization is significantly above baseline.", model="llama3:8b"
     )
 
     _seed_vitals(cf, GPU_GUID, [60.0, 70.0, 80.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)
 
     # All top-level keys present
@@ -220,19 +206,17 @@ def test_full_output_contract_with_interpretation():
     assert result["model_used"] == "llama3:8b"
 
     # LLM was called exactly once
-    client.generate.assert_called_once()
+    assert client.call_count == 1
 
 
 def test_analyze_without_llm_returns_analytics():
     """analyze_without_llm() returns baselines with interpretation=None."""
     cf = CaseFile(":memory:")
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:8b"
-    client.generate = MagicMock(return_value="should not be called")
+    client = FakeProvider("should not be called", model="llama3:8b")
 
     _seed_vitals(cf, GPU_GUID, [50.0, 50.0, 50.0])
 
-    nurse = ChartNurse(casefile=cf, ollama_client=client)
+    nurse = ChartNurse(casefile=cf, provider=client)
     result = nurse.analyze_without_llm(GPU_GUID, "utilization_pct", 75.0)
 
     # Baselines should be present
@@ -245,4 +229,4 @@ def test_analyze_without_llm_returns_analytics():
     # No LLM call
     assert result["interpretation"] is None
     assert result["model_used"] is None
-    client.generate.assert_not_called()
+    assert client.call_count == 0

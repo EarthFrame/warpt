@@ -62,6 +62,10 @@ def load_config(warpt_dir: str) -> dict[str, Any]:
 def save_config(warpt_dir: str, config: dict[str, Any]) -> None:
     """Write config dict to ``{warpt_dir}/config.yaml``.
 
+    Any ``api_key`` fields are stripped before writing — keys must live in
+    the environment or a secret file (``api_key_env`` / ``api_key_file``),
+    never on disk in the config.
+
     Parameters
     ----------
     warpt_dir
@@ -69,9 +73,31 @@ def save_config(warpt_dir: str, config: dict[str, Any]) -> None:
     config
         Configuration dict to persist.
     """
+    log = Logger.get("daemon.config")
+    stripped = _strip_api_keys(config)
+    if stripped:
+        log.warning(
+            "Removed inline api_key field(s) before saving config — "
+            "use api_key_env or api_key_file instead"
+        )
     dir_path = Path(warpt_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
     config_path = dir_path / "config.yaml"
     with open(config_path, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    Logger.get("daemon.config").info("Config saved to %s", config_path)
+    log.info("Config saved to %s", config_path)
+
+
+def _strip_api_keys(node: Any) -> int:
+    """Recursively delete ``api_key`` keys in-place. Returns count removed."""
+    removed = 0
+    if isinstance(node, dict):
+        if "api_key" in node:
+            del node["api_key"]
+            removed += 1
+        for value in node.values():
+            removed += _strip_api_keys(value)
+    elif isinstance(node, list):
+        for item in node:
+            removed += _strip_api_keys(item)
+    return removed

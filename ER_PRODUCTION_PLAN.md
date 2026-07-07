@@ -19,6 +19,8 @@ You're picking up the warpt "ER daemon" production-readiness effort on branch `m
 
 **Your next task is Phase 1 — the LLM provider abstraction** (`warpt/daemon/llm/`, §4). Claude API is the default provider; a local pulled model (Ollama) and a self-hosted OpenAI-compatible cluster (70–300B) must be drop-in via config. **Land this before touching agent internals (Phase 2)** — §7 explains why (otherwise you rewrite the agents twice). Use the `claude-api` skill for current model IDs/params; keep API keys out of `config.yaml`. Propose your Phase 1 breakdown before implementing.
 
+> **Status 2026-07-06: Phase 1 functionality landed** on `mao-support` — `warpt/daemon/llm/` (protocol, three providers, registry w/ legacy back-compat, budget wrapper, secrets), agents/pipeline/daemon rewired, D6 closed, wizard + packaging updated. See the §4 Phase 1 status block for the outstanding test work; `escalate_to` wiring stays in Phase 2 as planned. **Next: Phase 2.**
+
 **Non-negotiable principles.** Node autonomy is sacred (never make node diagnosis depend on central). Prefer structured/tool output over parsing prose. Keep the degradation ladder intact (every new dependency needs a fallback rung). Ship the remediation seam **empty** — interface + policy + audit, **zero** state-changing actions.
 
 **Repo conventions.** Run `pytest` via `/Library/Frameworks/Python.framework/Versions/3.12/bin/pytest`; gate with `ruff` + `black`. Integration tests use real in-memory DuckDB; mock `time.monotonic` for threshold tests; derive threshold timing from `DEFAULT_GPU_THRESHOLDS`. `conftest.py` sets logging to WARNING.
@@ -157,6 +159,16 @@ Each phase is independently valuable and ends in a demoable, tested state. Rough
 ---
 
 ### Phase 1 — Inference provider abstraction *(core enabler — blocks Phase 2)*
+
+> **Status 2026-07-06: ✅ functionality complete** (all modules below landed; agents/pipeline/daemon rewired; wizard + packaging updated; D6 closed via schema-validated diagnosis). **Outstanding testing before Phase 1 can be called done:**
+> - `tests/test_llm_claude.py` — mocked SDK: exception mapping, structured output, refusal, missing-SDK/missing-key → `LLMPermanentError`
+> - `tests/test_llm_openai_compat.py` — payload shape, bearer auth, `response_format` rejection → prompt-emulation fallback
+> - `tests/test_llm_budget.py` — mocked `time.monotonic`: backoff sequence, breaker open/half-open/close, RPM window, token accounting
+> - `tests/test_llm_secrets.py` — env/file resolution, inline-key refusal, redaction; `save_config` api_key strip
+> - Cross-provider **contract suite** (same `generate()` semantics across all three backends — the "same diagnosis, three backends" DoD in test form)
+> - Wizard flow test (`er_cmd`) with mocked prompts; one end-to-end degradation run with a dead provider
+>
+> Already covered: base types/validator, ollama provider, registry (incl. legacy back-compat), and the rewired agent/pipeline/daemon tests — all green.
 
 **Objective:** swap Claude ⇄ local model ⇄ inference cluster via config, with no agent code changes.
 

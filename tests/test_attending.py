@@ -1,10 +1,10 @@
 """Tests for warpt.daemon.agents.attending."""
 
 import json
-from unittest.mock import MagicMock
+
+from llm_stubs import FakeProvider
 
 from warpt.daemon.agents.attending import CONFIDENCE_SENTINEL, Attending
-from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.casefile import CaseFile
 from warpt.daemon.vitals_nurse import VitalsNurse
 
@@ -61,10 +61,8 @@ _CONFIG = {
 
 
 def _make_attending(casefile, llm_response):
-    """Build an Attending with a mocked OllamaClient."""
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:70b"
-    client.generate = MagicMock(return_value=llm_response)
+    """Build an Attending with a fake LLM provider."""
+    client = FakeProvider(llm_response, model="llama3:70b")
 
     vitals = VitalsNurse(casefile=casefile, heartbeat_interval=9999)
     vitals.feed_snapshot(_SNAPSHOT)
@@ -72,7 +70,7 @@ def _make_attending(casefile, llm_response):
     return (
         Attending(
             casefile=casefile,
-            ollama_client=client,
+            provider=client,
             vitals_nurse=vitals,
             config=_CONFIG,
         ),
@@ -116,20 +114,18 @@ def test_triage_order_in_llm_prompt():
         "triage_order": ["memory", "compute", "thermal_power", "storage_io"],
     }
 
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:70b"
-    client.generate = MagicMock(return_value=_VALID_LLM_RESPONSE)
+    client = FakeProvider(_VALID_LLM_RESPONSE, model="llama3:70b")
 
     vitals = VitalsNurse(casefile=cf, heartbeat_interval=9999)
     vitals.feed_snapshot(_SNAPSHOT)
 
     attending = Attending(
-        casefile=cf, ollama_client=client, vitals_nurse=vitals, config=custom_config
+        casefile=cf, provider=client, vitals_nurse=vitals, config=custom_config
     )
     attending.diagnose(_CHART_NURSE_RESULT, case_id)
 
-    # The system prompt (second arg to generate) should list Memory before Compute
-    system_prompt = client.generate.call_args[0][1]
+    # The system prompt should list Memory before Compute
+    system_prompt = client.last_system()
     mem_pos = system_prompt.index("Memory")
     compute_pos = system_prompt.index("Compute")
     thermal_pos = system_prompt.index("Thermal")
@@ -182,8 +178,8 @@ def test_prompt_includes_chart_nurse_and_vitals():
     attending, client = _make_attending(cf, _VALID_LLM_RESPONSE)
     attending.diagnose(_CHART_NURSE_RESULT, case_id)
 
-    # The user prompt (first arg to generate) should contain both data sources
-    user_prompt = client.generate.call_args[0][0]
+    # The user prompt should contain both data sources
+    user_prompt = client.last_user_prompt()
     prompt_data = json.loads(user_prompt)
 
     assert "chart_nurse_analysis" in prompt_data
@@ -201,22 +197,20 @@ def test_attending_retries_malformed_then_succeeds():
     case_id = cf.query("SELECT max(case_id) FROM cases")[0][0]
 
     garbage = "not json at all"
-    client = OllamaClient.__new__(OllamaClient)
-    client.model = "llama3:70b"
     # First call returns garbage, second returns valid JSON
-    client.generate = MagicMock(side_effect=[garbage, _VALID_LLM_RESPONSE])
+    client = FakeProvider([garbage, _VALID_LLM_RESPONSE], model="llama3:70b")
 
     vitals = VitalsNurse(casefile=cf, heartbeat_interval=9999)
     vitals.feed_snapshot(_SNAPSHOT)
 
     attending = Attending(
-        casefile=cf, ollama_client=client, vitals_nurse=vitals, config=_CONFIG
+        casefile=cf, provider=client, vitals_nurse=vitals, config=_CONFIG
     )
     result = attending.diagnose(_CHART_NURSE_RESULT, case_id)
 
     # Should have the real hypothesis from the second attempt
     assert result["hypothesis"] == "Sustained compute load from training job"
-    assert client.generate.call_count == 2
+    assert client.call_count == 2
 
 
 def test_attending_persistent_malformed_uses_fallback():
@@ -232,4 +226,4 @@ def test_attending_persistent_malformed_uses_fallback():
     # Fallback used
     assert "Unable to parse" in result["hypothesis"]
     # Called 3 times (default retries)
-    assert client.generate.call_count == 3
+    assert client.call_count == 3

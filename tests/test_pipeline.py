@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-from warpt.daemon.agents.ollama_client import OllamaPermanentError
 from warpt.daemon.agents.pipeline import run_intelligence_pipeline
+from warpt.daemon.llm.base import LLMPermanentError
 
 _EVENT = {
     "gpu_guid": "GPU-test-1234",
@@ -109,9 +109,9 @@ def test_pipeline_degrades_on_chart_nurse_failure():
 
 
 def test_pipeline_permanent_error_skips_retry():
-    """OllamaPermanentError in Chart Nurse skips retry, degrades immediately."""
+    """LLMPermanentError in Chart Nurse skips retry, degrades immediately."""
     chart_nurse = MagicMock()
-    chart_nurse.analyze.side_effect = OllamaPermanentError("model not found")
+    chart_nurse.analyze.side_effect = LLMPermanentError("model not found")
     chart_nurse.analyze_without_llm.return_value = _RAW_ANALYTICS
 
     attending = MagicMock()

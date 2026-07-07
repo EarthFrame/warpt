@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.agents.prompts import ATTENDING_SYSTEM_PROMPT_TEMPLATE
 from warpt.daemon.casefile import CaseFile
+from warpt.daemon.llm.base import LLMProvider, LLMSchemaError
 from warpt.daemon.vitals_nurse import VitalsNurse
 from warpt.utils.logger import Logger
 
@@ -30,6 +30,21 @@ _TRIAGE_LABELS = {
     "storage_io": "Storage / IO",
 }
 
+# Schema-enforced diagnosis shape (validated at the provider layer).
+# The LLM's self-reported confidence is accepted but not yet trusted —
+# CONFIDENCE_SENTINEL is stored until Phase-2 calibration lands.
+DIAGNOSIS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hypothesis": {"type": "string"},
+        "confidence": {"type": "integer"},
+        "recommended_action": {"type": "string"},
+        "reasoning": {"type": "string"},
+    },
+    "required": ["hypothesis", "recommended_action", "reasoning"],
+    "additionalProperties": False,
+}
+
 
 class Attending:
     """Python-orchestrated diagnosis loop with LLM advisory.
@@ -38,23 +53,23 @@ class Attending:
     ----------
     casefile
         CaseFile instance for database reads/writes.
-    ollama_client
-        OllamaClient instance for LLM calls.
+    provider
+        LLMProvider instance for LLM calls.
     vitals_nurse
         VitalsNurse instance for current snapshot access.
     config
-        Daemon config dict (must contain ``models.attending`` and ``triage_order``).
+        Daemon config dict (must contain ``triage_order``).
     """
 
     def __init__(
         self,
         casefile: CaseFile,
-        ollama_client: OllamaClient,
+        provider: LLMProvider,
         vitals_nurse: VitalsNurse,
         config: dict[str, Any],
     ) -> None:
         self._casefile = casefile
-        self._client = ollama_client
+        self._provider = provider
         self._vitals_nurse = vitals_nurse
         self._config = config
         self._log = Logger.get("daemon.agents.attending")
@@ -82,28 +97,24 @@ class Attending:
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(chart_nurse_result, snapshot)
 
-        # Retry generate+parse cycle up to 3 times on malformed output.
-        # Connection errors (RuntimeError) bubble up immediately.
-        max_parse_attempts = 3
-        diagnosis = None
-        for attempt in range(max_parse_attempts):
-            self._log.debug("Calling LLM for diagnosis (attempt %d)", attempt + 1)
-            raw_response = self._client.generate(user_prompt, system_prompt)
-            diagnosis = self._try_parse(raw_response)
-            if diagnosis is not None:
-                break
-            self._log.warning(
-                "Malformed LLM response (attempt %d/%d), retrying",
-                attempt + 1,
-                max_parse_attempts,
+        # Structured output is schema-validated at the provider layer
+        # (bounded retries there). Transport errors bubble up to the
+        # pipeline's retry/degradation ladder.
+        try:
+            response = self._provider.generate(
+                [{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                response_schema=DIAGNOSIS_SCHEMA,
             )
-
-        if diagnosis is None:
-            self._log.warning(
-                "All %d parse attempts failed, using fallback",
-                max_parse_attempts,
-            )
-            diagnosis = self._fallback_response(raw_response)
+            parsed = response.structured or {}
+            diagnosis = {
+                "hypothesis": parsed["hypothesis"],
+                "confidence_pct": CONFIDENCE_SENTINEL,
+                "recommended_action": parsed["recommended_action"],
+                "reasoning": parsed["reasoning"],
+            }
+        except LLMSchemaError as e:
+            diagnosis = self._fallback_response(str(e))
 
         # Write diagnosis to case
         self._update_case(case_id, chart_nurse_result, diagnosis)
@@ -137,27 +148,14 @@ class Attending:
         }
         return json.dumps(prompt_data, default=str)
 
-    def _try_parse(self, raw: str) -> dict[str, Any] | None:
-        """Try to parse LLM JSON response. Returns None on failure."""
-        try:
-            parsed = json.loads(raw)
-            return {
-                "hypothesis": parsed["hypothesis"],
-                "confidence_pct": CONFIDENCE_SENTINEL,
-                "recommended_action": parsed["recommended_action"],
-                "reasoning": parsed["reasoning"],
-            }
-        except (json.JSONDecodeError, KeyError):
-            return None
-
-    def _fallback_response(self, raw: str) -> dict[str, Any]:
-        """Return fallback diagnosis when all parse attempts fail."""
-        self._log.warning("Malformed LLM response, using fallback")
+    def _fallback_response(self, detail: str) -> dict[str, Any]:
+        """Return fallback diagnosis when schema-valid output was exhausted."""
+        self._log.warning("Schema-valid LLM response unavailable, using fallback")
         return {
             "hypothesis": "Unable to parse LLM diagnosis",
             "confidence_pct": CONFIDENCE_SENTINEL,
             "recommended_action": "Review Chart Nurse analysis manually",
-            "reasoning": f"LLM returned unparseable response: {raw[:200]}",
+            "reasoning": f"LLM returned unparseable response: {detail[:200]}",
         }
 
     def _update_case(
@@ -201,7 +199,7 @@ class Attending:
                 diagnosis["reasoning"],
                 historical_ctx,
                 baseline_deviation,
-                self._client.model,
+                self._provider.model,
                 case_id,
             ],
         )

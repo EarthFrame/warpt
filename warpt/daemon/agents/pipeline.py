@@ -6,7 +6,7 @@ import json
 import time
 from typing import Any
 
-from warpt.daemon.agents.ollama_client import OllamaPermanentError
+from warpt.daemon.llm.base import LLMPermanentError
 
 
 def run_intelligence_pipeline(
@@ -42,7 +42,7 @@ def run_intelligence_pipeline(
             chart_result = chart_nurse.analyze(gpu_guid, metric, value)
             llm_succeeded = True
             break
-        except OllamaPermanentError:
+        except LLMPermanentError:
             log.warning("Chart Nurse permanent error, skipping retries")
             break
         except Exception as e:
@@ -82,7 +82,7 @@ def run_intelligence_pipeline(
         try:
             attending.diagnose(chart_result, case_id)
             break
-        except OllamaPermanentError:
+        except LLMPermanentError:
             log.warning("Attending permanent error, skipping retries")
             _write_degraded_observation(
                 casefile, case_id, chart_result, "Attending unavailable"
