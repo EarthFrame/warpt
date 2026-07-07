@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from warpt.backends.power.daemon_client import PowerReading
 from warpt.carbon.tracker import CarbonTracker
 from warpt.models.carbon_models import CarbonSession
 from warpt.models.power_models import (
@@ -17,6 +18,23 @@ from warpt.models.power_models import (
 # PowerMonitor is imported at module level in tracker.py, so patch
 # the name in the tracker module (where it's looked up at runtime).
 _PM_PATH = "warpt.carbon.tracker.PowerMonitor"
+
+
+@pytest.fixture(autouse=True)
+def _daemon_inert_by_default(monkeypatch):
+    """Keep unit tests off the network by default.
+
+    Mocked monitors return is_daemon_active() as a truthy MagicMock, so without
+    this the tracker would attempt a real localhost call to the power-daemon.
+    Force the client unavailable; the daemon-counter tests re-enable it by
+    patching the class.
+    """
+    from warpt.backends.power.daemon_client import PowerClient, PowerClientError
+
+    def _unavailable(_self):
+        raise PowerClientError("power-daemon disabled in tests")
+
+    monkeypatch.setattr(PowerClient, "current", _unavailable)
 
 
 class TestCarbonTrackerNoop:
@@ -405,3 +423,71 @@ class TestCarbonTrackerCPUCounter:
         with CarbonTracker(label="test", interval=0.05) as tracker:
             assert tracker._start_cpu_energy == {"package-0": 3000.0}
             time.sleep(0.1)
+
+
+class TestCarbonTrackerDaemonCounter:
+    """Tests for preferring the out-of-process daemon's energy counter."""
+
+    @staticmethod
+    def _reading(joules, reset_time=42.0):
+        return PowerReading(
+            timestamp=time.time(),
+            watts=100.0,
+            joules_since_reset=joules,
+            watt_hours_since_reset=joules / 3600.0,
+            reset_time=reset_time,
+            hostname="node1",
+        )
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_uses_daemon_counter(self, mock_pm_cls, mock_store_cls):
+        """When the daemon is active, energy comes from its counter delta."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.is_daemon_active.return_value = True
+        mock_monitor.get_available_sources.return_value = [PowerSource.DAEMON]
+        mock_monitor.get_snapshot.return_value = PowerSnapshot(
+            timestamp=time.time(), total_power_watts=100.0
+        )
+        mock_pm_cls.return_value = mock_monitor
+        mock_store_cls.return_value = MagicMock()
+
+        # 3600 J consumed → 0.001 kWh. current() is called once at enter, once at exit.
+        with patch("warpt.carbon.tracker.PowerClient") as mock_client_cls:
+            mock_client_cls.return_value.current.side_effect = [
+                self._reading(1000.0),
+                self._reading(4600.0),
+            ]
+            with CarbonTracker(label="test", interval=0.05):
+                time.sleep(0.1)
+
+        session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert session.metadata["energy_source"] == "daemon-counter"
+        assert session.energy_kwh == pytest.approx(0.001)
+        assert "daemon" in session.sources
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_daemon_restart_falls_back(self, mock_pm_cls, mock_store_cls):
+        """A counter reset (reset_time change) falls back, not a bogus delta."""
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.is_daemon_active.return_value = True
+        mock_monitor.get_available_sources.return_value = [PowerSource.DAEMON]
+        mock_monitor.get_snapshot.return_value = PowerSnapshot(
+            timestamp=time.time(), total_power_watts=100.0
+        )
+        mock_pm_cls.return_value = mock_monitor
+        mock_store_cls.return_value = MagicMock()
+
+        with patch("warpt.carbon.tracker.PowerClient") as mock_client_cls:
+            mock_client_cls.return_value.current.side_effect = [
+                self._reading(5000.0, reset_time=42.0),
+                self._reading(100.0, reset_time=99.0),  # daemon restarted
+            ]
+            with CarbonTracker(label="test", interval=0.05):
+                time.sleep(0.1)
+
+        session = mock_store_cls.return_value.update_session.call_args[0][0]
+        assert session.metadata["energy_source"] == "polled"

@@ -130,15 +130,13 @@ def _start_tracking(label: str | None, interval: float) -> None:
             "    \u2192 Run `warpt carbon stop` to stop,"
             " then set your region or intensity."
         )
-        print("    \u2192 Run `warpt carbon regions`" " to view available regions")
-        print(
-            "    \u2192 Run `warpt carbon set-region" " --value <CODE>` to set a region"
-        )
+        print("    \u2192 Run `warpt carbon regions` to view available regions")
+        print("    \u2192 Run `warpt carbon set-region --value <CODE>` to set a region")
         print(
             "    \u2192 Run `warpt carbon intensity"
             " --value <NUMBER>` to set a custom value"
         )
-        print("    \u2192 See docs.earthframe.com/warpt/carbon" " for full details")
+        print("    \u2192 See docs.earthframe.com/warpt/carbon for full details")
         print()
 
     if "kwh_price" in cfg:
@@ -146,8 +144,7 @@ def _start_tracking(label: str | None, interval: float) -> None:
     else:
         print(f"  Rate:     ${DEFAULT_KWH_PRICE}/kWh (default)")
         print(
-            "    \u2192 Run `warpt carbon kwh-price"
-            " --value <NUMBER>` to set your rate"
+            "    \u2192 Run `warpt carbon kwh-price --value <NUMBER>` to set your rate"
         )
 
     print(f"  Interval: {interval}s")
