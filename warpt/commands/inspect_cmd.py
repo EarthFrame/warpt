@@ -37,15 +37,20 @@ def show_case(cf: CaseFile, case_id: int) -> None:
 
     row = rows[0]
     (
-        cid, status, opened_at, title,
-        hypothesis, confidence_pct, recommended_action,
-        observation, reasoning_chain, diagnostician_model,
+        cid,
+        status,
+        opened_at,
+        title,
+        hypothesis,
+        confidence_pct,
+        recommended_action,
+        observation,
+        reasoning_chain,
+        diagnostician_model,
     ) = row
 
     # Extract GPU GUID from title (format: "GPU-xxxx: metric_name ...")
-    gpu_guid = (
-        title.split(":")[0] if title and ":" in title else title or ""
-    )
+    gpu_guid = title.split(":")[0] if title and ":" in title else title or ""
 
     click.echo(f"\n{SEPARATOR}")
     click.echo(f"  WARPT CASE #{cid}")
@@ -59,7 +64,8 @@ def show_case(cf: CaseFile, case_id: int) -> None:
         click.echo("\n--- HYPOTHESIS ---")
         click.echo(hypothesis)
 
-    if confidence_pct is not None:
+    # Only show calibrated confidence in the 0-100 range; hide sentinels.
+    if confidence_pct is not None and 0.0 <= confidence_pct <= 100.0:
         click.echo("\n--- CONFIDENCE ---")
         click.echo(f"{confidence_pct:.2f}%")
 
@@ -77,23 +83,17 @@ def show_case(cf: CaseFile, case_id: int) -> None:
 
     # Events
     events = cf.query(
-        "SELECT severity, ts, summary FROM events "
-        "WHERE case_id = ? ORDER BY ts",
+        "SELECT severity, ts, summary FROM events " "WHERE case_id = ? ORDER BY ts",
         [case_id],
     )
     if events:
         click.echo("\n--- EVENTS ---")
         for severity, ts, summary in events:
-            click.echo(
-                f"  [{severity.upper()}] {_fmt_ts(ts)}"
-                f" — {summary}"
-            )
+            click.echo(f"  [{severity.upper()}] {_fmt_ts(ts)}" f" — {summary}")
 
     if not hypothesis:
         click.echo("\n--- DIAGNOSIS PENDING ---")
-        click.echo(
-            "No diagnosis has been generated for this case yet."
-        )
+        click.echo("No diagnosis has been generated for this case yet.")
 
     click.echo(f"\n{SEPARATOR}")
 
@@ -126,9 +126,7 @@ def _print_observation(observation: str, model: str | None) -> None:
     interpretation = obs.get("interpretation")
     if interpretation:
         model_name = model or "unknown"
-        click.echo(
-            f"\n--- LLM INTERPRETATION ({model_name}) ---"
-        )
+        click.echo(f"\n--- LLM INTERPRETATION ({model_name}) ---")
         click.echo(interpretation)
 
 
@@ -159,10 +157,7 @@ def _print_reasoning(reasoning_chain: str) -> None:
 
 def show_latest(cf: CaseFile) -> None:
     """Show the most recent case."""
-    rows = cf.query(
-        "SELECT case_id FROM cases "
-        "ORDER BY opened_at DESC LIMIT 1"
-    )
+    rows = cf.query("SELECT case_id FROM cases " "ORDER BY opened_at DESC LIMIT 1")
     if not rows:
         click.echo("No cases found.")
         return
@@ -183,27 +178,19 @@ def list_cases(cf: CaseFile) -> None:
 
     # Cases
     rows = cf.query(
-        "SELECT case_id, status, opened_at, title "
-        "FROM cases ORDER BY case_id"
+        "SELECT case_id, status, opened_at, title " "FROM cases ORDER BY case_id"
     )
     click.echo()
     if not rows:
         click.echo("No cases found.")
         return
 
-    click.echo(
-        f" {'ID':>3} | {'Status':<8} | {'Opened':<19} | Title"
-    )
-    click.echo(
-        f"-----+----------+---------------------+{'─' * 34}"
-    )
+    click.echo(f" {'ID':>3} | {'Status':<8} | {'Opened':<19} | Title")
+    click.echo(f"-----+----------+---------------------+{'─' * 34}")
     for cid, status, opened_at, title in rows:
         title_trunc = (
-            (title[:31] + "...")
-            if title and len(title) > 34
-            else (title or "")
+            (title[:31] + "...") if title and len(title) > 34 else (title or "")
         )
         click.echo(
-            f" {cid:>3} | {status:<8} | {_fmt_ts(opened_at):<19}"
-            f" | {title_trunc}"
+            f" {cid:>3} | {status:<8} | {_fmt_ts(opened_at):<19}" f" | {title_trunc}"
         )

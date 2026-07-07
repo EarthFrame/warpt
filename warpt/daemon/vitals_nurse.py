@@ -46,6 +46,10 @@ class VitalsNurse:
         heartbeat_interval: float = 10.0,
         poll_interval: float = 5.0,
         gpu_thresholds: dict[str, dict[str, float]] | None = None,
+        restart_backoff: float = 1.0,
+        max_restart_backoff: float = 30.0,
+        healthy_run_seconds: float = 30.0,
+        max_consecutive_failures: int = 5,
     ) -> None:
         self._casefile = casefile
         self._buffer: deque[dict[str, Any]] = deque(maxlen=buffer_size)
@@ -59,6 +63,13 @@ class VitalsNurse:
         self._last_heartbeat: float = 0.0
         self._gpu_thresholds = gpu_thresholds or DEFAULT_GPU_THRESHOLDS
         self._log = Logger.get("daemon.vitals_nurse")
+        # Subprocess supervision: restart the monitor if it dies unexpectedly.
+        self._restart_backoff = restart_backoff
+        self._max_restart_backoff = max_restart_backoff
+        self._healthy_run_seconds = healthy_run_seconds
+        self._max_consecutive_failures = max_consecutive_failures
+        self._consecutive_failures = 0
+        self._last_exit_code: int | None = None
         # Tracks when each (metric, gpu_guid) breach started: monotonic time
         self._breach_start: dict[tuple[str, str], float] = {}
         # Tracks which (metric, gpu_guid) breaches have already fired
@@ -105,39 +116,110 @@ class VitalsNurse:
         self._on_threshold_breach = callback
 
     def start(self) -> None:
-        """Start the subprocess and polling thread."""
+        """Start the supervised monitor subprocess (auto-restarts if it dies)."""
         self._stop_event.clear()
+        self._consecutive_failures = 0
+        self._last_exit_code = None
         self._log.info(
             "VitalsNurse started (poll=%.1fs, heartbeat=%.1fs)",
             self._poll_interval,
             self._heartbeat_interval,
         )
-        self._process = subprocess.Popen(
-            ["warpt", "monitor", "--no-tui", "--json"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
+        self._thread = threading.Thread(
+            target=self._supervise_loop, name="vitals-supervisor", daemon=True
         )
-        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop polling and terminate the subprocess."""
+        """Stop the supervisor and terminate the subprocess."""
         self._stop_event.set()
-        if self._process and self._process.poll() is None:
-            self._process.terminate()
-            self._process.wait(timeout=5)
+        proc = self._process
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         if self._thread:
             self._thread.join(timeout=5)
         self._process = None
         self._thread = None
         self._log.info("VitalsNurse stopped.")
 
-    def _poll_loop(self) -> None:
-        """Read JSON lines from the subprocess stdout."""
-        assert self._process is not None
-        assert self._process.stdout is not None
-        for line in self._process.stdout:
+    def is_healthy(self) -> bool:
+        """Return False once the monitor subprocess is repeatedly failing to stay up."""
+        return self._consecutive_failures < self._max_consecutive_failures
+
+    def get_health(self) -> dict[str, Any]:
+        """Return supervisor health details for status reporting."""
+        return {
+            "healthy": self.is_healthy(),
+            "consecutive_failures": self._consecutive_failures,
+            "last_exit_code": self._last_exit_code,
+        }
+
+    def _spawn_process(self) -> subprocess.Popen:
+        """Spawn the ``warpt monitor`` subprocess. Isolated for testability."""
+        return subprocess.Popen(
+            ["warpt", "monitor", "--no-tui", "--json"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+    def _supervise_loop(self) -> None:
+        """Run the monitor subprocess, restarting it with backoff if it exits early.
+
+        A monitor subprocess that dies while the daemon keeps running is a
+        production hazard: without supervision the daemon stays "alive" but
+        blind, silently observing nothing. This loop detects an unexpected exit,
+        logs it, and restarts with exponential backoff — escalating to a
+        critical log after repeated rapid failures (``max_consecutive_failures``).
+        """
+        backoff = self._restart_backoff
+        while not self._stop_event.is_set():
+            started = time.monotonic()
+            try:
+                self._process = self._spawn_process()
+            except Exception:
+                self._log.exception("Failed to spawn monitor subprocess")
+                self._consecutive_failures += 1
+                self._stop_event.wait(backoff)
+                backoff = min(backoff * 2, self._max_restart_backoff)
+                continue
+
+            self._read_stream(self._process)
+
+            if self._stop_event.is_set():
+                break
+
+            # Subprocess exited on its own while we were still running.
+            self._last_exit_code = self._process.poll()
+            ran_for = time.monotonic() - started
+            if ran_for >= self._healthy_run_seconds:
+                # Ran healthily for a while before dying — not a failure streak.
+                self._consecutive_failures = 0
+                backoff = self._restart_backoff
+            else:
+                self._consecutive_failures += 1
+
+            log_at = self._log.error if self.is_healthy() else self._log.critical
+            log_at(
+                "monitor subprocess exited (code=%s) after %.1fs; "
+                "restarting in %.1fs (consecutive_failures=%d)",
+                self._last_exit_code,
+                ran_for,
+                backoff,
+                self._consecutive_failures,
+            )
+            self._stop_event.wait(backoff)
+            backoff = min(backoff * 2, self._max_restart_backoff)
+
+    def _read_stream(self, process: subprocess.Popen) -> None:
+        """Read and feed JSON snapshot lines from a subprocess until EOF or stop."""
+        if process.stdout is None:
+            return
+        for line in process.stdout:
             if self._stop_event.is_set():
                 break
             line = line.strip()
@@ -145,10 +227,10 @@ class VitalsNurse:
                 continue
             try:
                 snapshot = json.loads(line)
-                self.feed_snapshot(snapshot)
             except json.JSONDecodeError:
                 self._log.debug("Skipping unparseable JSON line")
                 continue
+            self.feed_snapshot(snapshot)
 
     def _check_thresholds(self, snapshot: dict[str, Any]) -> None:
         """Evaluate GPU metrics against configured thresholds."""
@@ -173,7 +255,8 @@ class VitalsNurse:
                     ):
                         self._breach_fired.add(key)
                         self._log.warning(
-                            "Threshold breach: %s at %.1f (threshold %.1f, sustained %.1fs)",
+                            "Threshold breach: %s at %.1f "
+                            "(threshold %.1f, sustained %.1fs)",
                             metric,
                             current_value,
                             rule["value"],
@@ -249,10 +332,20 @@ class VitalsNurse:
                 snapshot.get("wired_memory_bytes"),
                 snapshot.get("memory_utilization_percent"),
                 gpu_structs,
-                snapshot.get("cpu_power_watts"),
+                self._compute_total_power(snapshot),
                 collection_type,
             ],
         )
+
+    @staticmethod
+    def _compute_total_power(snapshot: dict[str, Any]) -> float | None:
+        """Sum CPU and per-GPU power draw; None if no component reports power."""
+        components = [snapshot.get("cpu_power_watts")]
+        components.extend(
+            gpu.get("power_watts") for gpu in snapshot.get("gpu_usage", [])
+        )
+        present = [p for p in components if p is not None]
+        return sum(present) if present else None
 
     def write_snapshot(self, snapshot: dict[str, Any], collection_type: str) -> None:
         """Write a vitals snapshot immediately (for threshold breaches).

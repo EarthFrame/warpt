@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -131,7 +136,9 @@ class CaseFile:
     """
 
     def __init__(
-        self, db_path: str = "~/.warpt/warpt.db", read_only: bool = False,
+        self,
+        db_path: str = "~/.warpt/warpt.db",
+        read_only: bool = False,
     ) -> None:
         if db_path != ":memory:":
             resolved = Path(db_path).expanduser()
@@ -200,3 +207,40 @@ class CaseFile:
         """Close the database connection."""
         self._conn.close()
         self._log.info("CaseFile closed.")
+
+
+@contextmanager
+def read_only_snapshot(db_path: str) -> Iterator[CaseFile]:
+    """Yield a read-only ``CaseFile`` for *db_path*, tolerant of a live writer.
+
+    DuckDB permits only a single writer process, so a running daemon holding the
+    database blocks other read-only opens. When that happens this falls back to a
+    temporary copy of the DB (and its WAL) so callers like ``daemon status`` and
+    ``daemon inspect`` never contend with — or get blocked by — the daemon.
+
+    Parameters
+    ----------
+    db_path
+        Path to the DuckDB file.
+    """
+    tmp_path: str | None = None
+    cf: CaseFile | None = None
+    try:
+        try:
+            cf = CaseFile(db_path, read_only=True)
+        except duckdb.IOException:
+            tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+            os.close(tmp_fd)
+            shutil.copy2(db_path, tmp_path)
+            wal_path = db_path + ".wal"
+            if os.path.exists(wal_path):
+                shutil.copy2(wal_path, tmp_path + ".wal")
+            cf = CaseFile(tmp_path, read_only=True)
+        yield cf
+    finally:
+        if cf is not None:
+            cf.close()
+        if tmp_path:
+            for path in (tmp_path, tmp_path + ".wal"):
+                if os.path.exists(path):
+                    os.unlink(path)

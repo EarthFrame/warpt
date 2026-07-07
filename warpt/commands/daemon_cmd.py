@@ -66,9 +66,7 @@ def start():
 
             er_wizard(warpt_dir)
         else:
-            click.echo(
-                "Tip: run 'warpt daemon er' later to enable intelligence."
-            )
+            click.echo("Tip: run 'warpt daemon er' later to enable intelligence.")
 
     # Launch daemon as a detached subprocess
     cmd = [sys.executable, "-m", "warpt.daemon.daemon_process", warpt_dir]
@@ -114,7 +112,10 @@ def er():
 
 @daemon.command()
 @click.option(
-    "--case", "case_id", type=int, default=None,
+    "--case",
+    "case_id",
+    type=int,
+    default=None,
     help="Show a specific case by ID.",
 )
 @click.option("--list", "list_all", is_flag=True, help="List all cases.")
@@ -125,47 +126,22 @@ def inspect(case_id, list_all):
         raise click.ClickException(err)
 
     import logging
-    import shutil
-    import tempfile
-
-    import duckdb
 
     from warpt.commands.inspect_cmd import list_cases, show_case, show_latest
-    from warpt.daemon.casefile import CaseFile
+    from warpt.daemon.casefile import read_only_snapshot
 
     logging.getLogger("warpt").setLevel(logging.WARNING)
 
     warpt_dir = _get_warpt_dir()
     db_path = os.path.join(warpt_dir, "warpt.db")
 
-    # Try read-only first; if the daemon holds the lock, copy the DB
-    # to a temp file and query that instead.
-    try:
-        cf = CaseFile(db_path, read_only=True)
-        tmp_path = None
-    except duckdb.IOException:
-        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
-        os.close(tmp_fd)
-        shutil.copy2(db_path, tmp_path)
-        wal_path = db_path + ".wal"
-        if os.path.exists(wal_path):
-            shutil.copy2(wal_path, tmp_path + ".wal")
-        cf = CaseFile(tmp_path, read_only=True)
-
-    try:
+    with read_only_snapshot(db_path) as cf:
         if list_all:
             list_cases(cf)
         elif case_id is not None:
             show_case(cf, case_id)
         else:
             show_latest(cf)
-    finally:
-        cf.close()
-        if tmp_path:
-            os.unlink(tmp_path)
-            wal_tmp = tmp_path + ".wal"
-            if os.path.exists(wal_tmp):
-                os.unlink(wal_tmp)
 
 
 @daemon.command()

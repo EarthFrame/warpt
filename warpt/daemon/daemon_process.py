@@ -14,7 +14,7 @@ from warpt.daemon.agents.chart_nurse import ChartNurse
 from warpt.daemon.agents.ollama_client import OllamaClient
 from warpt.daemon.agents.pipeline import run_intelligence_pipeline
 from warpt.daemon.agents.scribe import Scribe
-from warpt.daemon.casefile import CaseFile
+from warpt.daemon.casefile import CaseFile, read_only_snapshot
 from warpt.daemon.charge_nurse import ChargeNurse
 from warpt.daemon.config import load_config
 from warpt.daemon.vitals_nurse import VitalsNurse
@@ -134,17 +134,22 @@ class DaemonProcess:
         if self._warpt_dir.exists():
             db_path = self._warpt_dir / "warpt.db"
             if db_path.exists():
+                # Read through a lock-tolerant snapshot so querying status never
+                # contends with the live daemon holding the write lock.
                 try:
-                    cf = CaseFile(str(db_path))
-                    rows = cf.query("SELECT count(*) FROM vitals")
-                    status["vitals_count"] = rows[0][0]
-                    rows = cf.query("SELECT count(*) FROM events")
-                    status["events_count"] = rows[0][0]
-                    rows = cf.query("SELECT count(*) FROM cases WHERE status = 'open'")
-                    status["open_cases"] = rows[0][0]
-                    rows = cf.query("SELECT max(ts) FROM vitals")
-                    status["last_heartbeat"] = rows[0][0]
-                    cf.close()
+                    with read_only_snapshot(str(db_path)) as cf:
+                        status["vitals_count"] = cf.query(
+                            "SELECT count(*) FROM vitals"
+                        )[0][0]
+                        status["events_count"] = cf.query(
+                            "SELECT count(*) FROM events"
+                        )[0][0]
+                        status["open_cases"] = cf.query(
+                            "SELECT count(*) FROM cases WHERE status = 'open'"
+                        )[0][0]
+                        status["last_heartbeat"] = cf.query(
+                            "SELECT max(ts) FROM vitals"
+                        )[0][0]
                 except Exception:
                     pass
         return status

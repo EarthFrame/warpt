@@ -10,7 +10,9 @@ from warpt.daemon.casefile import CaseFile
 GPU_GUID = "GPU-test-1234"
 
 
-def _seed_vitals(casefile, gpu_guid, values, hours_ago_start=0, interval_minutes=10):
+def _seed_vitals(
+    casefile, gpu_guid, values, hours_ago_start=0, interval_minutes=10, anchor=None
+):
     """Insert vitals rows with known GPU metric values.
 
     Parameters
@@ -21,10 +23,15 @@ def _seed_vitals(casefile, gpu_guid, values, hours_ago_start=0, interval_minutes
         How many hours ago the most recent value is.
     interval_minutes
         Minutes between each value.
+    anchor
+        Base timestamp for the most recent value. Defaults to ``datetime.now()``.
+        Pass a fixed in-hour anchor to keep hour-of-day tests deterministic
+        (seeding relative to ``now`` spills into the previous hour near a
+        clock-hour boundary).
     """
-    now = datetime.now()
+    base = anchor or datetime.now()
     for i, val in enumerate(values):
-        ts = now - timedelta(hours=hours_ago_start, minutes=i * interval_minutes)
+        ts = base - timedelta(hours=hours_ago_start, minutes=i * interval_minutes)
         casefile.execute(
             """
             INSERT INTO vitals (
@@ -77,8 +84,11 @@ def test_hourly_profile_for_current_hour():
     client.model = "llama3:8b"
     client.generate = MagicMock(return_value="test interpretation")
 
-    # Seed values all within the current hour
-    _seed_vitals(cf, GPU_GUID, [60.0, 70.0, 80.0], interval_minutes=5)
+    # Seed values all within the current hour. Anchor at :40 and step back 5min
+    # (:40, :35, :30) so all three stay in the current hour regardless of the
+    # actual wall-clock minute (avoids previous-hour spillover near the boundary).
+    anchor = datetime.now().replace(minute=40, second=0, microsecond=0)
+    _seed_vitals(cf, GPU_GUID, [60.0, 70.0, 80.0], interval_minutes=5, anchor=anchor)
 
     nurse = ChartNurse(casefile=cf, ollama_client=client)
     result = nurse.analyze(GPU_GUID, "utilization_pct", 95.0)

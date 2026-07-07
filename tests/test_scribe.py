@@ -65,6 +65,19 @@ def test_scribe_writes_report_content_to_case() -> None:
     cf.close()
 
 
+def test_scribe_suppresses_uncalibrated_confidence() -> None:
+    """The Attending sentinel confidence (-1.23) is not shown in the report."""
+    cf = CaseFile(":memory:")
+    case_id = _insert_diagnosed_case(cf)  # inserts confidence_pct = -1.23
+    scribe = Scribe(casefile=cf)
+
+    report = scribe.report(case_id)
+
+    assert "Confidence" not in report
+    assert "-1.23" not in report
+    cf.close()
+
+
 def test_scribe_handles_undiagnosed_case() -> None:
     """A case with NULL hypothesis returns a sensible message."""
     cf = CaseFile(":memory:")

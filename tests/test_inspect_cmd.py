@@ -14,33 +14,37 @@ def _seed_case(cf: CaseFile, **overrides) -> int:
         "title": "GPU-3365cb89: utilization_percent breach",
         "status": "open",
         "hypothesis": "Thermal management issue likely due to high GPU utilization.",
-        "confidence_pct": -1.23,
+        "confidence_pct": 75.0,
         "recommended_action": "Monitor system temperature and adjust thermal settings.",
-        "observation": json.dumps({
-            "current_value": 100.0,
-            "baseline": {
-                "1h_avg": 67.3,
-                "24h_avg": 60.8,
-                "7d_avg": 60.8,
-            },
-            "deviation_pct": 48.6,
-            "interpretation": (
-                "The current GPU utilization is 100%, "
-                "significantly higher than baseline."
-            ),
-        }),
-        "reasoning_chain": repr([
+        "observation": json.dumps(
             {
-                "category": "Thermal / Power",
-                "finding": "The GPU utilization is at 100%.",
-                "implication": "Thermal management might be compromised.",
-            },
-            {
-                "category": "Memory",
-                "finding": "Memory utilization is within normal range.",
-                "implication": "No memory pressure detected.",
-            },
-        ]),
+                "current_value": 100.0,
+                "baseline": {
+                    "1h_avg": 67.3,
+                    "24h_avg": 60.8,
+                    "7d_avg": 60.8,
+                },
+                "deviation_pct": 48.6,
+                "interpretation": (
+                    "The current GPU utilization is 100%, "
+                    "significantly higher than baseline."
+                ),
+            }
+        ),
+        "reasoning_chain": repr(
+            [
+                {
+                    "category": "Thermal / Power",
+                    "finding": "The GPU utilization is at 100%.",
+                    "implication": "Thermal management might be compromised.",
+                },
+                {
+                    "category": "Memory",
+                    "finding": "Memory utilization is within normal range.",
+                    "implication": "No memory pressure detected.",
+                },
+            ]
+        ),
         "diagnostician_model": "llama3:8b",
     }
     defaults.update(overrides)
@@ -76,6 +80,7 @@ def _seed_event(cf: CaseFile, case_id: int, **overrides) -> None:
 
 # -- show_case tests ----------------------------------------------------------
 
+
 def test_show_case_contains_sections(capsys) -> None:
     """show_case prints hypothesis, baseline, events, and reasoning."""
     cf = CaseFile(":memory:")
@@ -89,11 +94,11 @@ def test_show_case_contains_sections(capsys) -> None:
     assert "HYPOTHESIS" in out
     assert "Thermal management issue" in out
     assert "CONFIDENCE" in out
-    assert "-1.23%" in out
+    assert "75.00%" in out
     assert "RECOMMENDED ACTION" in out
     assert "BASELINE" in out
     assert "67.3%" in out
-    assert "48.6%" in out   # deviation
+    assert "48.6%" in out  # deviation
     assert "100.0%" in out  # current value
     assert "LLM INTERPRETATION (llama3:8b)" in out
     assert "TRIAGE REASONING" in out
@@ -119,12 +124,14 @@ def test_show_case_not_found(capsys) -> None:
 
 # -- show_latest tests --------------------------------------------------------
 
+
 def test_show_latest_picks_most_recent(capsys) -> None:
     """show_latest selects the case with the most recent opened_at."""
     cf = CaseFile(":memory:")
     _seed_case(cf, title="GPU-old: metric_a breach", opened_at="2026-04-01 08:00:00")
     cid2 = _seed_case(
-        cf, title="GPU-new: metric_b breach",
+        cf,
+        title="GPU-new: metric_b breach",
         opened_at="2026-04-02 12:00:00",
     )
 
@@ -150,6 +157,7 @@ def test_show_latest_empty_db(capsys) -> None:
 
 
 # -- list_cases tests ---------------------------------------------------------
+
 
 def test_list_cases_contains_id_and_title(capsys) -> None:
     """list_cases shows a table with case IDs and titles."""
@@ -184,6 +192,7 @@ def test_list_cases_empty_db(capsys) -> None:
 
 # -- pending diagnosis --------------------------------------------------------
 
+
 def test_pending_diagnosis_shows_message(capsys) -> None:
     """A case with no hypothesis shows a pending diagnosis message."""
     cf = CaseFile(":memory:")
@@ -209,7 +218,22 @@ def test_pending_diagnosis_shows_message(capsys) -> None:
     cf.close()
 
 
+def test_sentinel_confidence_is_suppressed(capsys) -> None:
+    """An uncalibrated sentinel confidence is not rendered."""
+    cf = CaseFile(":memory:")
+    cid = _seed_case(cf, confidence_pct=-1.23)
+
+    show_case(cf, cid)
+    out = capsys.readouterr().out
+
+    assert "CONFIDENCE" not in out
+    assert "-1.23" not in out
+
+    cf.close()
+
+
 # -- read_only CaseFile -------------------------------------------------------
+
 
 def test_casefile_read_only(tmp_path) -> None:
     """CaseFile opens in read-only mode without running migrations."""

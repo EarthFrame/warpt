@@ -72,7 +72,9 @@ class Scribe:
                 f"Opened: {opened_at}",
                 f"Hypothesis: {hypothesis}",
             ]
-            if confidence_pct is not None:
+            # Suppress uncalibrated/invalid confidence (e.g. the Attending
+            # sentinel) until real calibration lands; only show a valid 0-100%.
+            if confidence_pct is not None and 0.0 <= confidence_pct <= 100.0:
                 lines.append(f"Confidence: {confidence_pct}%")
             if recommended_action:
                 lines.append(f"Recommended Action: {recommended_action}")

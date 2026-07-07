@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
@@ -71,8 +72,6 @@ class ChartNurse:
             "prior_cases": prior_cases,
             "event_count_7d": event_count,
         }
-
-        import json
 
         interpretation = self._client.generate(
             json.dumps(stats, default=str), CHART_NURSE_SYSTEM_PROMPT

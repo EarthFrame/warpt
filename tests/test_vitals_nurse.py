@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 from warpt.daemon.vitals_nurse import DEFAULT_GPU_THRESHOLDS, VitalsNurse
@@ -411,4 +412,94 @@ def test_threshold_breach_round_trips_through_casefile() -> None:
     assert events_received[0]["value"] == 95.0
     assert events_received[0]["gpu_guid"] == "GPU-aaa-bbb-ccc"
 
+    cf.close()
+
+
+# ── Subprocess supervision + total power ───────────────────────────
+
+
+class _FakeProc:
+    """Minimal Popen stand-in yielding preset stdout lines then exiting."""
+
+    def __init__(self, lines: list[str], exit_code: int = 1) -> None:
+        self.stdout = iter(lines)
+        self._exit_code = exit_code
+
+    def poll(self) -> int:
+        return self._exit_code
+
+    def terminate(self) -> None:
+        pass
+
+    def wait(self, timeout: float | None = None) -> int:  # noqa: ARG002
+        return self._exit_code
+
+
+def test_supervisor_restarts_dead_subprocess(monkeypatch) -> None:
+    """If the monitor subprocess exits, the supervisor respawns it."""
+    casefile = MagicMock()
+    nurse = VitalsNurse(
+        casefile=casefile,
+        heartbeat_interval=9999.0,
+        restart_backoff=0.0,
+        max_restart_backoff=0.0,
+        healthy_run_seconds=9999.0,
+    )
+    line = json.dumps(_sample_snapshot())
+    spawns: list[int] = []
+
+    def fake_spawn() -> _FakeProc:
+        spawns.append(1)
+        if len(spawns) >= 3:
+            # Let the supervisor exit after a couple of restarts.
+            nurse._stop_event.set()
+        return _FakeProc([line])
+
+    monkeypatch.setattr(nurse, "_spawn_process", fake_spawn)
+    nurse.start()
+    nurse._thread.join(timeout=5)
+
+    assert len(spawns) >= 2  # respawned at least once after the first death
+    assert casefile.execute.called  # snapshots from restarted procs still ingested
+
+
+def test_supervisor_marks_unhealthy_after_repeated_failures(monkeypatch) -> None:
+    """Rapid consecutive subprocess deaths flip is_healthy() to False."""
+    casefile = MagicMock()
+    nurse = VitalsNurse(
+        casefile=casefile,
+        heartbeat_interval=9999.0,
+        restart_backoff=0.0,
+        max_restart_backoff=0.0,
+        healthy_run_seconds=9999.0,
+        max_consecutive_failures=3,
+    )
+    spawns: list[int] = []
+
+    def fake_spawn() -> _FakeProc:
+        spawns.append(1)
+        if len(spawns) >= 5:
+            nurse._stop_event.set()
+        return _FakeProc([])  # dies immediately with no output
+
+    monkeypatch.setattr(nurse, "_spawn_process", fake_spawn)
+    assert nurse.is_healthy() is True
+
+    nurse.start()
+    nurse._thread.join(timeout=5)
+
+    assert nurse.is_healthy() is False
+
+
+def test_total_power_sums_cpu_and_gpu_power() -> None:
+    """total_power_w is the sum of CPU and GPU power, not just CPU power."""
+    from warpt.daemon.casefile import CaseFile
+
+    cf = CaseFile(":memory:")
+    nurse = VitalsNurse(casefile=cf, heartbeat_interval=0.0)
+
+    nurse.feed_snapshot(_sample_snapshot())  # cpu 125.0 W + gpu 280.5 W
+
+    rows = cf.query("SELECT total_power_w FROM vitals")
+    assert rows[0][0] == 125.0 + 280.5
     cf.close()
