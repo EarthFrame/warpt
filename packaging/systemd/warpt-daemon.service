@@ -1,0 +1,39 @@
+# warpt ER node daemon — observe → diagnose → report on one GPU node.
+#
+# Install:
+#   sudo cp warpt-daemon.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now warpt-daemon
+#
+# The daemon supervises its own monitor subprocess (auto-restart with
+# backoff); systemd supervises the daemon itself.
+
+[Unit]
+Description=warpt ER node daemon (GPU health observation and diagnosis)
+Documentation=https://github.com/EarthFrame/warpt
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Run as a dedicated user; needs GPU visibility (nvidia device access).
+User=warpt
+Group=warpt
+Environment=WARPT_LOG_LEVEL=INFO
+# Provider/fleet secrets come from an env file, never config.yaml.
+EnvironmentFile=-/etc/warpt/daemon.env
+ExecStart=/usr/local/bin/warpt daemon start --foreground
+Restart=always
+RestartSec=5
+# Never starve tenant workloads: cap the intelligence layer.
+CPUQuota=50%
+MemoryMax=2G
+TasksMax=64
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/warpt/.warpt
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

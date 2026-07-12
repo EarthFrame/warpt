@@ -15,6 +15,9 @@ from warpt.daemon.llm.base import (
     LLMPermanentError,
     LLMResponse,
     LLMSchemaError,
+    ToolCall,
+    ToolDef,
+    check_tools_schema_exclusive,
     parse_structured_text,
 )
 from warpt.utils.logger import Logger
@@ -84,25 +87,37 @@ class ClaudeProvider:
 
     def generate(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         system: str | None = None,
         response_schema: dict[str, Any] | None = None,
+        tools: list[ToolDef] | None = None,
         timeout: float | None = None,
     ) -> LLMResponse:
         """Generate a completion via the Anthropic Messages API.
 
         With ``response_schema``, output is API-enforced via
         ``output_config.format`` and locally validated, retrying up to 3
-        attempts on schema misses.
+        attempts on schema misses. With ``tools``, native Anthropic tool use
+        is engaged and requested invocations are returned as ``tool_calls``.
         """
+        check_tools_schema_exclusive(tools, response_schema)
         params: dict[str, Any] = {
             "model": self._model,
             "max_tokens": self._max_tokens,
-            "messages": messages,
+            "messages": _to_anthropic_messages(messages),
         }
         if system:
             params["system"] = system
+        if tools is not None:
+            params["tools"] = [
+                {
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.input_schema,
+                }
+                for t in tools
+            ]
         if response_schema is not None:
             params["output_config"] = {
                 "format": {
@@ -159,7 +174,12 @@ class ClaudeProvider:
             raise LLMPermanentError("Claude declined the request (refusal)")
 
         text = "".join(block.text for block in message.content if block.type == "text")
-        if not text:
+        tool_calls = [
+            ToolCall(id=block.id, name=block.name, arguments=dict(block.input))
+            for block in message.content
+            if block.type == "tool_use"
+        ]
+        if not text and not tool_calls:
             raise LLMError("Claude returned no text content")
 
         return LLMResponse(
@@ -168,7 +188,59 @@ class ClaudeProvider:
             provider=self._name,
             input_tokens=message.usage.input_tokens,
             output_tokens=message.usage.output_tokens,
+            tool_calls=tool_calls,
+            stop_reason=message.stop_reason,
         )
+
+
+def _to_anthropic_messages(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert canonical messages to Anthropic Messages API shapes.
+
+    Assistant turns carrying ``tool_calls`` become ``tool_use`` content
+    blocks; ``role: "tool"`` results become ``tool_result`` blocks inside a
+    user message. Consecutive tool results merge into one user message —
+    the API requires strict user/assistant alternation.
+    """
+    converted: list[dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role")
+        if role == "assistant" and msg.get("tool_calls"):
+            blocks: list[dict[str, Any]] = []
+            content = msg.get("content") or ""
+            if content:
+                blocks.append({"type": "text", "text": content})
+            for call in msg["tool_calls"]:
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": call["id"],
+                        "name": call["name"],
+                        "input": call.get("arguments", {}),
+                    }
+                )
+            converted.append({"role": "assistant", "content": blocks})
+        elif role == "tool":
+            block = {
+                "type": "tool_result",
+                "tool_use_id": msg.get("tool_call_id", ""),
+                "content": msg.get("content", ""),
+            }
+            prev = converted[-1] if converted else None
+            if (
+                prev is not None
+                and prev["role"] == "user"
+                and isinstance(prev["content"], list)
+                and prev["content"]
+                and prev["content"][-1].get("type") == "tool_result"
+            ):
+                prev["content"].append(block)
+            else:
+                converted.append({"role": "user", "content": [block]})
+        else:
+            converted.append({"role": role, "content": msg.get("content", "")})
+    return converted
 
 
 def _strictify(schema: dict[str, Any]) -> dict[str, Any]:

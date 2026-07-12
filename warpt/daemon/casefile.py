@@ -118,8 +118,57 @@ INSERT INTO schema_migrations (version, description)
     WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = 1);
 """
 
+_SCHEMA_V2 = """\
+-- tool_calls: per-case record of every agent tool invocation (auditability)
+CREATE SEQUENCE IF NOT EXISTS tool_call_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS tool_calls (
+    tool_call_id BIGINT    NOT NULL DEFAULT nextval('tool_call_id_seq'),
+    case_id      BIGINT    NOT NULL,
+    ts           TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    tool_name    VARCHAR   NOT NULL,
+    arguments    JSON,
+    result       JSON,
+    status       VARCHAR   NOT NULL DEFAULT 'ok',
+    latency_ms   DOUBLE,
+    PRIMARY KEY (tool_call_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_calls_case_id ON tool_calls (case_id);
+
+-- actions: remediation audit trail (write-only this phase — NOTHING executes)
+CREATE SEQUENCE IF NOT EXISTS action_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS actions (
+    action_id      BIGINT    NOT NULL DEFAULT nextval('action_id_seq'),
+    case_id        BIGINT,
+    ts             TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    action_type    VARCHAR   NOT NULL,
+    target         VARCHAR,
+    parameters     JSON,
+    reason         VARCHAR,
+    policy_verdict VARCHAR   NOT NULL,
+    status         VARCHAR   NOT NULL DEFAULT 'proposed',
+    PRIMARY KEY (action_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_actions_case_id ON actions (case_id);
+
+-- cases: diagnosis v2 columns
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS severity VARCHAR;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS evidence JSON;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS tools_used JSON;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS prompt_snapshot JSON;
+
+-- Record migration
+INSERT INTO schema_migrations (version, description)
+    SELECT 2, 'Phase 2: tool_calls, actions audit, diagnosis v2 columns'
+    WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = 2);
+"""
+
 _MIGRATIONS = {
     1: _SCHEMA_V1,
+    2: _SCHEMA_V2,
 }
 
 

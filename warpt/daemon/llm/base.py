@@ -2,12 +2,31 @@
 
 Message shape is a plain list of ``{"role": ..., "content": ...}`` dicts so
 no provider SDK types leak into agent code.
+
+Canonical message shapes (provider-agnostic — each provider maps these to
+its own wire format):
+
+- ``{"role": "system"|"user"|"assistant", "content": str}``
+- Assistant turn that called tools::
+
+    {"role": "assistant", "content": str,
+     "tool_calls": [{"id": str, "name": str, "arguments": dict}]}
+
+- Tool result turn::
+
+    {"role": "tool", "tool_call_id": str, "name": str, "content": str}
+
+where ``content`` on a tool result is the JSON-serialized tool outcome.
+
+``tools`` and ``response_schema`` are mutually exclusive on a single
+``generate()`` call — agent loops gather evidence with ``tools`` and then
+make a final, schema-constrained conclude call.
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 
@@ -25,6 +44,45 @@ class LLMSchemaError(LLMError):
     Transport succeeded but the model could not produce schema-valid output;
     callers may degrade to a fallback response instead of retrying transport.
     """
+
+
+@dataclass(frozen=True)
+class ToolDef:
+    """Definition of a tool the model may call during generation.
+
+    Parameters
+    ----------
+    name
+        Tool name (matches the agent-side tool registry).
+    description
+        What the tool does — shown to the model.
+    input_schema
+        JSON schema for the tool's arguments object.
+    """
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+@dataclass
+class ToolCall:
+    """A tool invocation requested by the model.
+
+    Parameters
+    ----------
+    id
+        Provider-assigned call id, or a synthesized ``"call_<n>"`` for
+        backends that don't issue ids.
+    name
+        Name of the tool to invoke.
+    arguments
+        Parsed arguments object for the tool.
+    """
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -46,6 +104,11 @@ class LLMResponse:
         Prompt tokens consumed, if the backend reports usage.
     output_tokens
         Completion tokens generated, if the backend reports usage.
+    tool_calls
+        Tool invocations the model requested; empty when none.
+    stop_reason
+        Why generation stopped — ``"tool_use"`` when tool calls were
+        returned; otherwise provider-specific or ``None``.
     """
 
     text: str
@@ -54,14 +117,12 @@ class LLMResponse:
     structured: dict[str, Any] | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    stop_reason: str | None = None
 
 
 class LLMProvider(Protocol):
-    """Protocol every inference backend implements.
-
-    ``tools`` support is deliberately absent until the Phase-2 agent loop;
-    the seam is ``generate()`` with optional schema-validated output.
-    """
+    """Protocol every inference backend implements."""
 
     @property
     def name(self) -> str:
@@ -75,10 +136,11 @@ class LLMProvider(Protocol):
 
     def generate(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         system: str | None = None,
         response_schema: dict[str, Any] | None = None,
+        tools: list[ToolDef] | None = None,
         timeout: float | None = None,
     ) -> LLMResponse:
         """Generate a completion for *messages*.
@@ -86,8 +148,26 @@ class LLMProvider(Protocol):
         When ``response_schema`` is given, the provider must return an
         ``LLMResponse`` whose ``structured`` field validates against the
         schema, or raise ``LLMError`` after bounded internal retries.
+
+        When ``tools`` is given, the provider may return ``tool_calls``
+        instead of (or alongside) text. ``tools`` and ``response_schema``
+        are mutually exclusive — passing both raises ``LLMPermanentError``.
         """
         ...
+
+
+def check_tools_schema_exclusive(
+    tools: list[ToolDef] | None, response_schema: dict[str, Any] | None
+) -> None:
+    """Raise if both ``tools`` and ``response_schema`` were passed.
+
+    Raises
+    ------
+    LLMPermanentError
+        When both are non-None.
+    """
+    if tools is not None and response_schema is not None:
+        raise LLMPermanentError("tools and response_schema are mutually exclusive")
 
 
 def validate_json_schema(data: Any, schema: dict[str, Any]) -> list[str]:

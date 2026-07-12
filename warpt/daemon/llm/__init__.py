@@ -11,6 +11,8 @@ from warpt.daemon.llm.base import (
     LLMProvider,
     LLMResponse,
     LLMSchemaError,
+    ToolCall,
+    ToolDef,
 )
 
 __all__ = [
@@ -19,4 +21,6 @@ __all__ = [
     "LLMProvider",
     "LLMResponse",
     "LLMSchemaError",
+    "ToolCall",
+    "ToolDef",
 ]

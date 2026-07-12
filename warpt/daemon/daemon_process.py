@@ -13,10 +13,14 @@ from warpt.daemon.agents.attending import Attending
 from warpt.daemon.agents.chart_nurse import ChartNurse
 from warpt.daemon.agents.pipeline import run_intelligence_pipeline
 from warpt.daemon.agents.scribe import Scribe
+from warpt.daemon.agents.tools import build_default_registry
 from warpt.daemon.casefile import CaseFile, read_only_snapshot
 from warpt.daemon.charge_nurse import ChargeNurse
 from warpt.daemon.config import load_config
+from warpt.daemon.health import HealthServer
+from warpt.daemon.janitor import Janitor
 from warpt.daemon.llm.registry import provider_for_agent
+from warpt.daemon.remediation import AuditLog, PolicyEngine
 from warpt.daemon.vitals_nurse import VitalsNurse
 from warpt.utils.logger import Logger
 
@@ -39,6 +43,9 @@ class DaemonProcess:
         self._casefile: CaseFile | None = None
         self._vitals_nurse: VitalsNurse | None = None
         self._charge_nurse: ChargeNurse | None = None
+        self._node_reporter: Any = None
+        self._health_server: HealthServer | None = None
+        self._janitor: Janitor | None = None
         self._stop_event = threading.Event()
 
     def run(self) -> None:
@@ -66,6 +73,40 @@ class DaemonProcess:
         log.info("Wired VitalsNurse -> ChargeNurse")
         self._vitals_nurse.start()
 
+        self._janitor = Janitor(self._casefile, config)
+        self._janitor.start()
+
+        http_cfg = config.get("daemon_http", {}) or {}
+        if http_cfg.get("enabled"):
+            try:
+                self._health_server = HealthServer(
+                    status_fn=self._live_status,
+                    ready_fn=lambda: (
+                        self._vitals_nurse.is_healthy() if self._vitals_nurse else False
+                    ),
+                    host=http_cfg.get("host", "127.0.0.1"),
+                    port=int(http_cfg.get("port", 8788)),
+                )
+                self._health_server.start()
+            except Exception:
+                log.exception("Health endpoint failed to start; continuing")
+
+        # Fleet reporting is additive — node autonomy never depends on it.
+        if (config.get("fleet", {}) or {}).get("enabled"):
+            try:
+                from warpt.fleet.node_reporter import NodeReporter
+
+                self._node_reporter = NodeReporter(
+                    casefile=self._casefile,
+                    config=config,
+                    warpt_dir=str(self._warpt_dir),
+                )
+                self._node_reporter.start()
+            except Exception:
+                log.exception(
+                    "Fleet reporter failed to start; node continues unaffected"
+                )
+
         log.info("Daemon ready, waiting for stop signal")
         self._stop_event.wait()
         self._shutdown()
@@ -83,11 +124,26 @@ class DaemonProcess:
         )
 
         chart_nurse = ChartNurse(casefile=self._casefile, provider=chart_provider)
+
+        policy_engine = PolicyEngine(config)
+        audit_log = AuditLog(self._casefile)
+        tool_registry = build_default_registry(
+            casefile=self._casefile,
+            vitals_nurse=self._vitals_nurse,
+            policy_engine=policy_engine,
+            audit_log=audit_log,
+            config=config,
+        )
+        log.info("Attending tools: %s", ", ".join(tool_registry.names()))
+
         attending_agent = Attending(
             casefile=self._casefile,
             provider=attending_provider,
             vitals_nurse=self._vitals_nurse,
             config=config,
+            tool_registry=tool_registry,
+            policy_engine=policy_engine,
+            audit_log=audit_log,
         )
         scribe = Scribe(casefile=self._casefile)
         log.info("Intelligence pipeline enabled")
@@ -154,6 +210,30 @@ class DaemonProcess:
                     pass
         return status
 
+    def _live_status(self) -> dict[str, Any]:
+        """Rich in-process status for the health endpoint (exact, lock-free)."""
+        status: dict[str, Any] = {"running": True, "pid": os.getpid()}
+        if self._vitals_nurse:
+            status["vitals_nurse"] = self._vitals_nurse.get_health()
+        if self._casefile:
+            try:
+                status["vitals_count"] = self._casefile.query(
+                    "SELECT count(*) FROM vitals"
+                )[0][0]
+                status["events_count"] = self._casefile.query(
+                    "SELECT count(*) FROM events"
+                )[0][0]
+                status["open_cases"] = self._casefile.query(
+                    "SELECT count(*) FROM cases WHERE status = 'open'"
+                )[0][0]
+                status["last_heartbeat"] = str(
+                    self._casefile.query("SELECT max(ts) FROM vitals")[0][0]
+                )
+            except Exception:
+                status["db_error"] = True
+        status["fleet_reporter"] = self._node_reporter is not None
+        return status
+
     def _write_pid(self) -> None:
         """Write the current process PID to the PID file."""
         self._pid_path.write_text(str(os.getpid()))
@@ -166,6 +246,12 @@ class DaemonProcess:
         """Clean up resources."""
         log = Logger.get("daemon")
         log.info("Daemon shutting down...")
+        if self._health_server:
+            self._health_server.stop()
+        if self._node_reporter:
+            self._node_reporter.stop()
+        if self._janitor:
+            self._janitor.stop()
         if self._charge_nurse:
             self._charge_nurse.shutdown()
         if self._vitals_nurse:

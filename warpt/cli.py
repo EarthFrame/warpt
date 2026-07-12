@@ -613,6 +613,12 @@ from warpt.commands.daemon_cmd import daemon  # noqa: E402
 
 warpt.add_command(daemon)
 
+# Register fleet command group (central needs the 'fleet' extra; the
+# command itself degrades with a helpful message when deps are missing)
+from warpt.commands.fleet_cmd import fleet  # noqa: E402
+
+warpt.add_command(fleet)
+
 # Register integrate command group (requires optional deps)
 try:
     from warpt.integrate.cli import integrate

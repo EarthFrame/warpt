@@ -1,0 +1,32 @@
+# warpt fleet central — ingest API + fleet store + dashboard.
+#
+# Install:
+#   sudo cp warpt-fleet-central.service /etc/systemd/system/
+#   echo "WARPT_FLEET_TOKEN=$(warpt fleet token)" | sudo tee /etc/warpt/central.env
+#   sudo systemctl daemon-reload && sudo systemctl enable --now warpt-fleet-central
+
+[Unit]
+Description=warpt fleet central control plane
+Documentation=https://github.com/EarthFrame/warpt
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=warpt
+Group=warpt
+# WARPT_FLEET_TOKEN (required) + optional DATABASE_URL live here.
+EnvironmentFile=/etc/warpt/central.env
+# Production: point --db at Postgres/Timescale and terminate TLS/mTLS here
+# (--ssl-keyfile/--ssl-certfile/--ssl-ca-certs) or at a fronting proxy.
+ExecStart=/usr/local/bin/warpt fleet serve --host 0.0.0.0 --port 8787 \
+    --db ${DATABASE_URL}
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

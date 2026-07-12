@@ -205,7 +205,17 @@ llm:
 
 ### Phase 2 — Perfect the agentic `observe → diagnose → report` pipeline
 
+> **Status 2026-07-07: ✅ implementation landed** on `er-experimentation` — 2.0 (tools seam: `ToolDef`/`ToolCall`, native Claude/Ollama/OpenAI-compat mappings + `tool_emulation.py` fallback), 2a (`agents/tools/` with 6 tools incl. policy+idle-gated probe), 2b (DIAGNOSIS_SCHEMA v2), 2c (`calibration.py`, `-1.23` sentinel retired → NULL on fallback), 2d (ChartNurse `correlated_signals`), 2e (versioned `prompts.py` + per-case `prompt_snapshot`), 2f (`remediation/` — policy deny-by-default, audit, zero executable actions), 2g (schema v2: `tool_calls`, `actions`, case columns; verified fresh + v1→v2 upgrade on DuckDB 1.5.1). Wired into `daemon_process`; Scribe renders v2 fields; probes **disabled by default**. Suite: 279 passed; **outstanding test updates** (deliberately deferred): `test_attending.py` (sentinel import), 2 × `test_casefile.py` migration-count asserts, plus new-module test coverage.
+
 **Objective:** turn the Attending from a one-shot prompt into a real evidence-gathering **agentic loop**, and make the whole pipeline trustworthy, calibrated, and auditable.
+
+> **Current-state note (grounded in code):** the Attending today is a **single `provider.generate(response_schema=…)` call** (`attending.py`), not a loop; confidence is the `-1.23` sentinel (`attending.py` `CONFIDENCE_SENTINEL`); Chart Nurse analyzes **only the breach metric**, one at a time (`chart_nurse.py`); `prompts.py` is flat constants. The Phase-1 `LLMProvider.generate()` seam has **no `tools` parameter** — `base.py` deferred it ("tools support deliberately absent until the Phase-2 agent loop"). So 2.0 below is a real prerequisite, not a given.
+
+**2.0. Extend the LLM provider seam for tool-use *(do this FIRST — it gates 2a–2c)***
+- Add `tools=[…]` to `LLMProvider.generate()` and a tool-call return shape to `LLMResponse` (e.g. `tool_calls`). This is the P1 "one seam, three backends" contract extended to tool-use — **land it before writing the Attending loop or you rewrite the agent twice** (same lesson as P1-before-P2).
+- `providers/claude.py`: native Anthropic tool-use.
+- `providers/ollama.py` + `providers/openai_compat.py`: **Python-orchestrated emulation** (prompt-driven JSON tool selection) so local/cluster models drive the same loop and the degradation ladder still holds.
+- The `ResilientProvider` budget/breaker wrapper and `registry.provider_for_agent` selection carry over unchanged.
 
 **2a. Agent tool interface (read-only now; the remediation seam reuses it)**
 - **New module `warpt/daemon/agents/tools/`:** `base.py` (`Tool` protocol: name, JSON schema, `run(args) -> result`), `registry.py`, and read-only tools:
@@ -233,11 +243,22 @@ llm:
 - **New module `warpt/daemon/remediation/`:** `base.py` defines the `Action` lifecycle: `propose → policy_check → (approve) → execute → verify → rollback`. `policy.py` is an allow/deny/require-approval engine. `audit.py` writes every proposed action to an audit table.
 - **In this phase, the pipeline only *proposes and records* actions** (structured `recommended_action` + policy verdict), never executes. When on-node actions are added later, they implement `execute()`/`rollback()` and flip policy — **no pipeline rewrite.**
 
+**2g. Schema migration v2 (explicit — the current schema only has room, not tables)**
+The v1 schema (`casefile.py` `_SCHEMA_V1`) has `cases.stress_tests_ordered/stress_test_results/reasoning_chain/historical_context` columns but **no** tables for tool calls or proposed actions. Add a forward-only migration:
+- `tool_calls` (or a JSON column on `cases`) — per-case record of every tool invocation: tool name, args, result, timestamp — the auditability payload P3 ships and P4 renders.
+- `actions` — the remediation audit table (2f): proposed action, policy verdict, status; **write-only in this phase, never executed.**
+- Prompt/model-version columns (or snapshot JSON) on `cases` for replay (2e).
+- Wire the read-only `run_diagnostic_probe` tool to actually populate `stress_tests_ordered`/`stress_test_results` (currently unused).
+
+**Intra-phase ordering:** 2.0 (seam) → 2a (tools) → agentic loop → 2b (structured diagnosis v2) → 2c (calibration) → 2g (migration lands alongside 2a/2e/2f as those tables are needed). 2d and 2f can proceed in parallel once the seam exists.
+
 **DoD:** Attending gathers evidence via tools and produces schema-valid, calibrated diagnoses; a diagnostic probe can run under policy (with idle-check) and its result feeds the case; every case has a replayable reasoning chain + prompt/model snapshot; proposed actions are recorded and policy-gated but never executed; degradation ladder still holds when the LLM/tools fail.
 
 ---
 
 ### Phase 3 — Fleet control plane *(node → central)*
+
+> **Status 2026-07-07: ✅ implementation landed** on `er-experimentation` — `warpt/fleet/`: `node_reporter.py` (disk-buffered JSONL outbox w/ size cap, cursor state file, stable node identity, heartbeat; **verified**: central down → buffers, reconnect → backfills with zero duplicates), `messages.py` (schema-versioned pydantic), `central/` (FastAPI ingest + query API, SQLAlchemy fleet store — Postgres for prod / SQLite for dev, bearer-token auth w/ TLS/mTLS via uvicorn flags, SSE activity stream, `/healthz`+`/readyz`). Agent-activity stream derived from the Phase-2 `tool_calls`/`actions` audit tables. CLI: `warpt fleet serve|token`; new `fleet` pip extra. Wired into the daemon behind `fleet.enabled: false`. **Deferred:** timezone/UTC migration (D8 — still open), central-side heavy-model diagnosis, per-node tokens, test suite.
 
 **Objective:** fleet-wide visibility without sacrificing node autonomy.
 
@@ -252,6 +273,8 @@ llm:
 ---
 
 ### Phase 4 — Enterprise dashboard *(the big visible deliverable)*
+
+> **Status 2026-07-07: ✅ v1 landed** — `warpt/fleet/central/dashboard/index.html`, served by central at `/`. Self-contained zero-build SPA (deliberate deviation from the React guidance: offline-datacenter constraint, no node toolchain in repo — swappable later): ward-board node grid w/ semantic health (validated colorblind-safe status palette, icon+label never color-alone), open-case rail → full case drawer (hypothesis, calibrated confidence, reasoning chain, evidence, tools used, policy-gated recommended action), per-node vitals small-multiples (single-axis, crosshair+tooltip), **live agent-activity stream** over SSE (fetch-streaming so the bearer token rides in headers), dark+light themes. **Deferred:** SSO/OIDC+RBAC, alert paging hooks, visual QA pass in a real browser.
 
 **Objective:** an enterprise-grade, real-time window into the fleet **and into what the agents are thinking and why.**
 
@@ -273,6 +296,8 @@ llm:
 ---
 
 ### Phase 5 — Production hardening & operability
+
+> **Status 2026-07-07: ✅ core slice landed** — `warpt/daemon/health.py` (in-process `/healthz`/`/readyz`/`/status`, supersedes the D3 snapshot hack on-node; behind `daemon_http.enabled: false`), `warpt/daemon/janitor.py` (vitals + closed-case retention w/ CHECKPOINT, config `retention.*`), `warpt daemon start --foreground` for supervised mode, `packaging/systemd/*.service` (auto-restart, resource caps, hardening), `packaging/docker/Dockerfile.central`, and `docs/er-operations.md` (deploy guides, config reference, runbooks: monitor death, LLM outage, DuckDB WAL recovery, central outage, token rotation, upgrades). **Deferred (deliberate):** chaos suite + fleet simulator (test scaffolding — excluded from this run), `/security-review` pass, release engineering (CI/CD, pinned deps, vuln scan), mypy gate.
 
 **Objective:** things you only appreciate at 3am.
 

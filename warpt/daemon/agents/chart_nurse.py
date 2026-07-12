@@ -45,33 +45,10 @@ class ChartNurse:
 
         Returns
         -------
-            Analysis dict with baseline, profile, deviation, prior cases,
-            event count, interpretation, and model used.
+            Analysis dict with baseline, profile, deviation, correlated
+            signals, prior cases, event count, interpretation, and model.
         """
-        baseline = self._rolling_averages(gpu_guid, metric)
-        hour_profile = self._hourly_profile(gpu_guid, metric)
-        prior_cases = self._prior_cases(gpu_guid)
-        event_count = self._event_count_7d(gpu_guid)
-
-        # Deviation from 1h average
-        deviation_pct = None
-        if baseline["1h_avg"] and baseline["1h_avg"] > 0:
-            deviation_pct = round(
-                ((current_value - baseline["1h_avg"]) / baseline["1h_avg"]) * 100,
-                1,
-            )
-
-        # Build LLM prompt
-        stats = {
-            "gpu_guid": gpu_guid,
-            "metric": metric,
-            "current_value": current_value,
-            "baseline": baseline,
-            "current_hour_profile": hour_profile,
-            "deviation_pct": deviation_pct,
-            "prior_cases": prior_cases,
-            "event_count_7d": event_count,
-        }
+        stats = self._gather_analytics(gpu_guid, metric, current_value)
 
         response = self._provider.generate(
             [{"role": "user", "content": json.dumps(stats, default=str)}],
@@ -79,14 +56,7 @@ class ChartNurse:
         )
 
         return {
-            "gpu_guid": gpu_guid,
-            "metric": metric,
-            "current_value": current_value,
-            "baseline": baseline,
-            "current_hour_profile": hour_profile,
-            "deviation_pct": deviation_pct,
-            "prior_cases": prior_cases,
-            "event_count_7d": event_count,
+            **stats,
             "interpretation": response.text,
             "model_used": response.model,
         }
@@ -99,11 +69,20 @@ class ChartNurse:
         Same structure as ``analyze()`` but with ``interpretation=None``
         and ``model_used=None``.
         """
+        stats = self._gather_analytics(gpu_guid, metric, current_value)
+        return {**stats, "interpretation": None, "model_used": None}
+
+    def _gather_analytics(
+        self, gpu_guid: str, metric: str, current_value: float
+    ) -> dict[str, Any]:
+        """Compute the full analytics payload shared by both analyze paths."""
         baseline = self._rolling_averages(gpu_guid, metric)
         hour_profile = self._hourly_profile(gpu_guid, metric)
         prior_cases = self._prior_cases(gpu_guid)
         event_count = self._event_count_7d(gpu_guid)
+        correlated = self._correlated_signals(gpu_guid)
 
+        # Deviation from 1h average
         deviation_pct = None
         if baseline["1h_avg"] and baseline["1h_avg"] > 0:
             deviation_pct = round(
@@ -118,10 +97,9 @@ class ChartNurse:
             "baseline": baseline,
             "current_hour_profile": hour_profile,
             "deviation_pct": deviation_pct,
+            "correlated_signals": correlated,
             "prior_cases": prior_cases,
             "event_count_7d": event_count,
-            "interpretation": None,
-            "model_used": None,
         }
 
     def _rolling_averages(self, gpu_guid: str, metric: str) -> dict[str, float | None]:
@@ -171,6 +149,76 @@ class ChartNurse:
                 "stddev": round(rows[0][1], 1) if rows[0][1] is not None else 0.0,
             }
         return None
+
+    # Core metrics surfaced together so the Attending reasons over a
+    # coherent picture, not one metric.
+    _CORRELATED_COLUMNS = (
+        "utilization_pct",
+        "mem_utilization_pct",
+        "power_w",
+        "temperature_c",
+    )
+
+    def _correlated_signals(self, gpu_guid: str) -> dict[str, Any]:
+        """Collect current vs 1h-baseline for core metrics + recent throttling.
+
+        Returns
+        -------
+            ``{"metrics": {<db_col>: {"current", "1h_avg", "deviation_pct"}},
+            "throttle_reasons_recent": [...]}``
+        """
+        metrics: dict[str, dict[str, float | None]] = {}
+        for column in self._CORRELATED_COLUMNS:
+            current = None
+            rows = self._casefile.query(
+                f"""
+                SELECT g.{column}
+                FROM vitals, UNNEST(gpus) AS t(g)
+                WHERE g.gpu_guid = ?
+                ORDER BY ts DESC LIMIT 1
+                """,
+                [gpu_guid],
+            )
+            if rows and rows[0][0] is not None:
+                current = round(rows[0][0], 1)
+
+            avg_1h = None
+            rows = self._casefile.query(
+                f"""
+                SELECT AVG(g.{column})
+                FROM vitals, UNNEST(gpus) AS t(g)
+                WHERE g.gpu_guid = ?
+                  AND ts > current_timestamp - INTERVAL '1 HOUR'
+                """,
+                [gpu_guid],
+            )
+            if rows and rows[0][0] is not None:
+                avg_1h = round(rows[0][0], 1)
+
+            deviation_pct = None
+            if current is not None and avg_1h and avg_1h > 0:
+                deviation_pct = round(((current - avg_1h) / avg_1h) * 100, 1)
+
+            metrics[column] = {
+                "current": current,
+                "1h_avg": avg_1h,
+                "deviation_pct": deviation_pct,
+            }
+
+        reasons = self._casefile.query(
+            """
+            SELECT DISTINCT r.tr
+            FROM vitals, UNNEST(gpus) AS t(g),
+                 UNNEST(g.throttle_reasons) AS r(tr)
+            WHERE g.gpu_guid = ?
+              AND ts > current_timestamp - INTERVAL '1 HOUR'
+            """,
+            [gpu_guid],
+        )
+        return {
+            "metrics": metrics,
+            "throttle_reasons_recent": sorted(r[0] for r in reasons),
+        }
 
     def _prior_cases(self, gpu_guid: str) -> list[dict[str, Any]]:
         """List up to 5 most recent cases for this GPU."""

@@ -1,0 +1,25 @@
+# warpt fleet central — container image.
+#
+# Build (repo root):  docker build -f packaging/docker/Dockerfile.central -t warpt-central .
+# Run:                docker run -p 8787:8787 -e WARPT_FLEET_TOKEN=... \
+#                       -e DATABASE_URL=postgresql://fleet@db/fleet warpt-central
+
+FROM python:3.12-slim
+
+RUN useradd --create-home --shell /usr/sbin/nologin warpt
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY warpt ./warpt
+RUN pip install --no-cache-dir ".[daemon,fleet]" && \
+    pip install --no-cache-dir psycopg2-binary
+
+USER warpt
+EXPOSE 8787
+
+# Liveness/readiness are served by the app itself (/healthz, /readyz).
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8787/healthz')" || exit 1
+
+ENV DATABASE_URL=sqlite:////home/warpt/fleet.db
+CMD ["sh", "-c", "warpt fleet serve --host 0.0.0.0 --port 8787 --db \"$DATABASE_URL\""]

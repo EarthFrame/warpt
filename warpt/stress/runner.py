@@ -205,9 +205,7 @@ class TestRunner:
                     continue
 
                 if not test.is_available():
-                    results.add_error(
-                        run_key, "Test not available on this system"
-                    )
+                    results.add_error(run_key, "Test not available on this system")
                     continue
 
                 result = test.run(duration=duration)

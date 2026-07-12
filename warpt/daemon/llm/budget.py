@@ -18,6 +18,7 @@ from warpt.daemon.llm.base import (
     LLMProvider,
     LLMResponse,
     LLMSchemaError,
+    ToolDef,
 )
 from warpt.utils.logger import Logger
 
@@ -98,10 +99,11 @@ class ResilientProvider:
 
     def generate(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         system: str | None = None,
         response_schema: dict[str, Any] | None = None,
+        tools: list[ToolDef] | None = None,
         timeout: float | None = None,
     ) -> LLMResponse:
         """Call the wrapped provider with retry, breaker, and accounting.
@@ -122,6 +124,7 @@ class ResilientProvider:
                     messages,
                     system=system,
                     response_schema=response_schema,
+                    tools=tools,
                     timeout=timeout,
                 )
             except (LLMPermanentError, LLMSchemaError):

@@ -37,8 +37,14 @@ def daemon():
 
 
 @daemon.command()
-def start():
-    """Start the warpt daemon in the background."""
+@click.option(
+    "--foreground",
+    is_flag=True,
+    default=False,
+    help="Run in the foreground (for systemd/containers; no wizard prompts)",
+)
+def start(foreground):
+    """Start the warpt daemon (background by default)."""
     err = check_duckdb()
     if err:
         raise click.ClickException(err)
@@ -50,6 +56,20 @@ def start():
 
     if dp.is_running():
         click.echo("Daemon is already running.")
+        return
+
+    if foreground:
+        # Supervised mode (systemd Type=simple / containers): run blocking
+        # in this process; SIGTERM/SIGINT trigger a clean shutdown.
+        import signal as _signal
+
+        def _handle_term(_signum, _frame):
+            dp.stop()
+
+        _signal.signal(_signal.SIGTERM, _handle_term)
+        _signal.signal(_signal.SIGINT, _handle_term)
+        click.echo("Daemon running in foreground (SIGTERM to stop).")
+        dp.run()
         return
 
     # First-run: check for intelligence config

@@ -17,6 +17,38 @@ DEFAULTS: dict[str, Any] = {
         "attending": "llama3:70b",
     },
     "triage_order": ["thermal_power", "memory", "compute", "storage_io"],
+    "attending": {
+        "max_iterations": 5,
+        "max_wall_clock_s": 120,
+    },
+    "remediation": {
+        "probes": {
+            # Diagnostic stress probes are load-generating; off by default.
+            "enabled": False,
+            "idle_threshold_pct": 20.0,
+            "max_duration_s": 30,
+        },
+    },
+    "fleet": {
+        # Node -> central reporting. Additive: the node never depends on it.
+        "enabled": False,
+        "central_url": "http://127.0.0.1:8787",
+        "push_interval_s": 30,
+        "token_env": "WARPT_FLEET_TOKEN",
+        "max_buffer_mb": 64,
+    },
+    "daemon_http": {
+        # In-process health/status endpoint (loopback only by default).
+        "enabled": False,
+        "host": "127.0.0.1",
+        "port": 8788,
+    },
+    "retention": {
+        # Node-local data lifecycle (see warpt/daemon/janitor.py).
+        "vitals_days": 14,
+        "closed_cases_days": 90,
+        "interval_h": 6,
+    },
 }
 
 
