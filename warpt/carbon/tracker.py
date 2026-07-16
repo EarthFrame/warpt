@@ -1,4 +1,11 @@
-"""CarbonTracker context manager for automatic energy tracking."""
+"""CarbonTracker context manager for automatic energy tracking.
+
+Energy is read exclusively from the out-of-process Rust power-daemon: warpt no
+longer measures power itself, it asks the daemon and trusts the answer. If the
+daemon is unreachable at start, tracking is disabled (the wrapped workload still
+runs). If the daemon drops mid-run, tracking is terminated and the session is
+recorded with a ``terminated`` status rather than a guessed energy number.
+"""
 
 from __future__ import annotations
 
@@ -8,26 +15,60 @@ import threading
 import time
 import uuid
 
-from warpt.backends.power.daemon_client import PowerClient, PowerReading
+from warpt.backends.power.daemon_client import (
+    PowerClient,
+    PowerClientError,
+    PowerReading,
+    counter_delta_joules,
+)
 from warpt.backends.power.factory import PowerMonitor
 from warpt.carbon.calculator import CarbonCalculator
 from warpt.carbon.store import EnergyStore
 from warpt.models.carbon_models import CarbonSession
-from warpt.models.power_models import PowerDomain
+from warpt.utils.logger import Logger
+
+# Mid-run reconnect policy: one retry after a short pause before giving up.
+_RECONNECT_RETRIES = 1
+_RECONNECT_PAUSE_S = 0.5
+_LOG = "carbon.tracker"
+
+_TERMINATED_LOST = (
+    "terminated due to loss of connection, please try connection to daemon again"
+)
+_TERMINATED_RESET = (
+    "terminated: daemon counter reset mid-session "
+    "(daemon restarted), please re-run with a stable daemon"
+)
+
+
+def _warn(message: str) -> None:
+    """Emit a WARNING (transient) via the logger, falling back to stderr."""
+    if Logger.is_configured():
+        Logger.get(_LOG).warning(message)
+    else:
+        print(f"[warpt] WARNING {message}", file=sys.stderr)
+
+
+def _error(message: str) -> None:
+    """Emit an ERROR (terminal) via the logger, falling back to stderr."""
+    if Logger.is_configured():
+        Logger.get(_LOG).error(message)
+    else:
+        print(f"[warpt] ERROR {message}", file=sys.stderr)
 
 
 class CarbonTracker:
-    """Context manager that samples power in a background thread.
+    """Context manager that tracks energy via the Rust power-daemon.
 
-    Wraps existing command logic to automatically track energy, CO2,
-    and cost. If no power sources are available, becomes a silent no-op.
+    Wraps existing command logic. If the daemon is unavailable, it becomes a
+    silent no-op for tracking purposes and never interferes with the workload.
 
     Parameters
     ----------
     label : str
         Human-readable label for the session (e.g. "warpt stress").
     interval : float
-        Sampling interval in seconds.
+        Sampling interval in seconds (for avg/peak power display only).
     region : str
         Grid region for CO2 calculation.
 
@@ -52,27 +93,36 @@ class CarbonTracker:
         self._running = False
         self._thread: threading.Thread | None = None
         self._samples: list[tuple[float, float, float, float]] = []
-        self._sources: list[str] = []
+        self._sources: list[str] = ["daemon"]
         self._noop = False
-        self._start_gpu_energy: dict[int, float] = {}  # gpu_index → joules
-        self._start_cpu_energy: dict[str, float] = {}  # rapl_name → joules
+        self._daemon_lost = False
         self._daemon_client: PowerClient | None = None
         self._start_daemon_reading: PowerReading | None = None
 
     def __enter__(self) -> CarbonTracker:
-        """Start power sampling in a background thread."""
+        """Gate on the daemon, snapshot the start counter, then start sampling."""
         try:
-            self._monitor = PowerMonitor(include_process_attribution=False)
+            self._monitor = PowerMonitor()
             if not self._monitor.initialize():
+                # Daemon unreachable after retry → disable tracking, NOT the
+                # workload. initialize() already warned on the retry attempt.
+                _error("energy tracking disabled: power-daemon not reachable")
                 self._noop = True
                 return self
-
-            self._sources = [s.value for s in self._monitor.get_available_sources()]
         except Exception:
             self._noop = True
             return self
 
-        # Create initial session record
+        # Snapshot the daemon's energy counter at the start of the session.
+        try:
+            self._daemon_client = PowerClient()
+            self._start_daemon_reading = self._daemon_client.current()
+        except PowerClientError:
+            _error("energy tracking disabled: could not read daemon counter")
+            self._noop = True
+            return self
+
+        # Create the session record now that we know the daemon is live.
         self._session = CarbonSession(
             id=self._session_id,
             label=self._label,
@@ -81,128 +131,48 @@ class CarbonTracker:
             platform=platform.system().lower(),
             sources=self._sources,
         )
+        EnergyStore().create_session(self._session)
 
-        store = EnergyStore()
-        store.create_session(self._session)
-
-        # Snapshot energy counters at start (GPU Volta+ and CPU RAPL)
-        try:
-            start_snapshot = self._monitor.get_snapshot()
-            for domain in start_snapshot.domains:
-                if (
-                    domain.domain == PowerDomain.GPU
-                    and domain.energy_joules is not None
-                ):
-                    gpu_idx = domain.metadata.get("gpu_index", 0)
-                    self._start_gpu_energy[gpu_idx] = domain.energy_joules
-                elif (
-                    domain.domain == PowerDomain.PACKAGE
-                    and domain.energy_joules is not None
-                ):
-                    rapl_name = domain.metadata.get("rapl_name", "package-0")
-                    self._start_cpu_energy[rapl_name] = domain.energy_joules
-        except Exception:
-            pass
-
-        # get the power reading at the start (for rust daemon)
-        if self._monitor.is_daemon_active():
-            try:
-                self._daemon_client = PowerClient()
-                self._start_daemon_reading = self._daemon_client.current()
-            except Exception:
-                self._daemon_client = None
-                self._start_daemon_reading = None
-
-        # Starting background sampling
+        # Background sampling (for avg/peak power display; energy comes from the
+        # counter delta, not these samples).
         self._running = True
         self._thread = threading.Thread(
             target=self._sample_loop, daemon=True, name="carbon-tracker"
         )
         self._thread.start()
-
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Stop sampling, calculate results, and finalize the session."""
+        """Stop sampling, compute energy from the daemon counter, finalize."""
         if self._noop:
             return
 
-        # Stop the sampling thread
         self._running = False
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 
-        # Calculate energy/CO2/cost
-        # Fallback chain: daemon counter, then native hardware counters, then sampling
+        # If the daemon dropped mid-run, record a terminated session — never a
+        # guessed energy number.
+        if self._daemon_lost:
+            self._finalize_terminated(_TERMINATED_LOST)
+            return
+
+        delta_j, failure = self._daemon_counter_delta()
+        if failure is not None:
+            self._finalize_terminated(failure)
+            return
+
         calc = CarbonCalculator(region=self._region)
-        daemon_counter_energy_j = self._get_daemon_counter_delta()
-        gpu_counter_energy_j = self._get_gpu_counter_delta()
-        cpu_counter_energy_j = self._get_cpu_counter_delta()
-
-        # Cleanup monitor AFTER reading the final counters above. The gpu/cpu
-        # deltas take a final snapshot, and cleanup() resets the monitor, which
-        # would force a full re-initialize just to serve that snapshot.
-        if self._monitor is not None:
-            try:
-                self._monitor.cleanup()
-            except Exception:
-                pass
-
-        if daemon_counter_energy_j is not None:
-            # Exact node-total energy from the out-of-process daemon counter
-            energy_kwh = calc.energy_from_counter(daemon_counter_energy_j)
-            energy_source = "daemon-counter"
-            if "daemon" not in self._sources:
-                self._sources.append("daemon")
-        elif gpu_counter_energy_j is not None and cpu_counter_energy_j is not None:
-            # Both hardware counters available
-            gpu_energy_kwh = calc.energy_from_counter(gpu_counter_energy_j)
-            cpu_energy_kwh = calc.energy_from_counter(cpu_counter_energy_j)
-            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
-            energy_source = "counter"
-        elif gpu_counter_energy_j is not None:
-            # GPU counter only, poll for CPU
-            cpu_samples = [(t, c) for t, _w, c, _g in self._samples]
-            cpu_energy_kwh = calc.energy_from_samples(cpu_samples)
-            gpu_energy_kwh = calc.energy_from_counter(gpu_counter_energy_j)
-            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
-            energy_source = "counter"
-        elif cpu_counter_energy_j is not None:
-            # CPU counter only, poll for GPU
-            cpu_energy_kwh = calc.energy_from_counter(cpu_counter_energy_j)
-            gpu_samples = [(t, g) for t, _w, _c, g in self._samples]
-            gpu_energy_kwh = calc.energy_from_samples(gpu_samples)
-            energy_kwh = cpu_energy_kwh + gpu_energy_kwh
-            energy_source = "counter"
-        else:
-            # Fallback: trapezoidal integration for everything
-            power_samples = [(t, w) for t, w, _c, _g in self._samples]
-            energy_kwh = calc.energy_from_samples(power_samples)
-            energy_source = "polled"
-
+        energy_kwh = calc.energy_from_counter(delta_j)
         co2_grams = calc.co2_from_energy(energy_kwh)
         cost_usd = calc.cost_from_energy(energy_kwh)
 
         end_time = time.time()
         duration_s = end_time - self._session.start_time
-
-        # Compute metadata
         powers = [w for _, w, _, _ in self._samples]
         avg_power = sum(powers) / len(powers) if powers else 0.0
         peak_power = max(powers) if powers else 0.0
 
-        # Build sample dicts for storage
-        sample_dicts = [
-            {
-                "timestamp": t,
-                "power_watts": round(w, 2),
-                "cpu_watts": round(c, 2),
-                "gpu_watts": round(g, 2),
-            }
-            for t, w, c, g in self._samples
-        ]
-
-        # Finalize session
         self._session.end_time = end_time
         self._session.duration_s = duration_s
         self._session.energy_kwh = energy_kwh
@@ -212,20 +182,21 @@ class CarbonTracker:
             "avg_power_w": round(avg_power, 2),
             "peak_power_w": round(peak_power, 2),
             "sample_count": len(self._samples),
-            "energy_source": energy_source,
+            "energy_source": "daemon-counter",
+            "status": "completed",
         }
-        self._session.samples = sample_dicts
+        self._session.samples = [
+            {
+                "timestamp": t,
+                "power_watts": round(w, 2),
+                "cpu_watts": round(c, 2),
+                "gpu_watts": round(g, 2),
+            }
+            for t, w, c, g in self._samples
+        ]
+        EnergyStore().update_session(self._session)
 
-        store = EnergyStore()
-        store.update_session(self._session)
-
-        # Print one-line summary to stderr
         humanized = calc.humanize(co2_grams)
-        source_label = {
-            "daemon-counter": "rust daemon counter",
-            "counter": "hardware counter",
-            "polled": "sampled estimate",
-        }.get(energy_source, energy_source)
         print(
             f"\n[carbon] {duration_s:.1f}s | "
             f"{avg_power:.1f}W avg | "
@@ -233,111 +204,84 @@ class CarbonTracker:
             f"{co2_grams:.2f}g CO2 | "
             f"${cost_usd:.4f} | "
             f"{humanized} | "
-            f"via {source_label}",
+            f"via rust daemon counter",
             file=sys.stderr,
         )
 
-    def _get_daemon_counter_delta(self) -> float | None:
-        """Compute total energy delta from the power-daemon counter.
+    def _finalize_terminated(self, status: str) -> None:
+        """Record a session that ended because the daemon connection failed."""
+        end_time = time.time()
+        powers = [w for _, w, _, _ in self._samples]
+        avg_power = sum(powers) / len(powers) if powers else 0.0
+        peak_power = max(powers) if powers else 0.0
 
-        get the difference of current and start values to calculate
-        energy delta
+        self._session.end_time = end_time
+        self._session.duration_s = end_time - self._session.start_time
+        self._session.metadata = {
+            "avg_power_w": round(avg_power, 2),
+            "peak_power_w": round(peak_power, 2),
+            "sample_count": len(self._samples),
+            "energy_source": "daemon-counter",
+            "status": status,
+        }
+        EnergyStore().update_session(self._session)
+        _error(f"energy tracking {status}")
+
+    def _daemon_counter_delta(self) -> tuple[float, str | None]:
+        """Return (energy_joules, None) on success, or (0.0, status) on failure.
+
+        Reads the daemon counter one last time and subtracts the start reading.
+        A failed read or a counter reset (daemon restarted) is a terminal
+        failure, not something to estimate around.
         """
         if self._daemon_client is None or self._start_daemon_reading is None:
-            return None
-
+            return 0.0, _TERMINATED_LOST
         try:
             end = self._daemon_client.current()
-        except Exception:
-            return None
+        except PowerClientError:
+            return 0.0, _TERMINATED_LOST
 
-        start = self._start_daemon_reading
-        # Daemon restarted (counter reset) → can't compute a clean delta.
-        if end.reset_time != start.reset_time:
-            return None
-        delta = end.joules_since_reset - start.joules_since_reset
-        if delta < 0:
-            return None
-        return delta
+        delta = counter_delta_joules(self._start_daemon_reading, end)
+        if delta is None:
+            return 0.0, _TERMINATED_RESET
+        return delta, None
 
-    def _get_gpu_counter_delta(self) -> float | None:
-        """Compute GPU energy delta from hardware counters.
-
-        Takes a final snapshot, reads the energy counters, and subtracts
-        the start values captured in __enter__.
-
-        Returns total joules across all GPUs,
-        or None if counters weren't available
-        """
-        if not self._start_gpu_energy or self._monitor is None:
-            return None
-
-        try:
-            end_snapshot = self._monitor.get_snapshot()
-        except Exception:
-            return None
-
-        total_delta_j = 0.0
-        matched = False
-        for domain in end_snapshot.domains:
-            if domain.domain != PowerDomain.GPU or domain.energy_joules is None:
-                continue
-            gpu_idx = domain.metadata.get("gpu_index", 0)
-            start_j = self._start_gpu_energy.get(gpu_idx)
-            if start_j is None:
-                continue
-            delta = domain.energy_joules - start_j
-            if delta >= 0:
-                total_delta_j += delta
-                matched = True
-
-        return total_delta_j if matched else None
-
-    def _get_cpu_counter_delta(self) -> float | None:
-        """Compute CPU energy delta from RAPL hardware counters.
-
-        Takes a final snapshot, reads the PACKAGE energy counters, and
-        subtracts the start values captured in __enter__. Returns total
-        joules across all RAPL packages, or None if counters weren't available.
-        """
-        if not self._start_cpu_energy or self._monitor is None:
-            return None
-
-        try:
-            end_snapshot = self._monitor.get_snapshot()
-        except Exception:
-            return None
-
-        total_delta_j = 0.0
-        matched = False
-        for domain in end_snapshot.domains:
-            if domain.domain != PowerDomain.PACKAGE or domain.energy_joules is None:
-                continue
-            rapl_name = domain.metadata.get("rapl_name", "package-0")
-            start_j = self._start_cpu_energy.get(rapl_name)
-            if start_j is None:
-                continue
-            delta = domain.energy_joules - start_j
-            if delta < 0:
-                # RAPL counter wrapped around — treat as small positive delta
-                delta = 0.0
-            total_delta_j += delta
-            matched = True
-
-        return total_delta_j if matched else None
+    def _reconnect(self) -> bool:
+        """Try to reconnect to the daemon once after a short pause."""
+        if self._daemon_client is None:
+            return False
+        for attempt in range(_RECONNECT_RETRIES):
+            _warn(
+                f"power-daemon read failed, retrying in {_RECONNECT_PAUSE_S}s "
+                f"({attempt + 1}/{_RECONNECT_RETRIES})"
+            )
+            time.sleep(_RECONNECT_PAUSE_S)
+            if self._daemon_client.healthz():
+                return True
+        return False
 
     def _sample_loop(self) -> None:
-        """Continuously sample power readings at the configured interval."""
+        """Sample daemon power at the configured interval (avg/peak display)."""
         while self._running:
+            recorded = False
             try:
                 if self._monitor is None:
                     break
                 snapshot = self._monitor.get_snapshot()
                 total = snapshot.total_power_watts
-                cpu = snapshot.get_cpu_power() or 0.0
-                gpu = snapshot.get_gpu_power()
                 if total is not None and total > 0:
+                    cpu = snapshot.get_cpu_power() or 0.0
+                    gpu = snapshot.get_gpu_power()
                     self._samples.append((snapshot.timestamp, total, cpu, gpu))
+                    recorded = True
             except Exception:
-                pass
+                recorded = False
+
+            # A read that returned nothing may be a transient blip or a real
+            # loss — retry once, and terminate tracking if it doesn't recover.
+            if not recorded and not self._reconnect():
+                self._daemon_lost = True
+                _error("power-daemon connection lost — energy tracking terminated")
+                break
+
             time.sleep(self._interval)
