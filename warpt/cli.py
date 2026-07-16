@@ -8,6 +8,7 @@ import click
 from warpt.commands.list_cmd import run_list
 from warpt.utils.env import get_env
 from warpt.utils.logger import Logger
+from warpt.version.warpt_version import WARPT_VERSION
 
 
 class WarptGroup(click.Group):
@@ -43,6 +44,12 @@ Quick start:
 
 
 @click.group(cls=WarptGroup, epilog=_QUICK_START)
+@click.version_option(
+    str(WARPT_VERSION),
+    "-V",
+    "--version",
+    message="warpt %(version)s",
+)
 def warpt():
     """Warpt — hardware discovery, monitoring, stress testing, and diagnostics."""
     # Configure logger at startup if not already configured
