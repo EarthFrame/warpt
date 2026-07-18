@@ -9,6 +9,10 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from warpt.carbon.continuous import (
+    ContinuousEnergyTracker,
+    peek_persisted_totals,
+)
 from warpt.daemon.agents.attending import Attending
 from warpt.daemon.agents.chart_nurse import ChartNurse
 from warpt.daemon.agents.pipeline import run_intelligence_pipeline
@@ -46,6 +50,7 @@ class DaemonProcess:
         self._node_reporter: Any = None
         self._health_server: HealthServer | None = None
         self._janitor: Janitor | None = None
+        self._energy_tracker: ContinuousEnergyTracker | None = None
         self._stop_event = threading.Event()
 
     def run(self) -> None:
@@ -76,6 +81,22 @@ class DaemonProcess:
         self._janitor = Janitor(self._casefile, config)
         self._janitor.start()
 
+        # Lifetime energy odometer (Rust power-daemon counter). Safe no-op
+        # when the power-daemon is unreachable — never blocks the node.
+        carbon_cfg = config.get("carbon", {}) or {}
+        try:
+            self._energy_tracker = ContinuousEnergyTracker(
+                str(self._warpt_dir),
+                region=carbon_cfg.get("region", "US"),
+                cost_per_kwh=float(carbon_cfg.get("cost_per_kwh", 0.12)),
+            )
+            self._energy_tracker.start(
+                interval_s=float(carbon_cfg.get("poll_interval_s", 60))
+            )
+        except Exception:
+            log.exception("Energy odometer failed to start; continuing")
+            self._energy_tracker = None
+
         http_cfg = config.get("daemon_http", {}) or {}
         if http_cfg.get("enabled"):
             try:
@@ -100,6 +121,7 @@ class DaemonProcess:
                     casefile=self._casefile,
                     config=config,
                     warpt_dir=str(self._warpt_dir),
+                    energy_tracker=self._energy_tracker,
                 )
                 self._node_reporter.start()
             except Exception:
@@ -208,6 +230,15 @@ class DaemonProcess:
                         )[0][0]
                 except Exception:
                     pass
+            # Last persisted odometer totals (never contacts the daemon).
+            carbon_cfg = load_config(str(self._warpt_dir)).get("carbon", {}) or {}
+            energy = peek_persisted_totals(
+                str(self._warpt_dir),
+                region=carbon_cfg.get("region", "US"),
+                cost_per_kwh=float(carbon_cfg.get("cost_per_kwh", 0.12)),
+            )
+            if energy is not None:
+                status["energy"] = energy
         return status
 
     def _live_status(self) -> dict[str, Any]:
@@ -231,6 +262,8 @@ class DaemonProcess:
                 )
             except Exception:
                 status["db_error"] = True
+        if self._energy_tracker:
+            status["energy"] = self._energy_tracker.last_totals()
         status["fleet_reporter"] = self._node_reporter is not None
         return status
 
@@ -250,6 +283,8 @@ class DaemonProcess:
             self._health_server.stop()
         if self._node_reporter:
             self._node_reporter.stop()
+        if self._energy_tracker:
+            self._energy_tracker.stop()
         if self._janitor:
             self._janitor.stop()
         if self._charge_nurse:

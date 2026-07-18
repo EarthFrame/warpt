@@ -42,6 +42,11 @@ nodes = Table(
     Column("first_seen", DateTime, default=datetime.utcnow),
     Column("last_seen", DateTime),
     Column("last_heartbeat", DateTime),
+    # Lifetime energy odometer totals (from heartbeat payloads).
+    Column("energy_kwh", Float),
+    Column("co2_grams", Float),
+    Column("cost_usd", Float),
+    Column("energy_updated", DateTime),
 )
 
 fleet_vitals = Table(
@@ -137,8 +142,30 @@ class FleetStore:
             url, future=True, connect_args=connect_args, **engine_kwargs
         )
         metadata.create_all(self._engine)
+        self._ensure_energy_columns()
         self._log = Logger.get("fleet.store")
         self._log.info("Fleet store ready: %s", url.split("@")[-1])
+
+    def _ensure_energy_columns(self) -> None:
+        """Add odometer columns to pre-existing ``nodes`` tables.
+
+        ``create_all`` only creates missing tables, never missing columns, so
+        stores created before the energy odometer need a lightweight ALTER.
+        Each statement is independent and failure-tolerant (column exists).
+        """
+        for column, sql_type in (
+            ("energy_kwh", "FLOAT"),
+            ("co2_grams", "FLOAT"),
+            ("cost_usd", "FLOAT"),
+            ("energy_updated", "TIMESTAMP"),
+        ):
+            try:
+                with self._engine.begin() as conn:
+                    conn.execute(
+                        text(f"ALTER TABLE nodes ADD COLUMN {column} {sql_type}")
+                    )
+            except Exception:
+                pass  # Column already exists.
 
     # -------------------------------------------------------------- ingest
 
@@ -153,7 +180,9 @@ class FleetStore:
                     continue
                 ts = _parse_ts(msg.get("ts")) or datetime.utcnow()
                 payload = msg.get("payload") or {}
-                self._touch_node(conn, node_id, msg.get("hostname", ""), ts, kind)
+                self._touch_node(
+                    conn, node_id, msg.get("hostname", ""), ts, kind, payload
+                )
                 if kind == "vitals":
                     conn.execute(
                         fleet_vitals.insert().values(
@@ -181,25 +210,30 @@ class FleetStore:
 
     @staticmethod
     def _touch_node(
-        conn: Any, node_id: str, hostname: str, ts: datetime, kind: str
+        conn: Any,
+        node_id: str,
+        hostname: str,
+        ts: datetime,
+        kind: str,
+        payload: dict[str, Any] | None = None,
     ) -> None:
         values: dict[str, Any] = {"last_seen": ts}
         if hostname:
             values["hostname"] = hostname
         if kind == "heartbeat":
             values["last_heartbeat"] = ts
+            energy = (payload or {}).get("energy")
+            if isinstance(energy, dict) and energy.get("energy_kwh") is not None:
+                values["energy_kwh"] = float(energy["energy_kwh"])
+                values["co2_grams"] = float(energy.get("co2_grams") or 0.0)
+                values["cost_usd"] = float(energy.get("cost_usd") or 0.0)
+                values["energy_updated"] = ts
         result = conn.execute(
             nodes.update().where(nodes.c.node_id == node_id).values(**values)
         )
         if result.rowcount == 0:
             conn.execute(
-                nodes.insert().values(
-                    node_id=node_id,
-                    hostname=hostname,
-                    first_seen=ts,
-                    last_seen=ts,
-                    last_heartbeat=ts if kind == "heartbeat" else None,
-                )
+                nodes.insert().values(node_id=node_id, first_seen=ts, **values)
             )
 
     @staticmethod
@@ -296,6 +330,10 @@ class FleetStore:
                         "last_heartbeat": _iso(row["last_heartbeat"]),
                         "open_cases": open_cases,
                         "critical_cases": critical,
+                        "energy_kwh": row["energy_kwh"],
+                        "co2_grams": row["co2_grams"],
+                        "cost_usd": row["cost_usd"],
+                        "energy_updated": _iso(row["energy_updated"]),
                     }
                 )
             return result

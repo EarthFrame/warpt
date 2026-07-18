@@ -49,6 +49,12 @@ DEFAULTS: dict[str, Any] = {
         "closed_cases_days": 90,
         "interval_h": 6,
     },
+    "carbon": {
+        # Lifetime energy odometer (see warpt/carbon/continuous.py).
+        "region": "US",
+        "cost_per_kwh": 0.12,
+        "poll_interval_s": 60,
+    },
 }
 
 

@@ -113,6 +113,9 @@ class NodeReporter:
         Full daemon config dict; reads the ``fleet`` block.
     warpt_dir
         The warpt data directory for outbox/state/node-id files.
+    energy_tracker
+        Optional ``ContinuousEnergyTracker``; when present, each heartbeat
+        carries the node's lifetime energy/CO2/cost totals.
     """
 
     def __init__(
@@ -120,6 +123,7 @@ class NodeReporter:
         casefile: CaseFile,
         config: dict[str, Any],
         warpt_dir: str,
+        energy_tracker: Any = None,
     ) -> None:
         fleet = config.get("fleet", {}) or {}
         self._casefile = casefile
@@ -139,6 +143,7 @@ class NodeReporter:
         self._node_id = get_node_id(warpt_dir)
         self._hostname = socket.gethostname()
 
+        self._energy_tracker = energy_tracker
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._outbox_counter = 0
@@ -201,8 +206,15 @@ class NodeReporter:
 
     def _collect(self, state: dict[str, Any]) -> list[dict[str, Any]]:
         """Pull new rows since the cursors in *state*; advance cursors."""
+        heartbeat: dict[str, Any] = {"status": "ok"}
+        if self._energy_tracker is not None:
+            try:
+                heartbeat["energy"] = self._energy_tracker.read()
+            except Exception:
+                # Autonomy rule: a failed odometer read never blocks reporting.
+                self._log.debug("Energy read failed for heartbeat", exc_info=True)
         messages: list[dict[str, Any]] = [
-            self._message("heartbeat", self._now_iso(), {"status": "ok"})
+            self._message("heartbeat", self._now_iso(), heartbeat)
         ]
         messages.extend(self._collect_vitals(state))
         messages.extend(self._collect_events(state))

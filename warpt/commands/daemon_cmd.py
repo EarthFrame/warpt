@@ -187,3 +187,10 @@ def status():
                 click.echo(f"  Last heartbeat: {info['last_heartbeat']}")
     else:
         click.echo("Daemon not running.")
+    energy = info.get("energy")
+    if energy:
+        click.echo(
+            f"  Energy:       {energy['energy_kwh']:.3f} kWh · "
+            f"{energy['co2_grams'] / 1000.0:.2f} kg CO2 · "
+            f"${energy['cost_usd']:.2f} (lifetime)"
+        )

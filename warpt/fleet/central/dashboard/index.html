@@ -84,6 +84,8 @@ section h2 .count { color: var(--ink-2); }
 .node .stats { display: flex; gap: 14px; margin-top: 10px; }
 .stat .v { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .stat .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-mut); }
+.node .energy { color: var(--ink-mut); font-size: 11px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.node .energy .bolt { color: var(--s-power); }
 .health { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; margin-top: 10px; color: var(--ink-2); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--health-color, var(--ink-mut)); }
 .empty { color: var(--ink-mut); padding: 24px; text-align: center; border: 1px dashed var(--ring); border-radius: 10px; }
@@ -175,7 +177,7 @@ section h2 .count { color: var(--ink-2); }
 
 <main>
   <section id="board">
-    <h2>Nodes <span class="count" id="nodecount"></span></h2>
+    <h2>Nodes <span class="count" id="nodecount"></span> <span class="count" id="fleetenergy"></span></h2>
     <div class="nodes" id="nodes"><div class="empty">waiting for first heartbeat…</div></div>
   </section>
 
@@ -229,6 +231,18 @@ const hhmmss = (iso) => (iso || "").slice(11, 19) || "—";
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 
 /* ————— nodes (ward board) ————— */
+function fmtKwh(kwh) {
+  if (kwh == null) return "—";
+  return kwh >= 1 ? kwh.toFixed(1) + " kWh" : (kwh * 1000).toFixed(0) + " Wh";
+}
+function fmtCo2(g) {
+  if (g == null) return "—";
+  return g >= 1000 ? (g / 1000).toFixed(1) + " kg CO₂" : g.toFixed(0) + " g CO₂";
+}
+function energyLine(n) {
+  if (n.energy_kwh == null) return "";
+  return `<div class="energy"><span class="bolt">⚡</span> ${fmtKwh(n.energy_kwh)} · ${fmtCo2(n.co2_grams)} · $${(n.cost_usd ?? 0).toFixed(2)}</div>`;
+}
 function health(n) {
   const beat = n.last_heartbeat ? (Date.now() - new Date(n.last_heartbeat).getTime()) / 1000 : Infinity;
   if (beat > 120) return { key: "offline", label: "no heartbeat", color: "var(--ink-mut)" };
@@ -240,6 +254,9 @@ function health(n) {
 async function refreshNodes() {
   const nodes = await api("/api/v1/nodes");
   $("nodecount").textContent = nodes.length ? "· " + nodes.length : "";
+  const totalKwh = nodes.reduce((sum, n) => sum + (n.energy_kwh || 0), 0);
+  $("fleetenergy").textContent =
+    nodes.some(n => n.energy_kwh != null) ? "· ⚡ " + fmtKwh(totalKwh) + " total" : "";
   const box = $("nodes");
   if (!nodes.length) { box.innerHTML = '<div class="empty">no nodes have reported yet</div>'; return; }
   box.innerHTML = nodes.map(n => {
@@ -252,6 +269,7 @@ async function refreshNodes() {
         <div class="stat"><div class="v">${n.open_cases}</div><div class="k">open</div></div>
         <div class="stat"><div class="v">${n.critical_cases}</div><div class="k">critical</div></div>
       </div>
+      ${energyLine(n)}
       <div class="health"><span class="dot"></span>${h.label}</div>
     </div>`;
   }).join("");
