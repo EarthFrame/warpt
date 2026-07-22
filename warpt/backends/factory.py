@@ -29,7 +29,7 @@ def get_accelerator_backend() -> AcceleratorBackend:
     except Exception:
         pass
 
-    # TODO: Add support for AMD and Intel
+    # AMD support is still a placeholder (see warpt/backends/amd.py).
     try:
         from warpt.backends.amd import AMDBackend
 
@@ -39,6 +39,7 @@ def get_accelerator_backend() -> AcceleratorBackend:
     except Exception:
         pass
 
+    # Intel GPUs via the Level Zero sysman API (warpt/backends/intel.py).
     try:
         from warpt.backends.intel import IntelBackend
 
