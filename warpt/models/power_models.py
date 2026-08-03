@@ -25,6 +25,7 @@ class PowerSource(str, Enum):
     RAPL = "rapl"  # Intel/AMD Running Average Power Limit
     POWERMETRICS = "powermetrics"  # macOS powermetrics
     NVML = "nvml"  # NVIDIA Management Library
+    LEVEL_ZERO = "level_zero"  # Intel oneAPI Level Zero sysman energy counter
     ROCM_SMI = "rocm_smi"  # AMD ROCm SMI
     IOKIT = "iokit"  # macOS IOKit (battery)
     ESTIMATED = "estimated"  # Calculated/estimated from utilization
@@ -107,7 +108,9 @@ class GPUPowerInfo:
     """Power information for a single GPU.
 
     Attributes:
-        index: GPU index.
+        index: GPU index *within its vendor backend*. Each backend numbers its
+            devices from 0, so ``index`` is only unique when paired with
+            ``vendor``.
         name: GPU model name.
         power_watts: Current power draw in watts.
         power_limit_watts: Power limit in watts.
@@ -115,6 +118,9 @@ class GPUPowerInfo:
         memory_utilization_percent: Memory utilization percentage.
         temperature_celsius: GPU temperature.
         processes: List of processes using this GPU.
+        metadata: Additional vendor-specific info (e.g. ``integrated``).
+        vendor: Lowercase vendor tag of the reporting backend ("nvidia",
+            "intel"). Empty when the backend does not identify itself.
     """
 
     index: int
@@ -126,11 +132,13 @@ class GPUPowerInfo:
     temperature_celsius: float | None = None
     processes: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    vendor: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to JSON-serializable dictionary."""
         return {
             "index": self.index,
+            "vendor": self.vendor,
             "name": self.name,
             "power_watts": round(self.power_watts, 2),
             "power_limit_watts": self.power_limit_watts,

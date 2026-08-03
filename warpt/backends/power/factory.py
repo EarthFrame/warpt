@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from warpt.backends.power.base import PowerBackend
+from warpt.backends.power.intel_power import IntelPowerBackend
 from warpt.backends.power.linux_rapl import LinuxRAPLBackend
 from warpt.backends.power.macos_power import MacOSPowerBackend
 from warpt.backends.power.nvidia_power import NvidiaPowerBackend
@@ -48,6 +49,7 @@ class PowerMonitor:
         self._include_process_attribution = include_process_attribution
         self._backends: list[PowerBackend] = []
         self._nvidia_backend: NvidiaPowerBackend | None = None
+        self._intel_backend: IntelPowerBackend | None = None
         self._initialized = False
         self._lock = threading.Lock()
         self._unavailable_reasons: list[str] = []
@@ -100,6 +102,17 @@ class PowerMonitor:
                 "NVIDIA: nvidia-ml-py not installed or no GPUs detected"
             )
 
+        # Intel GPU backend (Level Zero sysman)
+        intel = IntelPowerBackend()
+        if intel.is_available():
+            intel.initialize()
+            self._backends.append(intel)
+            self._intel_backend = intel
+        else:
+            self._unavailable_reasons.append(
+                "Intel: Level Zero loader not found or no Intel GPUs detected"
+            )
+
         self._initialized = True
         return bool(self._backends)
 
@@ -140,9 +153,11 @@ class PowerMonitor:
             readings = backend.get_power_readings()
             domains.extend(readings)
 
-        # Get detailed GPU info if NVIDIA backend available
+        # Get detailed per-GPU info from each vendor backend
         if self._nvidia_backend:
-            gpus = self._nvidia_backend.get_gpu_power_info()
+            gpus.extend(self._nvidia_backend.get_gpu_power_info())
+        if self._intel_backend:
+            gpus.extend(self._intel_backend.get_gpu_power_info())
 
         # Calculate total power
         total_power = self._calculate_total_power(domains, gpus)
@@ -172,7 +187,7 @@ class PowerMonitor:
 
         Args:
             domains: CPU/system power domains.
-            gpus: GPU power info (discrete GPUs not in package).
+            gpus: GPU power info, integrated and discrete.
 
         Returns:
             Total power in watts or None if not measurable.
@@ -196,12 +211,17 @@ class PowerMonitor:
             total += core_power
             has_measurement = True
 
-        # Add discrete GPU power (integrated GPU already in package on some systems)
+        # Add GPU power. An integrated GPU is fused into the CPU package, so
+        # the package reading above already contains it — adding it again would
+        # double-count. Only the PACKAGE domain covers the GPU; the CORE domain
+        # is cores-only (the iGPU lives in uncore), so when package power is
+        # missing an integrated GPU still has to be added on its own.
+        igpu_already_counted = package_power is not None
         for gpu in gpus:
-            # Only count if this is a discrete GPU (not integrated)
-            if not gpu.metadata.get("integrated", False):
-                total += gpu.power_watts
-                has_measurement = True
+            if igpu_already_counted and gpu.metadata.get("integrated", False):
+                continue
+            total += gpu.power_watts
+            has_measurement = True
 
         return total if has_measurement else None
 
@@ -308,6 +328,7 @@ class PowerMonitor:
             backend.cleanup()
         self._backends = []
         self._nvidia_backend = None
+        self._intel_backend = None
         self._initialized = False
 
 

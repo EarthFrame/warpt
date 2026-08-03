@@ -13,8 +13,12 @@ import pytest
 
 from warpt.backends.factory import get_accelerator_backend
 from warpt.backends.intel import (
+    _CACHE_TTL_S,
+    _MEASURE_WINDOW_S,
+    _RESUME_SETTLE_S,
     IntelBackend,
     _clamp_percent,
+    _counters_incoherent,
     _decode,
     _decode_throttle,
     _energy_to_watts,
@@ -39,6 +43,7 @@ def _fake_sysman(num_devices: int = 1) -> MagicMock:
         "board": "BOARD-1",
         "driver_version": "1.3.26241",
         "num_subdevices": 0,
+        "integrated": False,
     }
     sysman.get_pci_properties.return_value = {"gen": 4, "width": 16}
     sysman.get_memory.return_value = {
@@ -147,6 +152,299 @@ def test_sysman_init_failure():
 def test_sysman_get_devices_without_driver():
     """``get_devices`` is empty before a driver has been resolved."""
     assert _IntelSysman(MagicMock()).get_devices() == []
+
+
+def _sysman_with_energy(readings: list[tuple[int, int]]) -> _IntelSysman:
+    """Build a sysman whose energy counter yields ``readings`` in order.
+
+    Each reading is ``(energy_uj, timestamp_us)``. One power domain is
+    enumerated so ``get_power_watts`` has something to sample.
+    """
+    remaining = list(readings)
+
+    def _enum(_handle, count_ref, array):
+        count_ref._obj.value = 1
+        if array is not None:
+            array[0] = 0xABCD
+        return 0
+
+    def _counter(_domain, ref):
+        energy, timestamp = remaining.pop(0)
+        ref._obj.energy = energy
+        ref._obj.timestamp = timestamp
+        return 0
+
+    lib = MagicMock()
+    lib.zesDeviceEnumPowerDomains.side_effect = _enum
+    lib.zesPowerGetEnergyCounter.side_effect = _counter
+    sysman = _IntelSysman(lib)
+    sysman._reads_left = remaining  # exposed for assertions
+    return sysman
+
+
+def _sysman_drawing(clock: list[float], watts: float) -> _IntelSysman:
+    """Build a sysman whose energy counter accrues ``watts`` against ``clock``.
+
+    Driving the counter from the fake clock rather than a fixed list of
+    readings means the number of reads does not have to be predicted: the
+    measurement loop polls as often as it likes and still sees a device drawing
+    exactly ``watts``.
+    """
+
+    def _enum(_handle, count_ref, array):
+        count_ref._obj.value = 1
+        if array is not None:
+            array[0] = 0xABCD
+        return 0
+
+    def _counter(_domain, ref):
+        ref._obj.energy = int(watts * clock[0] * 1_000_000)  # microjoules
+        ref._obj.timestamp = int(clock[0] * 1_000_000)  # microseconds
+        return 0
+
+    lib = MagicMock()
+    lib.zesDeviceEnumPowerDomains.side_effect = _enum
+    lib.zesPowerGetEnergyCounter.side_effect = _counter
+    return _IntelSysman(lib)
+
+
+def _advancing_clock(clock: list[float]):
+    """Patch context where ``time.sleep`` advances the fake monotonic clock.
+
+    The measurement loop polls until a deadline, so a frozen clock would spin
+    forever. Letting sleep drive the clock keeps the loop terminating while
+    still making time deterministic.
+    """
+    return (
+        patch("warpt.backends.intel.time.monotonic", side_effect=lambda: clock[0]),
+        patch(
+            "warpt.backends.intel.time.sleep",
+            side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        ),
+    )
+
+
+def _measure(sysman, clock, *, status="active", pm_stays_awake=True):
+    """Run one ``get_power_watts`` with runtime-PM state stubbed out."""
+    sysman.get_pci_bdf = lambda _handle: "0000:03:00.0"
+    # (active_ms, suspended_ms); a device that napped has suspended_ms advance.
+    pm_values = [(1000, 500), (1000, 500 if pm_stays_awake else 1500)]
+    monotonic, sleep = _advancing_clock(clock)
+    with monotonic, sleep, patch(
+        "warpt.backends.intel._runtime_pm_status", return_value=status
+    ), patch(
+        "warpt.backends.intel._read_runtime_pm",
+        side_effect=lambda _bdf: pm_values.pop(0) if pm_values else (1000, 500),
+    ):
+        return sysman.get_power_watts(MagicMock())
+
+
+def test_power_watts_measures_device_draw():
+    """The reported figure is the device's actual draw over the window."""
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    assert _measure(sysman, clock) == pytest.approx(5.3)
+
+
+def test_power_watts_skips_settle_when_device_already_active():
+    """An already-running device is measured immediately, with no settle cost.
+
+    This is the workload case: adding seconds of latency to every reading
+    while a job is running would be unacceptable.
+    """
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 42.0)
+    start = clock[0]
+    assert _measure(sysman, clock, status="active") == pytest.approx(42.0)
+    elapsed = clock[0] - start
+    assert elapsed == pytest.approx(_MEASURE_WINDOW_S, abs=0.3)
+    assert elapsed < _RESUME_SETTLE_S
+
+
+def test_power_watts_settles_before_measuring_a_suspended_device():
+    """A suspended device is woken and the post-resume dip discarded."""
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    start = clock[0]
+    assert _measure(sysman, clock, status="suspended") == pytest.approx(5.3)
+    assert clock[0] - start >= _RESUME_SETTLE_S + _MEASURE_WINDOW_S
+
+
+def test_power_watts_none_when_device_suspends_mid_window():
+    """A window the device slept through is discarded, not reported.
+
+    The counter accrues a large fictitious figure across runtime suspend, so
+    such a window must yield None rather than an inflated number.
+    """
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    assert _measure(sysman, clock, pm_stays_awake=False) is None
+
+
+def test_power_watts_measures_without_runtime_pm_interface():
+    """Off Linux there is no runtime-PM interface; measurement still works.
+
+    Without it the settle is applied unconditionally, which costs latency but
+    never accuracy, and the stayed-awake check is skipped.
+    """
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    sysman.get_pci_bdf = lambda _handle: None
+    monotonic, sleep = _advancing_clock(clock)
+    start = clock[0]
+    with monotonic, sleep, patch(
+        "warpt.backends.intel._read_runtime_pm", return_value=None
+    ):
+        assert sysman.get_power_watts(MagicMock()) == pytest.approx(5.3)
+    assert clock[0] - start >= _RESUME_SETTLE_S
+
+
+def _sysman_with_two_domains(
+    clock: list[float], card_watts: float, package_watts: float
+) -> _IntelSysman:
+    """Build a sysman exposing a card domain and a package domain.
+
+    Each accrues at its own rate against the fake clock, so the coherence
+    cross-check can be driven into either state.
+    """
+    card_handle, package_handle = 0xCA, 0xBB
+    rates = {card_handle: card_watts, package_handle: package_watts}
+
+    def _enum(_handle, count_ref, array):
+        count_ref._obj.value = 2
+        if array is not None:
+            array[0] = card_handle
+            array[1] = package_handle
+        return 0
+
+    def _counter(domain, ref):
+        rate = rates[domain.value]
+        ref._obj.energy = int(rate * clock[0] * 1_000_000)
+        ref._obj.timestamp = int(clock[0] * 1_000_000)
+        return 0
+
+    lib = MagicMock()
+    lib.zesDeviceEnumPowerDomains.side_effect = _enum
+    lib.zesPowerGetEnergyCounter.side_effect = _counter
+    return _IntelSysman(lib)
+
+
+def test_counters_incoherent_flags_impossible_package_reading():
+    """Package power above card power is impossible; near-equal is not.
+
+    Values are those measured on Battlemage: the corrupted state reports
+    ~43 W card / ~220 W package, while healthy readings sit close together at
+    low power and comfortably apart under load.
+    """
+    assert _counters_incoherent(42.9, 219.7) is True  # observed corrupted state
+    assert _counters_incoherent(1.59, 2.24) is False  # healthy, near-equal
+    assert _counters_incoherent(221.0, 164.0) is False  # healthy under load
+    assert _counters_incoherent(5.27, 1.96) is False  # healthy at idle
+
+
+def test_power_watts_rejects_incoherent_counter_state():
+    """A window where package exceeds card is discarded rather than reported.
+
+    Without this the corrupted state surfaces as a plausible-looking ~43 W,
+    which is roughly 8x the device's true idle draw.
+    """
+    clock = [100.0]
+    sysman = _sysman_with_two_domains(clock, card_watts=42.9, package_watts=219.7)
+    assert _measure(sysman, clock) is None
+
+
+def test_power_watts_accepts_coherent_two_domain_reading():
+    """A healthy card/package pair measures normally."""
+    clock = [100.0]
+    sysman = _sysman_with_two_domains(clock, card_watts=5.3, package_watts=2.0)
+    assert _measure(sysman, clock) == pytest.approx(5.3)
+
+
+def test_power_watts_is_cached_within_ttl():
+    """The two calls making up one snapshot share a single measurement window."""
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    assert _measure(sysman, clock) == pytest.approx(5.3)
+    reads_after_first = sysman._lib.zesPowerGetEnergyCounter.call_count
+
+    monotonic, sleep = _advancing_clock(clock)
+    with monotonic, sleep:
+        clock[0] += _CACHE_TTL_S / 2
+        assert sysman.get_power_watts(MagicMock()) == pytest.approx(5.3)
+    assert sysman._lib.zesPowerGetEnergyCounter.call_count == reads_after_first
+
+
+def test_get_energy_joules_is_one_read():
+    """The cumulative counter is exposed directly, at a cost of one read."""
+    sysman = _sysman_with_energy([(7_500_000, 1_000_000)])
+    assert sysman.get_energy_joules(MagicMock()) == pytest.approx(7.5)
+    assert sysman._lib.zesPowerGetEnergyCounter.call_count == 1
+
+
+def test_power_watts_no_domains_returns_none():
+    """A device exposing no power domain yields None, not an exception."""
+    lib = MagicMock()
+    lib.zesDeviceEnumPowerDomains.return_value = 1  # non-success
+    assert _IntelSysman(lib).get_power_watts(MagicMock()) is None
+
+
+def test_shutdown_clears_cached_power():
+    """Cached figures are dropped on shutdown; handles die with the driver."""
+    clock = [100.0]
+    sysman = _sysman_drawing(clock, 5.3)
+    _measure(sysman, clock)
+    assert sysman._energy_watts
+    sysman.shutdown()
+    assert sysman._energy_watts == {}
+
+
+def _sysman_with_device_flags(flags: int) -> _IntelSysman:
+    """Build a sysman whose ``zesDeviceGetProperties`` reports ``core.flags``.
+
+    Writes through the ``byref`` pointer the wrapper passes, so the real
+    ctypes struct marshalling in ``get_device_properties`` is exercised.
+    """
+
+    def _fill(_handle, ref):
+        props = ref._obj
+        props.core.flags = flags
+        props.modelName = b"Intel Test GPU"
+        props.brandName = b"Intel"
+        props.vendorName = b"Intel Corporation"
+        props.serialNumber = b"SER-1"
+        props.boardNumber = b"BRD-1"
+        props.driverVersion = b"1.3.0"
+        props.numSubdevices = 0
+        return 0
+
+    lib = MagicMock()
+    lib.zesDeviceGetProperties.side_effect = _fill
+    return _IntelSysman(lib)
+
+
+def test_device_properties_reports_integrated_flag():
+    """``integrated`` is True only when the INTEGRATED bit is set in flags."""
+    # 0x1 == ZE_DEVICE_PROPERTY_FLAG_INTEGRATED.
+    props = _sysman_with_device_flags(0x1).get_device_properties(MagicMock())
+    assert props["integrated"] is True
+    assert props["model"] == "Intel Test GPU"
+
+
+def test_device_properties_discrete_when_integrated_bit_clear():
+    """Other flag bits must not be mistaken for the INTEGRATED bit.
+
+    0x8 (ONDEMANDPAGING) is what a real discrete Arc card reports.
+    """
+    assert _sysman_with_device_flags(0x8).get_device_properties(MagicMock())[
+        "integrated"
+    ] is False
+    assert _sysman_with_device_flags(0x0).get_device_properties(MagicMock())[
+        "integrated"
+    ] is False
+    # Integrated alongside other bits is still integrated.
+    assert _sysman_with_device_flags(0x9).get_device_properties(MagicMock())[
+        "integrated"
+    ] is True
 
 
 # ---------------------------------------------------------------------------
@@ -307,9 +605,9 @@ def test_shutdown_swallows_errors():
 # ---------------------------------------------------------------------------
 
 
-def test_power_source_is_estimated():
-    """The power source is reported as ESTIMATED (no Level Zero enum member)."""
-    assert IntelPowerBackend().get_source() is PowerSource.ESTIMATED
+def test_power_source_is_level_zero():
+    """The power source is reported as LEVEL_ZERO (hardware energy counter)."""
+    assert IntelPowerBackend().get_source() is PowerSource.LEVEL_ZERO
 
 
 def test_power_is_available_true():
@@ -344,7 +642,7 @@ def test_power_readings():
     assert len(readings) == 2
     assert all(isinstance(r, DomainPower) for r in readings)
     assert readings[0].power_watts == 120.5
-    assert readings[0].source is PowerSource.ESTIMATED
+    assert readings[0].source is PowerSource.LEVEL_ZERO
 
 
 def test_power_readings_skip_none():
@@ -397,7 +695,93 @@ def test_power_cleanup_resets_state():
     sysman.shutdown.assert_called_once()
     assert backend._initialized is False
     assert backend._devices == []
+    assert backend._static == []
     assert backend._sysman is None
+
+
+# ---------------------------------------------------------------------------
+# Vendor tagging and integrated-GPU reporting
+# ---------------------------------------------------------------------------
+
+
+def test_readings_are_tagged_with_vendor():
+    """Every reading carries the 'intel' vendor tag.
+
+    Both NVML and Level Zero number devices from 0, so the vendor tag is what
+    keeps an Intel GPU 0 distinct from an NVIDIA GPU 0 downstream.
+    """
+    backend = _build_power_backend(_fake_sysman(2))
+    assert [r.metadata["vendor"] for r in backend.get_power_readings()] == [
+        "intel",
+        "intel",
+    ]
+    assert [g.vendor for g in backend.get_gpu_power_info()] == ["intel", "intel"]
+    assert [g.index for g in backend.get_gpu_power_info()] == [0, 1]
+
+
+def test_discrete_gpu_reported_as_not_integrated():
+    """A discrete card is flagged integrated=False on both reading paths."""
+    backend = _build_power_backend(_fake_sysman(1))
+    assert backend.get_power_readings()[0].metadata["integrated"] is False
+    assert backend.get_gpu_power_info()[0].metadata["integrated"] is False
+
+
+def test_integrated_gpu_flag_propagates_to_readings():
+    """An integrated GPU is flagged so PowerMonitor can skip double-counting."""
+    sysman = _fake_sysman(1)
+    sysman.get_device_properties.return_value = {
+        "model": "Intel Iris Xe Graphics",
+        "brand": "Intel",
+        "vendor": "Intel Corporation",
+        "serial": "ABC123",
+        "board": "BOARD-1",
+        "driver_version": "1.3.26241",
+        "num_subdevices": 0,
+        "integrated": True,
+    }
+    backend = _build_power_backend(sysman)
+    assert backend.get_power_readings()[0].metadata["integrated"] is True
+    info = backend.get_gpu_power_info()[0]
+    assert info.metadata["integrated"] is True
+    assert info.name == "Intel Iris Xe Graphics"
+
+
+def test_integrated_defaults_false_when_property_missing():
+    """A driver that omits the flag degrades to discrete, not integrated.
+
+    Treating a discrete GPU as integrated would silently drop its power from
+    the system total, so False is the safer default.
+    """
+    sysman = _fake_sysman(1)
+    sysman.get_device_properties.return_value = {"model": "Intel Arc A770"}
+    backend = _build_power_backend(sysman)
+    assert backend.get_gpu_power_info()[0].metadata["integrated"] is False
+
+
+def test_integrated_defaults_false_when_properties_unavailable():
+    """A raising properties call still yields a usable, discrete-tagged device."""
+    sysman = _fake_sysman(1)
+    sysman.get_device_properties.side_effect = RuntimeError("boom")
+    backend = _build_power_backend(sysman)
+    info = backend.get_gpu_power_info()[0]
+    assert info.name == "Intel GPU"
+    assert info.metadata["integrated"] is False
+
+
+def test_static_identity_is_read_once_per_device():
+    """Identity is cached at initialize, not re-read on every snapshot.
+
+    The carbon sampling loop calls get_snapshot on an interval, so identity
+    lookups must not add FFI calls per sample.
+    """
+    sysman = _fake_sysman(2)
+    backend = _build_power_backend(sysman)
+    assert sysman.get_device_properties.call_count == 2
+
+    for _ in range(3):
+        backend.get_gpu_power_info()
+        backend.get_power_readings()
+    assert sysman.get_device_properties.call_count == 2
 
 
 # ---------------------------------------------------------------------------

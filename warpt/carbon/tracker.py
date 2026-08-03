@@ -12,7 +12,21 @@ from warpt.backends.power.factory import PowerMonitor
 from warpt.carbon.calculator import CarbonCalculator
 from warpt.carbon.store import EnergyStore
 from warpt.models.carbon_models import CarbonSession
-from warpt.models.power_models import PowerDomain
+from warpt.models.power_models import DomainPower, PowerDomain, PowerSnapshot
+
+
+def _gpu_energy_key(domain: DomainPower) -> tuple[str, int]:
+    """Key a GPU energy counter by vendor and per-vendor device index.
+
+    Every vendor backend numbers its devices from 0, so ``gpu_index`` alone
+    collides on a mixed-vendor system (an NVIDIA GPU 0 and an Intel GPU 0 would
+    share a slot and one card's energy would be lost). Pairing it with the
+    vendor tag makes the key unique.
+    """
+    return (
+        domain.metadata.get("vendor", ""),
+        domain.metadata.get("gpu_index", 0),
+    )
 
 
 class CarbonTracker:
@@ -53,7 +67,8 @@ class CarbonTracker:
         self._samples: list[tuple[float, float, float, float]] = []
         self._sources: list[str] = []
         self._noop = False
-        self._start_gpu_energy: dict[int, float] = {}  # gpu_index → joules
+        # (vendor, gpu_index) → joules; see _gpu_energy_key
+        self._start_gpu_energy: dict[tuple[str, int], float] = {}
         self._start_cpu_energy: dict[str, float] = {}  # rapl_name → joules
 
     def __enter__(self) -> CarbonTracker:
@@ -90,8 +105,9 @@ class CarbonTracker:
                     domain.domain == PowerDomain.GPU
                     and domain.energy_joules is not None
                 ):
-                    gpu_idx = domain.metadata.get("gpu_index", 0)
-                    self._start_gpu_energy[gpu_idx] = domain.energy_joules
+                    self._start_gpu_energy[_gpu_energy_key(domain)] = (
+                        domain.energy_joules
+                    )
                 elif (
                     domain.domain == PowerDomain.PACKAGE
                     and domain.energy_joules is not None
@@ -120,17 +136,22 @@ class CarbonTracker:
         if self._thread is not None:
             self._thread.join(timeout=5.0)
 
+        # Read the closing energy counters BEFORE tearing the monitor down.
+        # Cleaning up first drops every backend, so the closing read came back
+        # empty and the exact-counter path below could never be taken.
+        # One snapshot serves both deltas: taking a second costs another
+        # measurement window and would read a slightly later end point.
+        calc = CarbonCalculator(region=self._region)
+        end_snapshot = self._final_snapshot()
+        gpu_counter_energy_j = self._get_gpu_counter_delta(end_snapshot)
+        cpu_counter_energy_j = self._get_cpu_counter_delta(end_snapshot)
+
         # Cleanup monitor
         if self._monitor is not None:
             try:
                 self._monitor.cleanup()
             except Exception:
                 pass
-
-        # Calculate energy/CO2/cost
-        calc = CarbonCalculator(region=self._region)
-        gpu_counter_energy_j = self._get_gpu_counter_delta()
-        cpu_counter_energy_j = self._get_cpu_counter_delta()
 
         if gpu_counter_energy_j is not None and cpu_counter_energy_j is not None:
             # Both hardware counters available
@@ -209,19 +230,29 @@ class CarbonTracker:
             file=sys.stderr,
         )
 
-    def _get_gpu_counter_delta(self) -> float | None:
-        """Compute GPU energy delta from hardware counters.
+    def _final_snapshot(self) -> PowerSnapshot | None:
+        """Take the closing snapshot the energy deltas are measured against.
 
-        Takes a final snapshot, reads the energy counters, and subtracts
-        the start values captured in __enter__. Returns total joules
-        across all GPUs, or None if counters weren't available.
+        Must be called while the monitor is still live; see :meth:`__exit__`.
+        Returns None if no monitor is running or the read fails.
         """
-        if not self._start_gpu_energy or self._monitor is None:
+        if self._monitor is None:
+            return None
+        try:
+            return self._monitor.get_snapshot()
+        except Exception:
             return None
 
-        try:
-            end_snapshot = self._monitor.get_snapshot()
-        except Exception:
+    def _get_gpu_counter_delta(
+        self, end_snapshot: PowerSnapshot | None
+    ) -> float | None:
+        """Compute GPU energy delta from hardware counters.
+
+        Subtracts the start values captured in __enter__ from ``end_snapshot``.
+        Returns total joules across all GPUs, or None if counters weren't
+        available.
+        """
+        if not self._start_gpu_energy or end_snapshot is None:
             return None
 
         total_delta_j = 0.0
@@ -229,8 +260,7 @@ class CarbonTracker:
         for domain in end_snapshot.domains:
             if domain.domain != PowerDomain.GPU or domain.energy_joules is None:
                 continue
-            gpu_idx = domain.metadata.get("gpu_index", 0)
-            start_j = self._start_gpu_energy.get(gpu_idx)
+            start_j = self._start_gpu_energy.get(_gpu_energy_key(domain))
             if start_j is None:
                 continue
             delta = domain.energy_joules - start_j
@@ -240,19 +270,16 @@ class CarbonTracker:
 
         return total_delta_j if matched else None
 
-    def _get_cpu_counter_delta(self) -> float | None:
+    def _get_cpu_counter_delta(
+        self, end_snapshot: PowerSnapshot | None
+    ) -> float | None:
         """Compute CPU energy delta from RAPL hardware counters.
 
-        Takes a final snapshot, reads the PACKAGE energy counters, and
-        subtracts the start values captured in __enter__. Returns total
-        joules across all RAPL packages, or None if counters weren't available.
+        Subtracts the start values captured in __enter__ from the PACKAGE
+        counters in ``end_snapshot``. Returns total joules across all RAPL
+        packages, or None if counters weren't available.
         """
-        if not self._start_cpu_energy or self._monitor is None:
-            return None
-
-        try:
-            end_snapshot = self._monitor.get_snapshot()
-        except Exception:
+        if not self._start_cpu_energy or end_snapshot is None:
             return None
 
         total_delta_j = 0.0

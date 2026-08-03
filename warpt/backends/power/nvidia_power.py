@@ -30,6 +30,10 @@ except ImportError:
     pynvml = None
     PYNVML_AVAILABLE = False
 
+# Vendor tag stamped on every reading so consumers can distinguish an NVIDIA
+# GPU 0 from an Intel GPU 0 (both backends number devices from 0).
+_VENDOR = "nvidia"
+
 
 class NvidiaPowerBackend(PowerBackend):
     """Backend for NVIDIA GPU power monitoring via NVML.
@@ -122,6 +126,7 @@ class NvidiaPowerBackend(PowerBackend):
 
                 metadata = {
                     "gpu_index": idx,
+                    "vendor": _VENDOR,
                     "gpu_name": name,
                     "raw_mw": power_mw,
                 }
@@ -198,6 +203,7 @@ class NvidiaPowerBackend(PowerBackend):
                     GPUPowerInfo(
                         index=idx,
                         name=name,
+                        vendor=_VENDOR,
                         power_watts=power_watts,
                         power_limit_watts=power_limit_watts,
                         utilization_percent=gpu_util,

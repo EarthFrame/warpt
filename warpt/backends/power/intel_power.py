@@ -5,13 +5,19 @@ Max) derived from the hardware energy counter exposed by the Level Zero sysman
 API. It reuses the :class:`~warpt.backends.intel._IntelSysman` ctypes wrapper so
 that the FFI layer lives in exactly one place.
 
-Note: the Level Zero energy counter is a true hardware measurement, but the
-:class:`~warpt.models.power_models.PowerSource` enum has no Level Zero / Intel
-member, so :meth:`IntelPowerBackend.get_source` reports ``ESTIMATED``. See
-``questions.yaml`` for the follow-up on adding a dedicated source.
+Power readings come from the Level Zero hardware energy counter and are
+reported with ``PowerSource.LEVEL_ZERO``.
+
+Readings are tagged with the vendor and with whether the GPU is integrated into
+the CPU package, so that
+:class:`~warpt.backends.power.factory.PowerMonitor` can tell an Intel GPU 0
+apart from an NVIDIA GPU 0 and can avoid double-counting an integrated GPU
+whose power the CPU package (RAPL) reading already includes.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 from warpt.backends.power.base import PowerBackend
 from warpt.models.power_models import (
@@ -21,13 +27,22 @@ from warpt.models.power_models import (
     PowerSource,
 )
 
+# Vendor tag stamped on every reading so consumers can distinguish an Intel
+# GPU 0 from an NVIDIA GPU 0 (both backends number devices from 0).
+_VENDOR = "intel"
+
 try:
-    from warpt.backends.intel import _IntelSysman, _load_library
+    from warpt.backends.intel import (
+        _IntelSysman,
+        _load_library,
+        _temperature_with_fallback,
+    )
 
     LEVEL_ZERO_AVAILABLE = True
 except Exception:  # pragma: no cover - import guard
     _IntelSysman = None  # type: ignore[assignment,misc]
     _load_library = None  # type: ignore[assignment]
+    _temperature_with_fallback = None  # type: ignore[assignment]
     LEVEL_ZERO_AVAILABLE = False
 
 
@@ -43,6 +58,10 @@ class IntelPowerBackend(PowerBackend):
         self._initialized = False
         self._sysman: object | None = None
         self._devices: list = []
+        # Per-device static identity, parallel to ``_devices``. Cached at
+        # initialize() so the sampling loop makes no extra FFI calls per
+        # snapshot for values that cannot change.
+        self._static: list[dict[str, Any]] = []
 
     def is_available(self) -> bool:
         """Check if Intel GPUs are available.
@@ -68,10 +87,10 @@ class IntelPowerBackend(PowerBackend):
         Returns
         -------
         PowerSource
-            ``PowerSource.ESTIMATED`` — the enum lacks a Level Zero member even
-            though the reading comes from a hardware energy counter.
+            ``PowerSource.LEVEL_ZERO`` — the reading comes from the Level Zero
+            sysman hardware energy counter.
         """
-        return PowerSource.ESTIMATED
+        return PowerSource.LEVEL_ZERO
 
     def initialize(self) -> bool:
         """Initialize Level Zero sysman and enumerate devices.
@@ -91,6 +110,7 @@ class IntelPowerBackend(PowerBackend):
             sysman.init()
             self._sysman = sysman
             self._devices = sysman.get_devices()
+            self._static = [self._static_info(handle) for handle in self._devices]
             self._initialized = True
             return True
         except Exception:
@@ -120,13 +140,23 @@ class IntelPowerBackend(PowerBackend):
                     power_watts=watts,
                     energy_joules=None,
                     source=self.get_source(),
-                    metadata={"gpu_index": idx, "backend": "level_zero_sysman"},
+                    metadata={
+                        "gpu_index": idx,
+                        "vendor": _VENDOR,
+                        "backend": "level_zero_sysman",
+                        "integrated": self._integrated(idx),
+                    },
                 )
             )
         return readings
 
     def get_gpu_power_info(self) -> list[GPUPowerInfo]:
         """Get detailed power information for all Intel GPUs.
+
+        Each entry carries ``metadata["integrated"]``, which
+        :class:`~warpt.backends.power.factory.PowerMonitor` uses to avoid
+        double-counting an integrated GPU whose power is already inside the CPU
+        package (RAPL) reading.
 
         Returns
         -------
@@ -138,7 +168,7 @@ class IntelPowerBackend(PowerBackend):
         gpus: list[GPUPowerInfo] = []
         for idx, handle in enumerate(self._devices):
             watts = self._safe(self._sysman.get_power_watts, handle, default=None)
-            name = self._device_name(handle)
+            name = self._device_name(idx)
             limit = self._safe(
                 self._sysman.get_power_limit_watts, handle, default=None
             )
@@ -149,20 +179,22 @@ class IntelPowerBackend(PowerBackend):
             memory_util = 0.0
             if memory and memory["total"] > 0:
                 memory_util = memory["used"] / memory["total"] * 100.0
-            temperature = self._safe(
-                self._sysman.get_temperature, handle, default=None
-            )
+            temperature = _temperature_with_fallback(self._sysman, handle)
             gpus.append(
                 GPUPowerInfo(
                     index=idx,
                     name=name,
+                    vendor=_VENDOR,
                     power_watts=watts if watts is not None else 0.0,
                     power_limit_watts=limit,
                     utilization_percent=gpu_util if gpu_util is not None else 0.0,
                     memory_utilization_percent=memory_util,
                     temperature_celsius=temperature,
                     processes=[],
-                    metadata={"backend": "level_zero_sysman"},
+                    metadata={
+                        "backend": "level_zero_sysman",
+                        "integrated": self._integrated(idx),
+                    },
                 )
             )
         return gpus
@@ -193,15 +225,44 @@ class IntelPowerBackend(PowerBackend):
                 pass
         self._initialized = False
         self._devices = []
+        self._static = []
         self._sysman = None
 
-    def _device_name(self, handle: object) -> str:
-        """Return a display name for a device, falling back to 'Intel GPU'."""
+    def _static_info(self, handle: object) -> dict[str, Any]:
+        """Read the immutable identity of one device.
+
+        Called once per device from :meth:`initialize`. Both values are fixed
+        for the life of the process, so caching them keeps the per-snapshot
+        path free of identity FFI calls.
+
+        Returns
+        -------
+        dict[str, Any]
+            ``name`` (display name, defaulting to 'Intel GPU') and
+            ``integrated`` (True when the GPU is fused into the CPU package).
+        """
         props = self._safe(self._sysman.get_device_properties, handle, default={})
-        name = props.get("model") or props.get("brand") or "Intel GPU"
+        name = props.get("model") or props.get("brand") or ""
         if not name or name.lower() == "unknown":
-            return "Intel GPU"
-        return name
+            name = "Intel GPU"
+        return {"name": name, "integrated": bool(props.get("integrated", False))}
+
+    def _device_name(self, index: int) -> str:
+        """Return the cached display name for a device index."""
+        if 0 <= index < len(self._static):
+            return str(self._static[index]["name"])
+        return "Intel GPU"
+
+    def _integrated(self, index: int) -> bool:
+        """Return whether a device index is an integrated (in-package) GPU.
+
+        Defaults to False for an unknown index: treating a discrete GPU as
+        integrated would silently drop its power from the system total, which
+        is the worse failure of the two.
+        """
+        if 0 <= index < len(self._static):
+            return bool(self._static[index]["integrated"])
+        return False
 
     @staticmethod
     def _safe(func: object, *args: object, default: object) -> object:

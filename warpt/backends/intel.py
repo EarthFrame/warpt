@@ -13,6 +13,8 @@ The same wrapper is reused by the Intel power backend.
 from __future__ import annotations
 
 import ctypes
+import glob
+import os
 import time
 from typing import Any
 
@@ -36,6 +38,12 @@ _ZES_STRUCTURE_TYPE_POWER_PROPERTIES = 0xD
 _ZES_STRUCTURE_TYPE_TEMP_PROPERTIES = 0x14
 _ZES_STRUCTURE_TYPE_FREQ_STATE = 0x1B
 _ZES_STRUCTURE_TYPE_MEM_STATE = 0x1E
+
+# ``ze_device_property_flag_t`` bits set on ``ze_device_properties_t.flags``.
+# INTEGRATED marks a GPU fused into the CPU package, whose power is already
+# accounted for by the CPU package (RAPL) domain — see
+# ``IntelPowerBackend.get_gpu_power_info``.
+_ZE_DEVICE_PROPERTY_FLAG_INTEGRATED = 0x1
 
 # ``zes_engine_group_t`` selectors we care about.
 _ZES_ENGINE_GROUP_ALL = 0
@@ -63,8 +71,243 @@ _THROTTLE_FLAGS: list[tuple[int, str]] = [
 # utilization or power value from the monotonic activity/energy counters.
 _SAMPLE_INTERVAL_S = 0.05
 
+# The energy counter misbehaves around the device's *runtime sleep*, which is
+# what these constants exist to work around. Measured on Battlemage (Arc Pro
+# B70) under the ``xe`` driver, with the card headless and therefore suspended
+# ~86% of the time:
+#
+#   * For ~2 s after a runtime resume the counter under-reports badly: the
+#     first second reads ~1.7 W and the second ~0.1 W, against a true ~5.3 W.
+#     A GPU that is fully powered up cannot draw 0.1 W, so this is the counter
+#     catching up, not a real measurement.
+#   * While the device is suspended the counter accrues ~40 W, versus ~5 W
+#     measured awake-and-idle. Any window spanning a nap is inflated.
+#
+# Reading the counter is *not* itself harmful: 602 reads and 2 reads over the
+# same 30 s window agree to 0.04 W, and sweeping the poll rate from 0.033 Hz to
+# 100 Hz moves the figure by 0.4%. What matters is only whether the device slept
+# during the window.
+#
+# That gives the strategy below: skip the post-resume settling period, and poll
+# often enough during the measurement that the device cannot autosuspend
+# underneath us (each read resets its autosuspend timer).
+
+# Settling period discarded after a runtime resume, before measuring.
+_RESUME_SETTLE_S = 2.0
+
+# Window the reported power figure is averaged over.
+_MEASURE_WINDOW_S = 1.0
+
+# How often the counter is touched inside a window. Must stay below the
+# device's autosuspend delay (1 s on this hardware) so that polling keeps the
+# device awake for the duration of the measurement.
+_POLL_INTERVAL_S = 0.25
+
+# One snapshot calls :meth:`get_power_watts` twice (once for the domain reading
+# and once for the per-GPU detail). Caching for a beat means the measurement
+# window is paid once and both calls agree with each other.
+_CACHE_TTL_S = 1.0
+
+# The counter also sometimes resumes into a corrupted state, where it reports a
+# steady but wrong figure for as long as it lasts — measured at ~43 W on the
+# card domain against a true ~5 W, on 3 of 16 resumes. It is not transient, so
+# neither a longer settling period nor averaging removes it.
+#
+# It is detectable: the package domain is a subset of the card domain, so a
+# package reading far above the card reading is physically impossible. In the
+# corrupted state the package domain reads ~220 W against the card's ~43 W,
+# while healthy readings have package comfortably below card (~0.9 W vs ~1.7 W
+# idle, 164 W vs 221 W under load). Both a ratio and an absolute margin are
+# required so that near-equal readings at very low power are not rejected.
+_INCOHERENCE_RATIO = 1.5
+_INCOHERENCE_MARGIN_W = 5.0
+
 # Candidate shared-object names for the Level Zero loader.
 _LIBRARY_NAMES = ("libze_loader.so.1", "libze_loader.so")
+
+# Preferred hwmon temperature-sensor labels, most-preferred group first. Used
+# to pick the GPU/package sensor over memory (VRAM) when Level Zero itself
+# reports no temperature (a known gap on some Intel drivers/firmware, e.g.
+# Battlemage under the ``xe`` driver). Matching is case-insensitive substring.
+_HWMON_TEMP_LABEL_PRIORITY: tuple[tuple[str, ...], ...] = (
+    ("gpu",),
+    ("pkg", "package"),
+    ("gt",),
+    ("core",),
+)
+# Labels describing memory rather than the GPU die; used only as a last resort
+# so a VRAM-only card still reports something instead of None.
+_HWMON_TEMP_LABEL_DEPRIORITIZE: tuple[str, ...] = ("vram", "mem", "hbm")
+
+
+def _read_sysfs(path: str) -> str | None:
+    """Read and strip a sysfs text file, returning None on any error."""
+    try:
+        with open(path, encoding="ascii") as handle:
+            return handle.read().strip()
+    except OSError:
+        return None
+
+
+def _counters_incoherent(card_watts: float, package_watts: float) -> bool:
+    """Report whether a package reading implausibly exceeds its card reading.
+
+    The package power domain is contained within the card domain, so package
+    power can never meaningfully exceed card power. When it does, the energy
+    counter is in the corrupted state described alongside
+    ``_INCOHERENCE_RATIO`` and neither figure can be trusted.
+
+    Parameters
+    ----------
+    card_watts : float
+        Power derived from the card-level domain.
+    package_watts : float
+        Power derived from the package-level domain.
+
+    Returns
+    -------
+    bool
+        True if the pair is physically impossible and should be discarded.
+    """
+    return (
+        package_watts > card_watts * _INCOHERENCE_RATIO
+        and package_watts - card_watts > _INCOHERENCE_MARGIN_W
+    )
+
+
+def _runtime_pm_status(pci_bdf: str) -> str | None:
+    """Return the device's runtime-PM state, e.g. ``active`` or ``suspended``.
+
+    Read from the kernel's generic PCI runtime-power interface, not from the
+    device, so this does **not** wake it. Returns None where the interface does
+    not exist (non-Linux), leaving the caller to assume nothing.
+
+    Parameters
+    ----------
+    pci_bdf : str
+        The device's PCI address in sysfs ``DDDD:BB:DD.F`` form.
+
+    Returns
+    -------
+    str or None
+        The lowercase runtime-PM status, or None if unavailable.
+    """
+    raw = _read_sysfs(f"/sys/bus/pci/devices/{pci_bdf}/power/runtime_status")
+    return raw.lower() if raw else None
+
+
+def _read_runtime_pm(pci_bdf: str) -> tuple[int, int] | None:
+    """Return ``(active_ms, suspended_ms)`` from the kernel's runtime-PM counters.
+
+    These are kernel-side bookkeeping, so — unlike every other reading in this
+    module — sampling them does not wake or otherwise disturb the device. That
+    makes them the one honest witness to whether the device stayed awake across
+    a measurement window.
+
+    Parameters
+    ----------
+    pci_bdf : str
+        The device's PCI address in sysfs ``DDDD:BB:DD.F`` form.
+
+    Returns
+    -------
+    tuple[int, int] or None
+        Cumulative milliseconds spent active and suspended, or None where the
+        interface does not exist (non-Linux) or either value is unreadable.
+    """
+    base = f"/sys/bus/pci/devices/{pci_bdf}/power"
+    active = _read_sysfs(f"{base}/runtime_active_time")
+    suspended = _read_sysfs(f"{base}/runtime_suspended_time")
+    if active is None or suspended is None:
+        return None
+    try:
+        return int(active), int(suspended)
+    except ValueError:
+        return None
+
+
+def _rank_hwmon_label(label: str) -> int:
+    """Rank an hwmon temperature label; lower is more preferred.
+
+    Preferred GPU/package labels sort first, unknown labels next, and memory
+    (VRAM) labels last so they are only chosen when nothing better exists.
+    """
+    lowered = label.lower()
+    for score, keys in enumerate(_HWMON_TEMP_LABEL_PRIORITY):
+        if any(key in lowered for key in keys):
+            return score
+    if any(key in lowered for key in _HWMON_TEMP_LABEL_DEPRIORITIZE):
+        return len(_HWMON_TEMP_LABEL_PRIORITY) + 1
+    return len(_HWMON_TEMP_LABEL_PRIORITY)
+
+
+def _read_hwmon_temperature(pci_bdf: str) -> float | None:
+    """Read a GPU temperature from the kernel hwmon interface.
+
+    Level Zero reports no temperature on some Intel drivers/firmware, but the
+    kernel still exposes the sensor under the card's PCI device. This reads
+    that sensor, keyed strictly by the device's PCI address so it can never
+    pick up an unrelated (e.g. CPU package) sensor. It scans every
+    ``hwmon*/temp*_input`` under the device, ranks them by their ``_label``
+    sibling, and returns the best-available reading.
+
+    On non-Linux platforms (or a card with no hwmon temperature) the glob
+    matches nothing and this returns None.
+
+    Parameters
+    ----------
+    pci_bdf : str
+        The device's PCI address in sysfs ``DDDD:BB:DD.F`` form.
+
+    Returns
+    -------
+    float or None
+        The best-available temperature in Celsius, or None if the device
+        exposes no usable hwmon temperature sensor.
+    """
+    base = f"/sys/bus/pci/devices/{pci_bdf}/hwmon"
+    candidates: list[tuple[int, int, float]] = []
+    for input_path in sorted(glob.glob(os.path.join(base, "hwmon*", "temp*_input"))):
+        raw = _read_sysfs(input_path)
+        if raw is None:
+            continue
+        try:
+            celsius = int(raw) / 1000.0
+        except ValueError:
+            continue
+        if not 0.0 < celsius < 150.0:
+            continue
+        label = _read_sysfs(input_path.replace("_input", "_label")) or ""
+        candidates.append((_rank_hwmon_label(label), len(candidates), celsius))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][2]
+
+
+def _temperature_with_fallback(sysman: Any, handle: Any) -> float | None:
+    """Return a device temperature, trying Level Zero then kernel hwmon.
+
+    ``sysman`` is an :class:`_IntelSysman` (or compatible) exposing
+    ``get_temperature`` and ``get_pci_bdf``. Some Intel drivers/firmware
+    report no temperature through Level Zero; the kernel still exposes the
+    sensor under the card's PCI device, so this falls back to hwmon keyed by
+    the device's PCI address. Shared by the accelerator and power backends so
+    both surface the same value.
+    """
+    try:
+        temperature = sysman.get_temperature(handle)
+    except Exception:
+        temperature = None
+    if temperature is not None:
+        return temperature
+    try:
+        bdf = sysman.get_pci_bdf(handle)
+    except Exception:
+        bdf = None
+    if isinstance(bdf, str) and bdf:
+        return _read_hwmon_temperature(bdf)
+    return None
 
 
 def _decode(raw: bytes | str) -> str:
@@ -359,6 +602,11 @@ class _IntelSysman:
         """
         self._lib = lib
         self._driver: ctypes.c_void_p | None = None
+        # Last derived Watts per power domain, keyed by domain handle address,
+        # as {key: (watts, measured_at_monotonic)}. A measurement costs a real
+        # wall-clock window, so the two calls making up a single snapshot share
+        # one. See :meth:`get_power_watts`.
+        self._energy_watts: dict[int, tuple[float | None, float]] = {}
 
     @staticmethod
     def _check(result: int) -> None:
@@ -430,13 +678,14 @@ class _IntelSysman:
         Returns
         -------
         dict[str, Any]
-            Model, brand, vendor, serial, board, driver version and subdevice
-            count.
+            Model, brand, vendor, serial, board, driver version, subdevice
+            count and whether the GPU is integrated into the CPU package.
         """
         props = _ZesDeviceProperties()
         props.stype = _ZES_STRUCTURE_TYPE_DEVICE_PROPERTIES
         props.pNext = None
         self._check(self._lib.zesDeviceGetProperties(handle, ctypes.byref(props)))
+        flags = int(props.core.flags)
         return {
             "model": _decode(props.modelName),
             "brand": _decode(props.brandName),
@@ -445,6 +694,7 @@ class _IntelSysman:
             "board": _decode(props.boardNumber),
             "driver_version": _decode(props.driverVersion),
             "num_subdevices": int(props.numSubdevices),
+            "integrated": bool(flags & _ZE_DEVICE_PROPERTY_FLAG_INTEGRATED),
         }
 
     def get_pci_properties(self, handle: ctypes.c_void_p) -> dict[str, int | None]:
@@ -471,6 +721,30 @@ class _IntelSysman:
             "gen": gen if 1 <= gen <= 5 else None,
             "width": width if width > 0 else None,
         }
+
+    def get_pci_bdf(self, handle: ctypes.c_void_p) -> str | None:
+        """Return the device's PCI address in sysfs ``DDDD:BB:DD.F`` form.
+
+        Parameters
+        ----------
+        handle : ctypes.c_void_p
+            A sysman device handle.
+
+        Returns
+        -------
+        str or None
+            The lowercase PCI address (e.g. ``0000:03:00.0``) used to locate
+            the device under ``/sys``. None only if the call fails upstream.
+        """
+        props = _ZesPciProperties()
+        props.stype = _ZES_STRUCTURE_TYPE_PCI_PROPERTIES
+        props.pNext = None
+        self._check(self._lib.zesDevicePciGetProperties(handle, ctypes.byref(props)))
+        addr = props.address
+        return (
+            f"{int(addr.domain):04x}:{int(addr.bus):02x}:"
+            f"{int(addr.device):02x}.{int(addr.function):x}"
+        )
 
     def get_memory(self, handle: ctypes.c_void_p) -> dict[str, int] | None:
         """Return aggregated memory usage across all memory modules.
@@ -613,11 +887,55 @@ class _IntelSysman:
                 all_group = engine
         return compute_all or all_group or first
 
-    def get_power_watts(self, handle: ctypes.c_void_p) -> float | None:
-        """Return instantaneous power draw in Watts for a device.
+    def _read_energy(self, domain: ctypes.c_void_p) -> tuple[int, int] | None:
+        """Read one energy-counter snapshot as ``(energy_uj, timestamp_us)``.
 
-        The value is derived from two energy-counter snapshots taken
-        ``_SAMPLE_INTERVAL_S`` apart on the first (card-level) power domain.
+        Returns None if the driver rejects the query.
+        """
+        counter = _ZesPowerEnergyCounter()
+        if self._lib.zesPowerGetEnergyCounter(domain, ctypes.byref(counter)) != (
+            _ZE_RESULT_SUCCESS
+        ):
+            return None
+        return int(counter.energy), int(counter.timestamp)
+
+    def _poll_energy(self, domain: ctypes.c_void_p, seconds: float) -> None:
+        """Touch the energy counter repeatedly for ``seconds``.
+
+        Each read resets the device's autosuspend timer, so polling faster than
+        that delay holds the device awake. Used both to burn off the
+        post-resume settling period and to keep the device from suspending
+        underneath a measurement window. Reads are cheap and harmless.
+        """
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            time.sleep(min(_POLL_INTERVAL_S, max(0.0, deadline - time.monotonic())))
+            self._read_energy(domain)
+
+    def get_power_watts(self, handle: ctypes.c_void_p) -> float | None:
+        """Return power draw in Watts, measured over a short controlled window.
+
+        The energy counter is monotonic, so power needs two snapshots. What
+        makes those snapshots trustworthy is the device's *runtime-PM state*
+        rather than how often the counter is read (see the notes on
+        ``_RESUME_SETTLE_S``), so this method controls that state explicitly:
+
+        * If the device is suspended it is woken and the first
+          ``_RESUME_SETTLE_S`` are discarded, since the counter under-reports
+          immediately after a resume. A device that is already active skips
+          this entirely, so measuring a running workload adds no latency.
+        * The counter is then polled across ``_MEASURE_WINDOW_S``, which keeps
+          the device awake for the whole window.
+        * Finally the kernel's runtime-PM counters confirm the device really
+          did stay awake. If it suspended anyway the window is untrustworthy
+          and None is returned rather than an inflated figure.
+
+        Where the runtime-PM interface is unavailable (non-Linux) the settling
+        period is applied unconditionally and the confirmation is skipped:
+        settling needlessly costs latency, never accuracy.
+
+        Results are cached for ``_CACHE_TTL_S`` so the two calls comprising one
+        snapshot share a single measurement window and agree with each other.
 
         Parameters
         ----------
@@ -627,26 +945,115 @@ class _IntelSysman:
         Returns
         -------
         float or None
-            Power draw in Watts, or None on failure.
+            Power draw in Watts, or None if unavailable or if the device
+            suspended during the measurement window.
         """
         domains = self._enumerate(self._lib.zesDeviceEnumPowerDomains, handle)
         if not domains:
             return None
         domain = domains[0]
-        first = _ZesPowerEnergyCounter()
-        if self._lib.zesPowerGetEnergyCounter(domain, ctypes.byref(first)) != (
-            _ZE_RESULT_SUCCESS
-        ):
+        # Second domain, where present, is the package contained within the
+        # card domain. Used only to sanity-check the reading; see
+        # :func:`_counters_incoherent`.
+        package = domains[1] if len(domains) > 1 else None
+        key = domain.value or 0
+
+        cached = self._energy_watts.get(key)
+        if cached is not None and time.monotonic() - cached[1] < _CACHE_TTL_S:
+            return cached[0]
+
+        try:
+            bdf = self.get_pci_bdf(handle)
+        except Exception:
+            bdf = None
+
+        # Wake the device and let the counter settle. With no runtime-PM
+        # interface to consult we cannot tell whether it was asleep, so settle
+        # unconditionally.
+        if bdf is None or _runtime_pm_status(bdf) != "active":
+            self._poll_energy(domain, _RESUME_SETTLE_S)
+
+        pm_before = _read_runtime_pm(bdf) if bdf else None
+        first = self._read_energy(domain)
+        first_package = self._read_energy(package) if package else None
+        if first is None:
             return None
-        time.sleep(_SAMPLE_INTERVAL_S)
-        second = _ZesPowerEnergyCounter()
-        if self._lib.zesPowerGetEnergyCounter(domain, ctypes.byref(second)) != (
-            _ZE_RESULT_SUCCESS
-        ):
+        self._poll_energy(domain, _MEASURE_WINDOW_S)
+        second = self._read_energy(domain)
+        second_package = self._read_energy(package) if package else None
+        if second is None:
             return None
-        delta_energy = int(second.energy) - int(first.energy)
-        delta_time = int(second.timestamp) - int(first.timestamp)
-        return _energy_to_watts(delta_energy, delta_time)
+        pm_after = _read_runtime_pm(bdf) if bdf else None
+
+        def _reject() -> None:
+            self._energy_watts[key] = (None, time.monotonic())
+
+        # Polling should have held the device awake; if it suspended anyway the
+        # counter accrues a large fictitious figure over that period, so the
+        # window has to be thrown away.
+        if (
+            pm_before is not None
+            and pm_after is not None
+            and pm_after[1] != pm_before[1]
+        ):
+            _reject()
+            return None
+
+        watts = _energy_to_watts(second[0] - first[0], second[1] - first[1])
+        if watts is None:
+            return None
+
+        # Cross-check against the package domain, which cannot exceed the card
+        # domain. When it does, the counter has resumed into its corrupted
+        # state and this window is fiction.
+        if first_package is not None and second_package is not None:
+            package_watts = _energy_to_watts(
+                second_package[0] - first_package[0],
+                second_package[1] - first_package[1],
+            )
+            if package_watts is not None and _counters_incoherent(
+                watts, package_watts
+            ):
+                _reject()
+                return None
+
+        self._energy_watts[key] = (watts, time.monotonic())
+        return watts
+
+    def get_energy_joules(self, handle: ctypes.c_void_p) -> float | None:
+        """Return the device's cumulative energy counter in Joules.
+
+        This is the raw monotonic total, not a rate, and costs exactly one
+        counter read. Taking the difference between a reading at the start of
+        an interval and one at the end gives that interval's energy without the
+        sampling error of integrating :meth:`get_power_watts` figures.
+
+        .. warning::
+           Not yet safe for totalling energy over long intervals on this
+           hardware. The counter accrues a large fictitious amount while the
+           device is runtime-suspended (see the notes on ``_RESUME_SETTLE_S``),
+           and a start/end pair cannot tell how much of the interval was spent
+           asleep. Using this for accounting needs sleep-time tracking across
+           the interval, which is not implemented.
+
+        Parameters
+        ----------
+        handle : ctypes.c_void_p
+            A sysman device handle.
+
+        Returns
+        -------
+        float or None
+            Cumulative energy in Joules, or None if unavailable.
+        """
+        domains = self._enumerate(self._lib.zesDeviceEnumPowerDomains, handle)
+        if not domains:
+            return None
+        domain = domains[0]
+        current = self._read_energy(domain)
+        if current is None:
+            return None
+        return current[0] / 1_000_000.0
 
     def get_power_limit_watts(self, handle: ctypes.c_void_p) -> float | None:
         """Return the sustained power limit (TDP) in Watts, if known.
@@ -728,9 +1135,11 @@ class _IntelSysman:
         """Release cached state.
 
         The Level Zero sysman API has no explicit teardown call, so this simply
-        drops the cached driver handle.
+        drops the cached driver handle and the cached power figures (whose
+        domain handles do not outlive the driver).
         """
         self._driver = None
+        self._energy_watts.clear()
 
 
 class IntelBackend(AcceleratorBackend):
@@ -842,6 +1251,11 @@ class IntelBackend(AcceleratorBackend):
     def get_temperature(self, index: int) -> float | None:
         """Get GPU temperature in degrees Celsius.
 
+        Tries the Level Zero sensor first. When the driver reports no
+        temperature (a known gap on some Intel firmware/drivers), falls back
+        to the kernel hwmon sensor for this device, located by its PCI
+        address. Returns None only if neither source has a reading.
+
         Parameters
         ----------
         index : int
@@ -854,9 +1268,7 @@ class IntelBackend(AcceleratorBackend):
         """
         if not self._valid(index):
             return None
-        return self._safe(
-            self._sysman.get_temperature, self._devices[index], default=None
-        )
+        return _temperature_with_fallback(self._sysman, self._devices[index])
 
     def get_memory_usage(self, index: int) -> dict | None:
         """Get current GPU memory usage.

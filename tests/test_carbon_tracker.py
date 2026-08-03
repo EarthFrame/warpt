@@ -177,7 +177,7 @@ class TestCarbonTrackerEnergyCounter:
                         power_watts=150.0,
                         energy_joules=energy_j,
                         source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
+                        metadata={"gpu_index": 0, "vendor": "nvidia"},
                     ),
                 ],
             )
@@ -232,7 +232,7 @@ class TestCarbonTrackerEnergyCounter:
                     power_watts=80.0,
                     energy_joules=5000.0,
                     source=PowerSource.NVML,
-                    metadata={"gpu_index": 0},
+                    metadata={"gpu_index": 0, "vendor": "nvidia"},
                 ),
             ],
         )
@@ -240,7 +240,53 @@ class TestCarbonTrackerEnergyCounter:
         mock_store_cls.return_value = MagicMock()
 
         with CarbonTracker(label="test", interval=0.05) as tracker:
-            assert tracker._start_gpu_energy == {0: 5000.0}
+            assert tracker._start_gpu_energy == {("nvidia", 0): 5000.0}
+            time.sleep(0.1)
+
+    @patch("warpt.carbon.tracker.EnergyStore")
+    @patch(_PM_PATH)
+    def test_mixed_vendor_gpu_zero_does_not_collide(
+        self, mock_pm_cls, mock_store_cls
+    ):
+        """Two vendors' GPU 0 get separate energy slots.
+
+        Every vendor backend numbers its devices from 0. Keying on the index
+        alone would make the Intel and NVIDIA cards share one slot, silently
+        dropping one card's energy from the session total.
+        """
+        mock_monitor = MagicMock()
+        mock_monitor.initialize.return_value = True
+        mock_monitor.get_available_sources.return_value = []
+        mock_pm_cls.return_value = mock_monitor
+
+        snapshot = PowerSnapshot(
+            timestamp=time.time(),
+            total_power_watts=300.0,
+            domains=[
+                DomainPower(
+                    domain=PowerDomain.GPU,
+                    power_watts=150.0,
+                    energy_joules=5000.0,
+                    source=PowerSource.NVML,
+                    metadata={"gpu_index": 0, "vendor": "nvidia"},
+                ),
+                DomainPower(
+                    domain=PowerDomain.GPU,
+                    power_watts=90.0,
+                    energy_joules=1200.0,
+                    source=PowerSource.LEVEL_ZERO,
+                    metadata={"gpu_index": 0, "vendor": "intel"},
+                ),
+            ],
+        )
+        mock_monitor.get_snapshot.return_value = snapshot
+        mock_store_cls.return_value = MagicMock()
+
+        with CarbonTracker(label="test", interval=0.05) as tracker:
+            assert tracker._start_gpu_energy == {
+                ("nvidia", 0): 5000.0,
+                ("intel", 0): 1200.0,
+            }
             time.sleep(0.1)
 
 
@@ -317,7 +363,7 @@ class TestCarbonTrackerCPUCounter:
                         power_watts=140.0,
                         energy_joules=gpu_energy,
                         source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
+                        metadata={"gpu_index": 0, "vendor": "nvidia"},
                     ),
                 ],
             )
@@ -363,7 +409,7 @@ class TestCarbonTrackerCPUCounter:
                         power_watts=50.0,
                         energy_joules=None,  # No GPU counter
                         source=PowerSource.NVML,
-                        metadata={"gpu_index": 0},
+                        metadata={"gpu_index": 0, "vendor": "nvidia"},
                     ),
                 ],
             )

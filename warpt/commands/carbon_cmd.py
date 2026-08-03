@@ -94,6 +94,16 @@ def _start_tracking(label: str | None, interval: float) -> None:
             for reason in unavailable:
                 print(f"  - {reason}", file=sys.stderr)
         print(file=sys.stderr)
+    elif unavailable:
+        # Some sources are measurable and some are not — most commonly RAPL,
+        # which is root-only on many systems, leaving a GPU-only total that
+        # would otherwise look complete. Say so rather than under-report
+        # silently.
+        print("Warning: some power sources are unavailable.", file=sys.stderr)
+        print("Their consumption will be missing from this session.", file=sys.stderr)
+        for reason in unavailable:
+            print(f"  - {reason}", file=sys.stderr)
+        print(file=sys.stderr)
 
     effective_label = label or "manual"
     try:
