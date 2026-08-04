@@ -913,40 +913,14 @@ class _IntelSysman:
             self._read_energy(domain)
 
     def get_power_watts(self, handle: ctypes.c_void_p) -> float | None:
-        """Return power draw in Watts, measured over a short controlled window.
+        """Return power draw in watts, measured over a short controlled window.
 
-        The energy counter is monotonic, so power needs two snapshots. What
-        makes those snapshots trustworthy is the device's *runtime-PM state*
-        rather than how often the counter is read (see the notes on
-        ``_RESUME_SETTLE_S``), so this method controls that state explicitly:
-
-        * If the device is suspended it is woken and the first
-          ``_RESUME_SETTLE_S`` are discarded, since the counter under-reports
-          immediately after a resume. A device that is already active skips
-          this entirely, so measuring a running workload adds no latency.
-        * The counter is then polled across ``_MEASURE_WINDOW_S``, which keeps
-          the device awake for the whole window.
-        * Finally the kernel's runtime-PM counters confirm the device really
-          did stay awake. If it suspended anyway the window is untrustworthy
-          and None is returned rather than an inflated figure.
-
-        Where the runtime-PM interface is unavailable (non-Linux) the settling
-        period is applied unconditionally and the confirmation is skipped:
-        settling needlessly costs latency, never accuracy.
-
-        Results are cached for ``_CACHE_TTL_S`` so the two calls comprising one
-        snapshot share a single measurement window and agree with each other.
-
-        Parameters
-        ----------
-        handle : ctypes.c_void_p
-            A sysman device handle.
-
-        Returns
-        -------
-        float or None
-            Power draw in Watts, or None if unavailable or if the device
-            suspended during the measurement window.
+        Purpose: derive instantaneous power from the monotonic energy counter,
+        controlling the device's runtime-PM state so the reading is trustworthy
+        (see the notes on ``_RESUME_SETTLE_S`` and ``_INCOHERENCE_RATIO``).
+        Input:   ``handle`` — a sysman device handle.
+        Output:  power draw in watts, or None if unavailable or if the device
+                 suspended during the measurement window.
         """
         domains = self._enumerate(self._lib.zesDeviceEnumPowerDomains, handle)
         if not domains:

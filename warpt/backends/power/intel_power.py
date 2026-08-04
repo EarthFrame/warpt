@@ -2,17 +2,13 @@
 
 Provides per-GPU power information for Intel GPUs (integrated Xe, Arc, Flex and
 Max) derived from the hardware energy counter exposed by the Level Zero sysman
-API. It reuses the :class:`~warpt.backends.intel._IntelSysman` ctypes wrapper so
-that the FFI layer lives in exactly one place.
+API. It reuses the :class:`~warpt.backends.intel._IntelSysman` ctypes wrapper to
+keep the FFI layer in one place.
 
-Power readings come from the Level Zero hardware energy counter and are
-reported with ``PowerSource.LEVEL_ZERO``.
+Readings are reported with ``PowerSource.LEVEL_ZERO``.
 
-Readings are tagged with the vendor and with whether the GPU is integrated into
-the CPU package, so that
-:class:`~warpt.backends.power.factory.PowerMonitor` can tell an Intel GPU 0
-apart from an NVIDIA GPU 0 and can avoid double-counting an integrated GPU
-whose power the CPU package (RAPL) reading already includes.
+Each reading is tagged with the vendor and with whether the GPU is integrated
+into the CPU package.
 """
 
 from __future__ import annotations
