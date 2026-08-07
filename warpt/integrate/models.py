@@ -85,9 +85,7 @@ class QuestionsDocument(BaseModel):
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description=(
-            "Metadata: vendor, sdk_source, created, " "session_id, pass_number"
-        ),
+        description=("Metadata: vendor, sdk_source, created, session_id, pass_number"),
     )
     questions: list[Question] = Field(default_factory=list)
 

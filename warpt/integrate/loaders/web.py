@@ -49,9 +49,7 @@ class WebLoader(DocLoader):
                 source,
                 follow_redirects=True,
                 timeout=30.0,
-                headers={
-                    "User-Agent": ("warpt-integrate/1.0 " "(documentation loader)")
-                },
+                headers={"User-Agent": ("warpt-integrate/1.0 (documentation loader)")},
             )
             response.raise_for_status()
         except httpx.HTTPError as e:

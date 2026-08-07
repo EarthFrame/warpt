@@ -59,10 +59,7 @@ def build_system_prompt(
     # 3. ABC definition
     abc_text = _read_file(_WARPT_ROOT / "backends" / "base.py")
     sections.append(
-        "# AcceleratorBackend ABC (warpt/backends/base.py)\n"
-        "```python\n"
-        f"{abc_text}\n"
-        "```"
+        f"# AcceleratorBackend ABC (warpt/backends/base.py)\n```python\n{abc_text}\n```"
     )
 
     # 4. NVIDIA reference implementation
@@ -78,10 +75,7 @@ def build_system_prompt(
     # 5. Factory pattern
     factory_text = _read_file(_WARPT_ROOT / "backends" / "factory.py")
     sections.append(
-        "# Factory Pattern (warpt/backends/factory.py)\n"
-        "```python\n"
-        f"{factory_text}\n"
-        "```"
+        f"# Factory Pattern (warpt/backends/factory.py)\n```python\n{factory_text}\n```"
     )
 
     # 6. Power backend ABC

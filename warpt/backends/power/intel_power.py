@@ -165,9 +165,7 @@ class IntelPowerBackend(PowerBackend):
         for idx, handle in enumerate(self._devices):
             watts = self._safe(self._sysman.get_power_watts, handle, default=None)
             name = self._device_name(idx)
-            limit = self._safe(
-                self._sysman.get_power_limit_watts, handle, default=None
-            )
+            limit = self._safe(self._sysman.get_power_limit_watts, handle, default=None)
             gpu_util = self._safe(
                 self._sysman.get_compute_utilization, handle, default=None
             )

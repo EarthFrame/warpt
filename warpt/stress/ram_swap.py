@@ -294,7 +294,7 @@ class RAMSwapPressureTest(RAMBaseTest):
         current_gb = baseline_gb
 
         self.logger.info(
-            f"Starting at {current_gb:.2f} GB, " f"growing until swap is engaged..."
+            f"Starting at {current_gb:.2f} GB, growing until swap is engaged..."
         )
 
         # Grow in chunks (~5% of available RAM each)

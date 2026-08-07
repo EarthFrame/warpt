@@ -74,7 +74,9 @@ def _build_power_backend(sysman: MagicMock) -> IntelPowerBackend:
         "warpt.backends.power.intel_power._load_library", return_value=MagicMock()
     ), patch(
         "warpt.backends.power.intel_power._IntelSysman", return_value=sysman
-    ), patch("warpt.backends.power.intel_power.LEVEL_ZERO_AVAILABLE", True):
+    ), patch(
+        "warpt.backends.power.intel_power.LEVEL_ZERO_AVAILABLE", True
+    ):
         assert backend.initialize() is True
     return backend
 
@@ -122,9 +124,7 @@ def test_load_library_success():
 
 def test_load_library_raises_when_missing():
     """``_load_library`` raises OSError when no loader can be opened."""
-    with patch(
-        "warpt.backends.intel.ctypes.CDLL", side_effect=OSError("missing")
-    ):
+    with patch("warpt.backends.intel.ctypes.CDLL", side_effect=OSError("missing")):
         with pytest.raises(OSError):
             _load_library()
 
@@ -435,16 +435,19 @@ def test_device_properties_discrete_when_integrated_bit_clear():
 
     0x8 (ONDEMANDPAGING) is what a real discrete Arc card reports.
     """
-    assert _sysman_with_device_flags(0x8).get_device_properties(MagicMock())[
-        "integrated"
-    ] is False
-    assert _sysman_with_device_flags(0x0).get_device_properties(MagicMock())[
-        "integrated"
-    ] is False
+    assert (
+        _sysman_with_device_flags(0x8).get_device_properties(MagicMock())["integrated"]
+        is False
+    )
+    assert (
+        _sysman_with_device_flags(0x0).get_device_properties(MagicMock())["integrated"]
+        is False
+    )
     # Integrated alongside other bits is still integrated.
-    assert _sysman_with_device_flags(0x9).get_device_properties(MagicMock())[
-        "integrated"
-    ] is True
+    assert (
+        _sysman_with_device_flags(0x9).get_device_properties(MagicMock())["integrated"]
+        is True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -617,7 +620,9 @@ def test_power_is_available_true():
         "warpt.backends.power.intel_power._load_library", return_value=MagicMock()
     ), patch(
         "warpt.backends.power.intel_power._IntelSysman", return_value=sysman
-    ), patch("warpt.backends.power.intel_power.LEVEL_ZERO_AVAILABLE", True):
+    ), patch(
+        "warpt.backends.power.intel_power.LEVEL_ZERO_AVAILABLE", True
+    ):
         assert IntelPowerBackend().is_available() is True
 
 

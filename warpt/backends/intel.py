@@ -16,7 +16,7 @@ import ctypes
 import glob
 import os
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 from warpt.backends.base import AcceleratorBackend
 from warpt.models.list_models import GPUInfo
@@ -384,11 +384,11 @@ def _clamp_percent(value: float) -> float:
 
 
 class _ZeDeviceUuid(ctypes.Structure):
-    _fields_ = [("id", ctypes.c_uint8 * 16)]
+    _fields_: ClassVar = [("id", ctypes.c_uint8 * 16)]
 
 
 class _ZeDeviceProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("type", ctypes.c_int),
@@ -414,7 +414,7 @@ class _ZeDeviceProperties(ctypes.Structure):
 
 
 class _ZesDeviceProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("core", _ZeDeviceProperties),
@@ -429,7 +429,7 @@ class _ZesDeviceProperties(ctypes.Structure):
 
 
 class _ZesPciAddress(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("domain", ctypes.c_uint32),
         ("bus", ctypes.c_uint32),
         ("device", ctypes.c_uint32),
@@ -438,7 +438,7 @@ class _ZesPciAddress(ctypes.Structure):
 
 
 class _ZesPciSpeed(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("gen", ctypes.c_int32),
         ("width", ctypes.c_int32),
         ("maxBandwidth", ctypes.c_int64),
@@ -446,7 +446,7 @@ class _ZesPciSpeed(ctypes.Structure):
 
 
 class _ZesPciProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("address", _ZesPciAddress),
@@ -458,7 +458,7 @@ class _ZesPciProperties(ctypes.Structure):
 
 
 class _ZesEngineProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("type", ctypes.c_int),
@@ -468,14 +468,14 @@ class _ZesEngineProperties(ctypes.Structure):
 
 
 class _ZesEngineStats(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("activeTime", ctypes.c_uint64),
         ("timestamp", ctypes.c_uint64),
     ]
 
 
 class _ZesFreqProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("type", ctypes.c_int),
@@ -489,7 +489,7 @@ class _ZesFreqProperties(ctypes.Structure):
 
 
 class _ZesFreqState(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("currentVoltage", ctypes.c_double),
@@ -502,7 +502,7 @@ class _ZesFreqState(ctypes.Structure):
 
 
 class _ZesMemState(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("health", ctypes.c_int),
@@ -512,7 +512,7 @@ class _ZesMemState(ctypes.Structure):
 
 
 class _ZesPowerProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("onSubdevice", ctypes.c_uint8),
@@ -526,14 +526,14 @@ class _ZesPowerProperties(ctypes.Structure):
 
 
 class _ZesPowerEnergyCounter(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("energy", ctypes.c_uint64),
         ("timestamp", ctypes.c_uint64),
     ]
 
 
 class _ZesTempProperties(ctypes.Structure):
-    _fields_ = [
+    _fields_: ClassVar = [
         ("stype", ctypes.c_int),
         ("pNext", ctypes.c_void_p),
         ("type", ctypes.c_int),
@@ -815,9 +815,10 @@ class _IntelSysman:
             props = _ZesTempProperties()
             props.stype = _ZES_STRUCTURE_TYPE_TEMP_PROPERTIES
             props.pNext = None
-            if self._lib.zesTemperatureGetProperties(
-                sensor, ctypes.byref(props)
-            ) != _ZE_RESULT_SUCCESS:
+            if (
+                self._lib.zesTemperatureGetProperties(sensor, ctypes.byref(props))
+                != _ZE_RESULT_SUCCESS
+            ):
                 continue
             if props.type == _ZES_TEMP_SENSORS_GPU:
                 gpu = sensor
@@ -864,9 +865,7 @@ class _IntelSysman:
         delta_active = int(second.activeTime) - int(first.activeTime)
         return _clamp_percent(delta_active / delta_time * 100.0)
 
-    def _pick_engine(
-        self, engines: list[ctypes.c_void_p]
-    ) -> ctypes.c_void_p | None:
+    def _pick_engine(self, engines: list[ctypes.c_void_p]) -> ctypes.c_void_p | None:
         """Choose the compute-all engine group, falling back sensibly."""
         compute_all = None
         all_group = None
@@ -875,9 +874,10 @@ class _IntelSysman:
             props = _ZesEngineProperties()
             props.stype = _ZES_STRUCTURE_TYPE_ENGINE_PROPERTIES
             props.pNext = None
-            if self._lib.zesEngineGetProperties(
-                engine, ctypes.byref(props)
-            ) != _ZE_RESULT_SUCCESS:
+            if (
+                self._lib.zesEngineGetProperties(engine, ctypes.byref(props))
+                != _ZE_RESULT_SUCCESS
+            ):
                 continue
             if first is None:
                 first = engine
@@ -985,9 +985,7 @@ class _IntelSysman:
                 second_package[0] - first_package[0],
                 second_package[1] - first_package[1],
             )
-            if package_watts is not None and _counters_incoherent(
-                watts, package_watts
-            ):
+            if package_watts is not None and _counters_incoherent(watts, package_watts):
                 _reject()
                 return None
 
@@ -1095,9 +1093,10 @@ class _IntelSysman:
             props = _ZesFreqProperties()
             props.stype = _ZES_STRUCTURE_TYPE_FREQ_PROPERTIES
             props.pNext = None
-            if self._lib.zesFrequencyGetProperties(
-                domain, ctypes.byref(props)
-            ) != _ZE_RESULT_SUCCESS:
+            if (
+                self._lib.zesFrequencyGetProperties(domain, ctypes.byref(props))
+                != _ZE_RESULT_SUCCESS
+            ):
                 continue
             if first is None:
                 first = domain
@@ -1259,9 +1258,7 @@ class IntelBackend(AcceleratorBackend):
         """
         if not self._valid(index):
             return None
-        return self._safe(
-            self._sysman.get_memory, self._devices[index], default=None
-        )
+        return self._safe(self._sysman.get_memory, self._devices[index], default=None)
 
     def get_utilization(self, index: int) -> dict | None:
         """Get GPU utilization percentages.
@@ -1280,17 +1277,13 @@ class IntelBackend(AcceleratorBackend):
         if not self._valid(index):
             return None
         handle = self._devices[index]
-        gpu = self._safe(
-            self._sysman.get_compute_utilization, handle, default=None
-        )
+        gpu = self._safe(self._sysman.get_compute_utilization, handle, default=None)
         if gpu is None:
             return None
         memory = self._safe(self._sysman.get_memory, handle, default=None)
         memory_percent = 0.0
         if memory and memory["total"] > 0:
-            memory_percent = _clamp_percent(
-                memory["used"] / memory["total"] * 100.0
-            )
+            memory_percent = _clamp_percent(memory["used"] / memory["total"] * 100.0)
         return {"gpu": float(gpu), "memory": float(memory_percent)}
 
     def get_pytorch_device_string(self, device_id: int) -> str:

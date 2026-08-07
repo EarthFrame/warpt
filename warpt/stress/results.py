@@ -645,7 +645,7 @@ class TestResults:
         # Rows
         for label, value, fval in zip(labels, values, formatted_values, strict=True):
             if isinstance(value, int | float):
-                filled = int(round(abs(value) / max_val * bar_width))
+                filled = round(abs(value) / max_val * bar_width)
                 bar = "█" * filled
                 output.write(
                     f"    {label:>{label_width}}  "
