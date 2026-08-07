@@ -13,7 +13,8 @@ into the CPU package.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 from warpt.backends.power.base import PowerBackend
 from warpt.models.power_models import (
@@ -22,6 +23,8 @@ from warpt.models.power_models import (
     PowerDomain,
     PowerSource,
 )
+
+_T = TypeVar("_T")
 
 # Vendor tag stamped on every reading so consumers can distinguish an Intel
 # GPU 0 from an NVIDIA GPU 0 (both backends number devices from 0).
@@ -52,7 +55,7 @@ class IntelPowerBackend(PowerBackend):
     def __init__(self) -> None:
         """Initialize the Intel power backend (lazy; see :meth:`initialize`)."""
         self._initialized = False
-        self._sysman: object | None = None
+        self._sysman: _IntelSysman | None = None
         self._devices: list = []
         # Per-device static identity, parallel to ``_devices``. Cached at
         # initialize() so the sampling loop makes no extra FFI calls per
@@ -122,6 +125,7 @@ class IntelPowerBackend(PowerBackend):
         """
         if not self._initialized and not self.initialize():
             return []
+        assert self._sysman is not None
         readings: list[DomainPower] = []
         for idx, handle in enumerate(self._devices):
             try:
@@ -161,6 +165,7 @@ class IntelPowerBackend(PowerBackend):
         """
         if not self._initialized and not self.initialize():
             return []
+        assert self._sysman is not None
         gpus: list[GPUPowerInfo] = []
         for idx, handle in enumerate(self._devices):
             watts = self._safe(self._sysman.get_power_watts, handle, default=None)
@@ -203,6 +208,7 @@ class IntelPowerBackend(PowerBackend):
         """
         if not self._initialized and not self.initialize():
             return 0.0
+        assert self._sysman is not None
         total = 0.0
         for handle in self._devices:
             watts = self._safe(self._sysman.get_power_watts, handle, default=None)
@@ -235,7 +241,10 @@ class IntelPowerBackend(PowerBackend):
             ``name`` (display name, defaulting to 'Intel GPU') and
             ``integrated`` (True when the GPU is fused into the CPU package).
         """
-        props = self._safe(self._sysman.get_device_properties, handle, default={})
+        assert self._sysman is not None
+        props: dict[str, Any] = self._safe(
+            self._sysman.get_device_properties, handle, default={}
+        )
         name = props.get("model") or props.get("brand") or ""
         if not name or name.lower() == "unknown":
             name = "Intel GPU"
@@ -259,9 +268,9 @@ class IntelPowerBackend(PowerBackend):
         return False
 
     @staticmethod
-    def _safe(func: object, *args: object, default: object) -> object:
+    def _safe(func: Callable[..., _T], *args: object, default: _T) -> _T:
         """Call ``func`` returning ``default`` if it raises."""
         try:
-            return func(*args)  # type: ignore[operator]
+            return func(*args)
         except Exception:
             return default

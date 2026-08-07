@@ -16,10 +16,13 @@ import ctypes
 import glob
 import os
 import time
-from typing import Any, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar, TypeVar
 
 from warpt.backends.base import AcceleratorBackend
 from warpt.models.list_models import GPUInfo
+
+_T = TypeVar("_T")
 
 # ``ze_result_t`` success sentinel. Every zes* call returns an int status.
 _ZE_RESULT_SUCCESS = 0
@@ -296,7 +299,7 @@ def _temperature_with_fallback(sysman: Any, handle: Any) -> float | None:
     both surface the same value.
     """
     try:
-        temperature = sysman.get_temperature(handle)
+        temperature: float | None = sysman.get_temperature(handle)
     except Exception:
         temperature = None
     if temperature is not None:
@@ -1174,8 +1177,12 @@ class IntelBackend(AcceleratorBackend):
         """
         devices: list[GPUInfo] = []
         for index, handle in enumerate(self._devices):
-            props = self._safe(self._sysman.get_device_properties, handle, default={})
-            pci = self._safe(self._sysman.get_pci_properties, handle, default={})
+            props: dict[str, Any] = self._safe(
+                self._sysman.get_device_properties, handle, default={}
+            )
+            pci: dict[str, int | None] = self._safe(
+                self._sysman.get_pci_properties, handle, default={}
+            )
             memory = self._safe(self._sysman.get_memory, handle, default=None)
 
             model = props.get("model") or ""
@@ -1214,7 +1221,7 @@ class IntelBackend(AcceleratorBackend):
         return devices
 
     @staticmethod
-    def _safe(func: Any, *args: Any, default: Any) -> Any:
+    def _safe(func: Callable[..., _T], *args: Any, default: _T) -> _T:
         """Call ``func`` returning ``default`` if it raises."""
         try:
             return func(*args)
@@ -1349,7 +1356,7 @@ class IntelBackend(AcceleratorBackend):
         """
         if not self._devices:
             return None
-        props = self._safe(
+        props: dict[str, Any] = self._safe(
             self._sysman.get_device_properties, self._devices[0], default={}
         )
         version = props.get("driver_version") or None
