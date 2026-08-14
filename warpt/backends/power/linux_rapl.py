@@ -55,6 +55,9 @@ class LinuxRAPLBackend(PowerBackend):
         self._initialized = False
         # name -> (energy_uj, timestamp)
         self._last_readings: dict[str, tuple[int, float]] = {}
+        # Last derived rate per domain, reused when two reads land too
+        # close together to compute a new one. See get_power_readings.
+        self._last_power: dict[str, float] = {}
         self._unavailable_reason: str | None = None
 
     def is_available(self) -> bool:
@@ -152,6 +155,7 @@ class LinuxRAPLBackend(PowerBackend):
 
         self._domains = []
         self._last_readings = {}
+        self._last_power = {}
 
         # Check both intel-rapl and amd-rapl paths
         for prefix in ["intel-rapl", "amd-rapl"]:
@@ -260,22 +264,32 @@ class LinuxRAPLBackend(PowerBackend):
                     domain.name, (current_energy, current_time)
                 )
 
-                # Calculate time delta
+                # Deriving a rate needs a usable time base, but the cumulative
+                # energy counter is valid whatever the interval. Two reads
+                # arriving within a millisecond of each other therefore reuse
+                # the previous rate rather than dropping the domain entirely --
+                # dropping it also discarded ``energy_joules``, which is what
+                # callers doing start/end energy accounting depend on.
                 time_delta = current_time - last_time
-                if time_delta < 0.001:  # Less than 1ms, skip
-                    continue
+                if time_delta < 0.001:
+                    power_watts = self._last_power.get(domain.name, 0.0)
+                else:
+                    # Calculate energy delta (handle wraparound)
+                    energy_delta = current_energy - last_energy
+                    if energy_delta < 0 and domain.max_energy_uj > 0:
+                        # Counter wrapped around
+                        energy_delta = (
+                            domain.max_energy_uj - last_energy
+                        ) + current_energy
 
-                # Calculate energy delta (handle wraparound)
-                energy_delta = current_energy - last_energy
-                if energy_delta < 0 and domain.max_energy_uj > 0:
-                    # Counter wrapped around
-                    energy_delta = (domain.max_energy_uj - last_energy) + current_energy
+                    # Convert microjoules to watts: (uj / 1e6) / seconds
+                    power_watts = (energy_delta / 1_000_000) / time_delta
 
-                # Convert microjoules to watts: (uj / 1e6) / seconds
-                power_watts = (energy_delta / 1_000_000) / time_delta
-
-                # Update stored reading
-                self._last_readings[domain.name] = (current_energy, current_time)
+                    # Update stored reading. Deliberately not updated on the
+                    # too-soon path above, so the next real read still has a
+                    # wide enough baseline to derive a rate from.
+                    self._last_readings[domain.name] = (current_energy, current_time)
+                    self._last_power[domain.name] = max(0.0, power_watts)
 
                 # Map domain name to PowerDomain enum
                 power_domain = self._map_domain_name(domain.name)
@@ -332,6 +346,7 @@ class LinuxRAPLBackend(PowerBackend):
         """Clean up resources."""
         self._domains = []
         self._last_readings = {}
+        self._last_power = {}
         self._initialized = False
 
 
