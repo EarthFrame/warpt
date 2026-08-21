@@ -195,7 +195,16 @@ class VitalsNurse:
                 backoff = min(backoff * 2, self._max_restart_backoff)
                 continue
 
-            self._read_stream(self._process)
+            try:
+                self._read_stream(self._process)
+            except Exception:
+                # A failure while feeding snapshots (e.g. a DB write error) must
+                # never kill the supervisor thread — that would leave the daemon
+                # alive but blind. Log it, recycle the subprocess, and restart.
+                self._log.exception("Vitals feed crashed; recycling monitor")
+                proc = self._process
+                if proc and proc.poll() is None:
+                    proc.terminate()
 
             if self._stop_event.is_set():
                 break
@@ -329,6 +338,7 @@ class VitalsNurse:
                 mem_total_bytes, mem_available_bytes, mem_wired_bytes,
                 mem_utilization_pct, gpus, total_power_w, collection_type
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (ts) DO UPDATE SET collection_type = excluded.collection_type
             """,
             [
                 snapshot.get("timestamp"),
