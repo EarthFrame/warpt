@@ -155,6 +155,12 @@ def inspect(case_id, list_all):
     warpt_dir = _get_warpt_dir()
     db_path = os.path.join(warpt_dir, "warpt.db")
 
+    if not os.path.exists(db_path):
+        raise click.ClickException(
+            "No warpt database yet. Start the daemon and let it record data "
+            "first: warpt daemon start"
+        )
+
     with read_only_snapshot(db_path) as cf:
         if list_all:
             list_cases(cf)
