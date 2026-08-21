@@ -161,7 +161,14 @@ class VitalsNurse:
     def _spawn_process(self) -> subprocess.Popen:
         """Spawn the ``warpt monitor`` subprocess. Isolated for testability."""
         return subprocess.Popen(
-            ["warpt", "monitor", "--no-tui", "--json"],
+            [
+                "warpt",
+                "monitor",
+                "--no-tui",
+                "--json",
+                "--interval",
+                str(self._poll_interval),
+            ],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,

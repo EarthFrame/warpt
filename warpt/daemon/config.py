@@ -11,6 +11,16 @@ from warpt.utils.logger import Logger
 
 DEFAULTS: dict[str, Any] = {
     "intelligence_enabled": False,
+    "vitals": {
+        # Hardware observation cadence and breach thresholds (VitalsNurse).
+        "sample_interval_s": 2.0,
+        "heartbeat_interval_s": 10.0,
+        "thresholds": {
+            "utilization_percent": {"value": 80.0, "sustained_seconds": 15.0},
+            "memory_utilization_percent": {"value": 85.0, "sustained_seconds": 15.0},
+            "temperature_c": {"value": 80.0, "sustained_seconds": 15.0},
+        },
+    },
     "ollama_url": "http://localhost:11434",
     "models": {
         "chart_nurse": "llama3:8b",

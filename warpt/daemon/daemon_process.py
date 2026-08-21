@@ -65,7 +65,13 @@ class DaemonProcess:
 
         config = load_config(str(self._warpt_dir))
         self._casefile = CaseFile(self._db_path)
-        self._vitals_nurse = VitalsNurse(casefile=self._casefile)
+        vitals_cfg = config.get("vitals", {}) or {}
+        self._vitals_nurse = VitalsNurse(
+            casefile=self._casefile,
+            poll_interval=float(vitals_cfg.get("sample_interval_s", 2.0)),
+            heartbeat_interval=float(vitals_cfg.get("heartbeat_interval_s", 10.0)),
+            gpu_thresholds=vitals_cfg.get("thresholds") or None,
+        )
 
         pipeline_fn = None
         if config.get("intelligence_enabled"):
